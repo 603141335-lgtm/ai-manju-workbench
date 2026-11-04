@@ -3,7 +3,7 @@
 const fs=require('fs');
 const path=require('path');
 const os=require('os');
-const {execFile}=require('child_process');
+const {spawn}=require('child_process');
 function edgeUserDataDir(env=process.env){
   if(!env.LOCALAPPDATA) return null;
   return path.join(env.LOCALAPPDATA,'Microsoft','Edge','User Data');
@@ -38,11 +38,14 @@ function launchProfile(profileId,{exe=findEdgeExecutable(),url='https://www.doub
   if(!isProfileDirectory(profileId))return Promise.reject(new Error('无效的 Edge 用户资料编号'));
   if(!exe)return Promise.reject(new Error('未找到 Microsoft Edge，请检查安装位置'));
   if(!/^https:\/\/www\.doubao\.com\/?$/.test(url))return Promise.reject(new Error('不支持的打开地址'));
+  // Launch only a user-approved local browser profile; keep existing Edge session and extensions.
   return new Promise((resolve,reject)=>{
-    // Windows Chrome/Edge normally forwards these arguments to the already running profile process.
-    execFile(exe,[`--profile-directory=${profileId}`,'--new-window',url],{windowsHide:false},(error)=>{
-      if(error)reject(error);else resolve({profileId});
-    });
+    try {
+      const child=spawn(exe,[`--profile-directory=${profileId}`,'--new-window',url],
+        {detached:true,stdio:'ignore',windowsHide:false});
+      child.once('error',reject);
+      child.once('spawn',()=>{child.unref();resolve({profileId});});
+    } catch(error){reject(error);}
   });
 }
 module.exports={edgeUserDataDir,isProfileDirectory,discoverProfiles,edgeExeCandidates,findEdgeExecutable,launchProfile};
