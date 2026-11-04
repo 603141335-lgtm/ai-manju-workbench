@@ -1,0 +1,48 @@
+'use strict';
+const api=window.edgeLite,$=id=>document.getElementById(id);
+let state={profiles:[],records:[]},selected=null;
+const say=(msg,error=false)=>{const el=$('message');el.textContent=msg;el.className=error?'danger':''};
+const used=id=>state.records.filter(t=>t.profileId===id&&t.status==='submitted').length;
+function render(){
+ const list=$('profiles');list.replaceChildren();
+ if(!state.profiles.length){const p=document.createElement('p');p.className='muted small';p.textContent='未找到 Edge 用户资料。请先在 Edge 中添加用户。';list.append(p);}
+ for(const p of state.profiles){
+  const b=document.createElement('button');b.className='profile'+(selected===p.id?' active':'');
+  const name=document.createElement('span');name.textContent=p.name;
+  const count=document.createElement('span');count.className='tag';count.textContent=used(p.id)+'/2';
+  b.append(name,count);b.onclick=()=>{selected=p.id;render();};list.append(b);
+ }
+ const profile=state.profiles.find(p=>p.id===selected);
+ $('picked').textContent=profile?.name||'未选择账号';
+ $('counter').textContent=(selected?used(selected):0)+'/2';
+ $('open').disabled=$('submit').disabled=$('reset').disabled=!profile;
+ const recent=$('recent');recent.replaceChildren();
+ for(const t of state.records.filter(t=>t.profileId===selected&&t.status==='submitted').slice(-8).reverse()){
+  const line=document.createElement('div');line.className='row';
+  const name=document.createElement('span');name.textContent=`第${t.episode}集 第${t.segment}段`;
+  const undo=document.createElement('button');undo.textContent='撤销';
+  undo.onclick=()=>act(()=>api.undo(t.id),'已撤销本条登记');
+  line.append(name,undo);recent.append(line);
+ }
+}
+async function act(fn,message){
+ try{state=await fn();say(message);render();}catch(e){say(e.message||String(e),true);}
+}
+async function refresh(){
+ await act(()=>api.get(),'账号列表已刷新');
+ if(!selected||!state.profiles.some(p=>p.id===selected)){selected=state.profiles[0]?.id||null;render();}
+}
+$('refresh').onclick=refresh;
+$('open').onclick=async()=>{
+ if(!selected)return;
+ try{await api.launch(selected);say('已请求打开 Edge 用户窗口');}catch(e){say(e.message,true);}
+};
+$('submit').onclick=()=>{
+ const episode=Number($('episode').value),segment=Number($('segment').value);
+ act(()=>api.submit({profileId:selected,episode,segment}),'已登记一次提交');
+};
+$('reset').onclick=()=>{
+ if(selected&&confirm('确定将当前用户的手动计数归零吗？历史记录会保留。'))
+  act(()=>api.reset(selected),'本账号计数已归零');
+};
+refresh();
