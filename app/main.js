@@ -5,6 +5,7 @@ const fsp = fs.promises;
 const path = require('path');
 const {pathToFileURL} = require('url');
 const {parseMultiEpisode,parseFilenameCode,safeName,detectSegmentCodes,extractCodes} = require('./parser');
+const {setupEdgeWindow} = require('./edge-window');
 
 protocol.registerSchemesAsPrivileged([{scheme:'manju-img',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
 const imageExtensions = new Set(['.png','.jpg','.jpeg','.webp','.bmp','.gif','.avif','.tif','.tiff']);
@@ -179,6 +180,8 @@ async function boot(){
  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  win.webContents.on('will-navigate',e=>e.preventDefault());
  win.loadFile(path.join(__dirname,'index.html'));
+ // v4 Lite companion: separate, freely resizable Edge account manager.
+ if(process.platform==='win32')setupEdgeWindow(win);
 }
 app.whenReady().then(boot).catch(err=>{dialog.showErrorBox('软件启动失败',String(err.stack||err));app.quit();});
 app.on('window-all-closed',()=>app.quit());
