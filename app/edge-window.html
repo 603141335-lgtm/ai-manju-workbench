@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Edge 账号管理</title>
+<style>
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color:#e8eefb;background:#101827}
+*{box-sizing:border-box}body{margin:0;padding:14px}header{display:flex;justify-content:space-between;align-items:center}
+h1{font-size:16px;margin:0}small,.muted{color:#9aabc5}button,input{font:inherit}button{cursor:pointer;border:1px solid #405371;border-radius:8px;background:#243652;color:#fff;padding:8px}
+button:hover{background:#34517b}button:disabled{opacity:.45}input{background:#19263c;color:#fff;border:1px solid #405371;border-radius:8px;padding:8px;width:100%;min-width:0}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.panel{background:#1a2639;border:1px solid #314259;border-radius:12px;padding:10px;margin-top:10px}
+.profile{display:flex;justify-content:space-between;align-items:center;width:100%;margin:6px 0;text-align:left;gap:5px}
+.profile.active{border-color:#74a7ff;background:#294875}.tag{font-size:12px;background:#142239;border-radius:6px;padding:4px 7px}
+label{display:block;font-size:12px;color:#b4c2d8;margin-bottom:5px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.primary{background:#3569c2;border-color:#3569c2}
+#message{font-size:12px;min-height:20px;color:#afd2ff;overflow-wrap:anywhere}
+.list{max-height:240px;overflow:auto}.small{font-size:12px}.danger{color:#ffb4a9}
+</style></head><body>
+<header><div><h1>Edge 账号小窗</h1><small>使用现有微软 Edge 用户资料</small></div><button id="refresh" title="刷新 Edge 用户">刷新</button></header>
+<section class="panel"><b class="small">点击选择用户</b><div id="profiles" class="list"></div></section>
+<section class="panel">
+  <div class="row"><b id="picked">未选择账号</b><span class="tag" id="counter">0/2</span></div>
+  <p class="muted small">这里记录手动提交次数，不是豆包官方额度。</p>
+  <button class="primary" id="open" style="width:100%">打开选中 Edge 用户的豆包</button>
+</section>
+<section class="panel"><div class="grid">
+  <div><label for="episode">第几集</label><input id="episode" type="number" min="1" max="99999" value="1"></div>
+  <div><label for="segment">第几段</label><input id="segment" type="number" min="1" max="99999" value="1"></div>
+</div>
+<div class="row" style="margin-top:10px"><button class="primary" id="submit">已提交一次</button><button id="reset">本账号计数归零</button></div>
+<div class="muted small" style="margin-top:8px">达到2/2仅提醒，不会自动切走或禁止操作。</div>
+</section>
+<section class="panel"><b class="small">最近登记</b><div id="recent" class="list small"></div></section>
+<div id="message" role="status"></div>
+<script src="edge-window-renderer.js"></script></body></html>
