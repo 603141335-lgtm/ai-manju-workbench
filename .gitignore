@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+release/
+*.exe
+*.zip
+*.7z
+*.log
+*.tmp
+.env
+.env.*
+!*.env.example
+workbench.json
+*_项目备份.json
+参考图/
+素材/
+剧本/
