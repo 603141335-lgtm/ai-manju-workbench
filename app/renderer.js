@@ -4,7 +4,7 @@ const doc=(tag,cls,text)=>{const a=document.createElement(tag);if(cls)a.classNam
 const api=window.manju;
 let state={project:{episodes:[],chosenPaths:{}},assetList:[],scanStats:{}},activeEpisodeId=null,editTarget=null,codesTarget=null,selectedImages=new Map(),currentFilter='';
 let toastTimer=null;
-let currentGroupId=null,expandedGroups=new Set(),collapsedDocs=new Set(),docAction=null;
+let currentGroupId=null,expandedGroups=new Set(),expandedDocs=new Set(),docAction=null;
 const segmentPanelSize=()=>Math.max(220,Math.min(720,Number(localStorage.getItem('manju-pane-size')||340)));
 function clearTextSelection(){try{window.getSelection()?.removeAllRanges();}catch{}}
 function clearOtherImageSelections(keep=null){
@@ -51,8 +51,8 @@ function drawSidebar(){
  function renderDocument(ep,depth){
   const row=doc('div','doc-tree-row doc-depth-'+depth+(ep.id===activeEpisodeId?' selected':''));
   row.setAttribute('role','treeitem');
-  const caret=elBtn(collapsedDocs.has(ep.id)?'▸':'▾',()=>{
-    if(collapsedDocs.has(ep.id))collapsedDocs.delete(ep.id);else collapsedDocs.add(ep.id);
+  const caret=elBtn(expandedDocs.has(ep.id)?'▾':'▸',()=>{
+    if(expandedDocs.has(ep.id))expandedDocs.delete(ep.id);else expandedDocs.add(ep.id);
     drawSidebar();
   },'tree-caret');
   row.append(caret);
@@ -64,7 +64,7 @@ function drawSidebar(){
   item.title=ep.title;row.append(item);
   const edit=elBtn('⋯',()=>openDocDialog('rename-document',ep.id,ep.title),'tree-ellipsis');
   edit.title='重命名文档';row.append(edit);tree.append(row);
-  if(!collapsedDocs.has(ep.id)){
+  if(expandedDocs.has(ep.id)){
    for(const seg of ep.segments){
     const leaf=elBtn('↳ 第'+seg.n+'段 '+(seg.title||''),()=>{
       activeEpisodeId=ep.id;currentGroupId=ep.groupId||null;
@@ -188,6 +188,10 @@ function makeSegment(episode,seg,idx){
  const sub=doc('div','segment-sub',`参考图 ${seg.codes.join('、')||'无'}　·　${seg.method}${seg.codes.length>9?'　⚠ 超过9张':''}`);sub.prepend(badge);left.append(sub);
  const right=doc('div','segment-actions');
  right.append(elBtn('复制提示词',()=>copyPrompt(seg),'primary'));
+ const collapseBtn=elBtn('收起本段',()=>{
+  const collapsed=card.classList.toggle('is-collapsed');
+  collapseBtn.textContent=collapsed?'展开本段':'收起本段';
+ },'secondary');right.append(collapseBtn);
  right.append(elBtn('编辑文字',()=>{editTarget={episodeId:episode.id,segmentId:seg.id};$('editTitle').textContent=`编辑第 ${seg.n} 段的完整提示词`;$('editText').value=seg.text;$('editDialog').showModal();}));
  right.append(elBtn('校正编号',()=>{codesTarget={episodeId:episode.id,segmentId:seg.id};$('codesInput').value=seg.codes.join('、');$('codesDialog').showModal();}));
  head.append(left,right);card.append(head);
