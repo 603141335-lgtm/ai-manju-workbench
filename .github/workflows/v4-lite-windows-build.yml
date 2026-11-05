@@ -19,6 +19,13 @@ jobs:
         run: |
           $electronVersion = node -p "require('electron/package.json').version"
           npx electron-packager app AI-Manju-Workbench --platform=win32 --arch=x64 --out=release --overwrite --asar --electron-version=$electronVersion
+      - name: Upload tiny app.asar update (existing v4 Lite portable users)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Manju-v4-Lite-app-asar-update
+          path: release/AI-Manju-Workbench-win32-x64/resources/app.asar
+          if-no-files-found: error
+          retention-days: 14
       - name: Pack Edge connector extension
         shell: pwsh
         run: |
