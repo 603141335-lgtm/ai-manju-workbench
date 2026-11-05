@@ -11,6 +11,7 @@ function setupEdgeWindow(parent){
   const fs=require('fs');
   let closingFromParent=false;
   let tasks=ledger.loadLedger(dataFile);
+  let pendingSegment=null;
   const save=()=>ledger.saveLedger(dataFile,tasks);
   const dlConfig=path.join(app.getPath('userData'),'edge-lite-download-config.json');
   let config={source:app.getPath('downloads'),root:path.join(app.getPath('videos'),'AI漫剧成片')};
@@ -25,8 +26,16 @@ function setupEdgeWindow(parent){
     watcher.start();
   }
   monitor();
-  const summary=()=>({profiles:edge.discoverProfiles(),records:tasks,downloads:{...config,...watcher.get(),notices}});
+  const summary=()=>({profiles:edge.discoverProfiles(),records:tasks,pendingSegment,downloads:{...config,...watcher.get(),notices}});
   ipcMain.handle('edge-lite:get',()=>summary());
+  ipcMain.handle('edge-lite:prepare-segment',(_,data)=>{
+    const episode=Number(data?.episode),segment=Number(data?.segment);
+    if(!Number.isSafeInteger(episode)||episode<1||episode>99999||
+       !Number.isSafeInteger(segment)||segment<1||segment>99999)throw Error('请先选定有效的集数与段落');
+    pendingSegment={episode,segment,key:Date.now()+'-'+Math.random().toString(36).slice(2)};
+    if(accountWindow&&!accountWindow.isDestroyed()){accountWindow.show();accountWindow.focus();}
+    return summary();
+  });
   ipcMain.handle('edge-lite:show',()=>{if(accountWindow&&!accountWindow.isDestroyed()){accountWindow.show();accountWindow.focus();}return true;});
   ipcMain.handle('edge-lite:launch',async(_,id)=>{
     const known=edge.discoverProfiles().find(x=>x.id===id);
