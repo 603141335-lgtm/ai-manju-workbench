@@ -16,6 +16,12 @@ label{display:block;font-size:12px;color:#b4c2d8;margin-bottom:5px}.grid{display
 <header><div><h1>Edge 账号小窗</h1><small>使用现有微软 Edge 用户资料</small></div><button id="refresh" title="刷新 Edge 用户">刷新</button></header>
 <section class="panel"><b class="small">点击选择用户</b><div id="profiles" class="list"></div></section>
 <section class="panel">
+  <b class="small">当前关联的提示词段落</b>
+  <div id="linkedSegment" class="small" style="margin:7px 0;color:#d8e5fa">请先在提示词文档点击“分配到账号小窗”</div>
+  <div id="linkedProfile" class="muted small"></div>
+  <div class="row" style="margin:9px 0"><button id="copyPrompt">复制当前段落提示词</button><button id="copyAndOpen" class="primary">复制并打开 Edge</button></div>
+</section>
+<section class="panel">
   <div class="row"><b id="picked">未选择账号</b><span class="tag" id="counter">0/2</span></div>
   <p class="muted small">这里记录手动提交次数，不是豆包官方额度。</p>
   <button class="primary" id="open" style="width:100%">打开选中 Edge 用户的豆包</button>
