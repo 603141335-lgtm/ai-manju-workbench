@@ -314,6 +314,7 @@ function makeSegment(episode,seg,idx){
  head.append(left,right);card.append(head);
  const workarea=doc('div','segment-workarea');
  workarea.style.height=segmentPanelSize()+'px';
+ applyPromptRatio(workarea,storedNumber('manju-prompt-ratio',50));
  card.append(workarea);
  const content=doc('div','content');
  const promptHead=doc('div','prompt-head');
@@ -327,6 +328,35 @@ function makeSegment(episode,seg,idx){
  });
  promptHead.append(elBtn('全选文字',()=>selectTextIn(prompt),'secondary text-select'));
  content.append(promptHead,prompt);workarea.append(content);
+ const divider=doc('div','pane-divider');
+ divider.title='上下拖动：调节提示词与参考图的空间比例';
+ divider.setAttribute('role','separator');divider.tabIndex=0;
+ divider.setAttribute('aria-label','上下拖动调整提示词和参考图比例');
+ divider.setAttribute('aria-orientation','horizontal');
+ divider.textContent='⋮⋮';
+ workarea.append(divider);
+ divider.addEventListener('pointerdown',e=>{
+  if(e.button!==undefined&&e.button!==0)return;
+  e.preventDefault();
+  const initial=Number(workarea.dataset.promptRatio)||50;
+  const start=e.clientY,height=Math.max(1,workarea.getBoundingClientRect().height);
+  const move=ev=>applyPromptRatio(workarea,initial+(ev.clientY-start)/height*100);
+  const end=()=>{
+   window.removeEventListener('pointermove',move);
+   window.removeEventListener('pointerup',end);
+   window.removeEventListener('pointercancel',end);
+   document.body.classList.remove('dragging-split');
+  };
+  document.body.classList.add('dragging-split');
+  window.addEventListener('pointermove',move);
+  window.addEventListener('pointerup',end);
+  window.addEventListener('pointercancel',end);
+ });
+ divider.addEventListener('keydown',e=>{
+  if(e.key==='ArrowUp'||e.key==='ArrowDown'){
+   e.preventDefault();applyPromptRatio(workarea,(Number(workarea.dataset.promptRatio)||50)+(e.key==='ArrowDown'?5:-5));
+  }
+ });
  const imagePane=doc('div','image-pane');workarea.append(imagePane);
  const imagehead=doc('div','image-head');imagehead.append(doc('b','',`参考图片（${present} 张）`));imagehead.append(doc('span','','Ctrl多选 · Shift连选 · Ctrl+A全选'));imagePane.append(imagehead);
  const gallery=doc('div','gallery');gallery.tabIndex=0;gallery.dataset.segmentId=seg.id;gallery.dataset.lastSelected='';gallery.addEventListener('pointerdown',()=>clearTextSelection());
@@ -338,6 +368,19 @@ function makeSegment(episode,seg,idx){
  for(const code of seg.codes)gallery.append(createTile(episode,seg,code,gallery));
  if(!seg.codes.length)gallery.append(doc('div','warning','本段暂未识别到参考图编号。可点击「校正编号」。'));
  imagePane.append(gallery);
+ const heightHandle=doc('div','workarea-height-handle','⋯   上下拖动改变本段整体高度（文字与图片一起缩放）   ⋯');
+ heightHandle.title='上下拖动调整文字和图片的整体高度';
+ heightHandle.tabIndex=0;heightHandle.setAttribute('role','separator');
+ heightHandle.setAttribute('aria-orientation','horizontal');
+ card.append(heightHandle);
+ resizeFromPointer(heightHandle,'clientY',
+   ()=>Number(workarea.style.height.replace('px',''))||segmentPanelSize(),
+   v=>setAllPanelHeight(v));
+ heightHandle.addEventListener('keydown',e=>{
+  if(e.key==='ArrowUp'||e.key==='ArrowDown'){
+   e.preventDefault();setAllPanelHeight((Number(workarea.style.height.replace('px',''))||340)+(e.key==='ArrowDown'?20:-20));
+  }
+ });
  const dragFooter=doc('div','drag-footer');const handle=doc('div','drag-handle',`☷ 按住这里拖动本段全部图片（${present} 张）`);handle.draggable=present>0;
  handle.addEventListener('dragstart',e=>{e.preventDefault();api.startNativeDrag({mode:'group',episodeId:episode.id,segmentId:seg.id});});
  const hint=doc('div','drag-hint','拖到 Edge、豆包、即梦等网页的文件上传区域');
@@ -366,21 +409,26 @@ async function importPrompt(){const text=$('importText').value;if(!text.trim()){
  if(result){$('importDialog').close();$('importText').value='';activeEpisodeId=result.data.project.episodes.at(-result.added)?.id||null;render();status(`成功加入 ${result.added} 集，共 ${result.segments} 个片段；完整原文已保存。`,'ok');}
 }
 function wire(){
- // One slider changes both the prompt pane and the picture pane of every segment.
- const initial=segmentPanelSize();
- $('panelSize').value=String(initial);$('panelSizeText').textContent=String(initial);
- $('panelSize').addEventListener('input',e=>{
-  const height=Math.max(220,Math.min(720,Number(e.target.value)||340));
-  $('panelSizeText').textContent=String(height);
-  try{localStorage.setItem('manju-pane-size',String(height));}catch{}
-  document.querySelectorAll('.segment-workarea').forEach(panel=>{panel.style.height=height+'px';});
+ // Resize like normal desktop panes by dragging visible boundaries, not a toolbar slider.
+ applySidebarWidth(storedNumber('manju-sidebar-width',264));
+ resizeFromPointer($('sidebarResize'),'clientX',
+  ()=>parseFloat(document.querySelector('.sidebar').style.flexBasis)||264,
+  v=>applySidebarWidth(v));
+ $('sidebarResize').addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+   e.preventDefault();
+   applySidebarWidth((parseFloat(document.querySelector('.sidebar').style.flexBasis)||264)+(e.key==='ArrowRight'?16:-16));
+  }
  });
- $('newRootBtn').onclick=()=>openDocDialog('root');
- $('newSubBtn').onclick=()=>{
-  if(!currentGroupId){toast('请先在左侧选择一个大标题');return;}
-  openDocDialog('sub');
- };
- $('newDocBtn').onclick=()=>openDocDialog('document');
+ $('rootMenuBtn').onclick=()=>showTreeMenu($('rootMenuBtn'),rootOptions());
+ document.addEventListener('pointerdown',e=>{
+  if(!e.target.closest('#treeMenu')&&!e.target.closest('.tree-ellipsis')&&!e.target.closest('#rootMenuBtn'))closeTreeMenu();
+ });
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeTreeMenu();});
+ window.addEventListener('resize',()=>{
+  applySidebarWidth(parseFloat(document.querySelector('.sidebar').style.flexBasis)||264);
+  closeTreeMenu();
+ });
  $('docDialogClose').onclick=$('docDialogCancel').onclick=()=>$('docDialog').close();
  $('docDialogSave').onclick=saveDocDialog;
  $('docDialogDelete').onclick=async()=>{
@@ -396,18 +444,7 @@ function wire(){
   const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
   if(ep)openDocDialog('rename-document',ep.id,ep.title);
  };
- $('moveDocBtn').onclick=async()=>{
-  const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
-  if(!ep)return;
-  const groups=state.project.groups||[];
-  const names=['根目录',...groups.map(g=>(g.parentId?'　↳ ':'')+g.title)];
-  const response=prompt('输入目标目录的序号（原文不变）：\n'+names.map((name,i)=>i+'．'+name).join('\n'),'0');
-  if(response===null)return;
-  if(!/^\d+$/.test(response)||Number(response)>=names.length){toast('请输入有效目录序号');return;}
-  const groupId=Number(response)===0?null:groups[Number(response)-1].id;
-  const result=await update(api.moveDocument({id:ep.id,groupId}),'文档已移动');
-  if(result){currentGroupId=groupId;render();}
- };
+ $('moveDocBtn').onclick=()=>moveCurrentDocument();
  $('pasteBtn').onclick=$('emptyPasteBtn').onclick=()=>{$('importDialog').showModal();$('importText').focus();};
  $('submitImportBtn').onclick=importPrompt;
  $('closeImportBtn').onclick=()=>$('importDialog').close();
