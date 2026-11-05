@@ -1,0 +1,13 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>AI漫剧连接器</title>
+<style>body{margin:0;padding:15px;width:306px;font:13px/1.6 "Microsoft YaHei",sans-serif;color:#25324a}
+h3{margin:0 0 8px}p{margin:7px 0;color:#5a6980}input{width:100%;box-sizing:border-box;padding:9px;border:1px solid #ccd7ea;border-radius:8px}
+button{margin-top:8px;padding:9px 12px;background:#2862e9;color:white;border:none;border-radius:8px;width:100%;cursor:pointer}
+#status{color:#3b5b96;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:8px}.small{font-size:11px}</style>
+</head><body><h3>AI漫剧工作台 · Edge连接器</h3>
+<p>在Windows账号小窗选择本Edge用户，点击“复制连接密钥”，粘贴到这里，仅需配对一次。</p>
+<input id="token" type="password" placeholder="粘贴48位连接密钥" autocomplete="off">
+<button id="connect">保存并连接</button>
+<button id="test" style="background:#e7edfa;color:#284b84">检查连接</button>
+<div id="status" role="status"></div>
+<p class="small">只在豆包页面填写提示词，不自动提交、不读取登录信息。需保持本机工作台运行。</p>
+<script src="popup.js"></script></body></html>
