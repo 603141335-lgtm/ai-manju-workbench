@@ -73,19 +73,28 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,5));
  window.dispatchEvent(new window.MouseEvent('pointermove',{bubbles:true,clientX:340}));
  window.dispatchEvent(new window.MouseEvent('pointerup',{bubbles:true}));
  assert.equal(document.querySelector('.sidebar').style.flexBasis,'340px');
- // Drag the upper/lower pane divider; also drag the total height handle.
+ // One resizing handle for BOTH text and images, with a constant 50/50 split.
  const pane=document.querySelector('.segment-workarea');
- const split=document.querySelector('.pane-divider');
- assert(split,'Prompt/image resize divider exists');
- split.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,button:0,clientY:100}));
- window.dispatchEvent(new window.MouseEvent('pointermove',{bubbles:true,clientY:110}));
+ assert(pane.querySelector('.content')&&pane.querySelector('.image-pane'),'Both panes preserved');
+ assert(pane.querySelector('.fixed-divider'),'Non-interactive visual separator exists');
+ assert(!pane.querySelector('.fixed-divider').hasAttribute('tabindex'),'Text/image divider cannot be resized alone');
+ assert.equal(pane.dataset.promptRatio,undefined,'Old independent ratio control removed');
+ const corner=pane.querySelector('.unified-resize-handle');
+ assert(corner,'One unified resize corner exists');
+ const card=pane.closest('.segment');
+ card.getBoundingClientRect=()=>({width:600,height:500});
+ corner.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,button:0,clientX:400,clientY:100}));
+ window.dispatchEvent(new window.MouseEvent('pointermove',{bubbles:true,clientX:350,clientY:140}));
  window.dispatchEvent(new window.MouseEvent('pointerup',{bubbles:true}));
- assert(pane.dataset.promptRatio&&pane.style.gridTemplateRows.includes('8px'));
- const handle=document.querySelector('.workarea-height-handle');
- handle.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,button:0,clientY:100}));
- window.dispatchEvent(new window.MouseEvent('pointermove',{bubbles:true,clientY:140}));
- window.dispatchEvent(new window.MouseEvent('pointerup',{bubbles:true}));
- for(const p of document.querySelectorAll('.segment-workarea'))assert.equal(p.style.height,'380px','Both panes grow together');
+ for(const p of document.querySelectorAll('.segment-workarea'))
+  assert.equal(p.style.height,'380px','All text+image areas grow together by 40px');
+ const widths=[...document.querySelectorAll('.segment')].map(el=>el.style.width);
+ assert(widths.every(w=>w===widths[0]),'All segment cards use the same overall width');
+ assert(Number.parseInt(widths[0])<100,'Whole unit gets narrower, not just one pane');
+ assert.equal(document.querySelectorAll('.prompt-box').length,2,'Prompt texts still present');
+ assert.equal(document.querySelectorAll('.image-tile').length,2,'Reference images still present');
+ assert.equal(state.project.episodes[0].segments[0].text,'第1段｜完整提示词\n台词：不可删改\n需要参考图：A01');
+ assert.deepEqual(state.project.episodes[0].segments[1].codes,['B02']);
  const create=async(label,title)=>{
   const menu=document.getElementById('treeMenu');
   const action=[...menu.querySelectorAll('button')].find(b=>b.textContent.includes(label));
@@ -112,7 +121,9 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,5));
    .find(row=>row.textContent.includes('第11集'));
  assert(created,'new document is displayed in the left tree');
  created.querySelector('.tree-ellipsis').click();
+ assert([...document.getElementById('treeMenu').querySelectorAll('button')]
+    .some(el=>el.textContent.includes('新建大标题')),'Any document ellipsis offers title creation');
  await create('重命名文档','第11集｜新标题');
  assert.equal(state.project.episodes.at(-1).title,'第11集｜新标题');
- console.log('PASS document UI: 3-dot menus, drag dividers, text-image selection isolation, complete copy');
+ console.log('PASS v4.4 UI: per-row title menu, free sidebar, shared prompt/image resize, source unchanged');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>dom.window.close());
