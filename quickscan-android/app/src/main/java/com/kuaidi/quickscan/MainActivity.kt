@@ -517,7 +517,6 @@ class MainActivity:ComponentActivity(){
     updateScanOutcome(code,"待人工核对 · 尚未保存",Color.rgb(190,118,25))
     confirmScanButton?.visibility=View.VISIBLE
     discardScanButton?.visibility=View.VISIBLE
-    announce("success")
   }
   private fun iconAction(resource:Int,description:String,action:()->Unit):LinearLayout{
     val holder=container().apply{gravity=Gravity.CENTER}
