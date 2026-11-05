@@ -118,6 +118,7 @@ function selectTextIn(block){
  const selection=window.getSelection();selection.addRange(range);block.focus({preventScroll:true});
 }
 function selectImagesIn(seg,gallery){
+ markCurrentSegment(activeEpisodeId,seg.id);
  clearTextSelection();clearOtherImageSelections(seg.id);
  selectedImages.set(seg.id,new Set(chosenForSegment(seg).map(a=>a.id)));
  refreshSelected(gallery,seg);gallery.focus({preventScroll:true});
@@ -411,6 +412,7 @@ function createTile(episode,seg,code,gallery){
   const set=selectedImages.get(seg.id)||new Set();if(set.has(item.id))tile.classList.add('selected');
   tile.addEventListener('click',e=>{
    if(e.target.tagName==='SELECT')return;
+   markCurrentSegment(episode.id,seg.id);
    clearTextSelection();clearOtherImageSelections(seg.id);
    let current=selectedImages.get(seg.id)||new Set();
    if(e.ctrlKey||e.metaKey){if(current.has(item.id))current.delete(item.id);else current.add(item.id);}
@@ -419,6 +421,7 @@ function createTile(episode,seg,code,gallery){
    selectedImages.set(seg.id,current);gallery.dataset.lastSelected=item.id;refreshSelected(gallery,seg);
   });
   tile.addEventListener('dragstart',e=>{
+   markCurrentSegment(episode.id,seg.id);
    clearTextSelection();clearOtherImageSelections(seg.id);
    const selected=selectedImages.get(seg.id)||new Set();
    // Dragging an unselected thumbnail means only this one image.
@@ -443,6 +446,7 @@ function makeSegment(episode,seg,idx){
  card.style.width=widthPercent+'%';
  const head=doc('div','segment-header');const left=doc('div','segment-heading-main');
  const toggleFold=()=>{
+  clearOtherImageSelections();clearTextSelection();
   const next=!collapsedSegments.has(seg.id);
   setCollapsed(episode.id,seg.id,next);
   markCurrentSegment(episode.id,seg.id);
@@ -489,7 +493,7 @@ function makeSegment(episode,seg,idx){
  workarea.append(divider);
  const imagePane=doc('div','image-pane');workarea.append(imagePane);
  const imagehead=doc('div','image-head');imagehead.append(doc('b','',`参考图片（${present} 张）`));imagehead.append(doc('span','','Ctrl多选 · Shift连选 · Ctrl+A全选'));imagePane.append(imagehead);
- const gallery=doc('div','gallery');gallery.tabIndex=0;gallery.dataset.segmentId=seg.id;gallery.dataset.lastSelected='';gallery.addEventListener('pointerdown',()=>clearTextSelection());
+ const gallery=doc('div','gallery');gallery.tabIndex=0;gallery.dataset.segmentId=seg.id;gallery.dataset.lastSelected='';gallery.addEventListener('pointerdown',()=>{markCurrentSegment(episode.id,seg.id);clearTextSelection();});
  gallery.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){
    e.preventDefault();selectImagesIn(seg,gallery);toast(`已全选本段 ${chosenForSegment(seg).length} 张图片`);
@@ -505,7 +509,7 @@ function makeSegment(episode,seg,idx){
  workarea.append(unifiedHandle);
  unifiedResizeHandle(unifiedHandle,card,workarea);
  const dragFooter=doc('div','drag-footer');const handle=doc('div','drag-handle',`☷ 按住这里拖动本段全部图片（${present} 张）`);handle.draggable=present>0;
- handle.addEventListener('dragstart',e=>{e.preventDefault();api.startNativeDrag({mode:'group',episodeId:episode.id,segmentId:seg.id});});
+ handle.addEventListener('dragstart',e=>{markCurrentSegment(episode.id,seg.id);clearOtherImageSelections(seg.id);clearTextSelection();e.preventDefault();api.startNativeDrag({mode:'group',episodeId:episode.id,segmentId:seg.id});});
  const hint=doc('div','drag-hint','拖到 Edge、豆包、即梦等网页的文件上传区域');
  const selectAll=elBtn('全选本段图片',()=>selectImagesIn(seg,gallery),'secondary');
  const clear=elBtn('清空图片选择',()=>{selectedImages.delete(seg.id);refreshSelected(gallery,seg);},'secondary');
@@ -529,16 +533,30 @@ function drawEpisode(){const ep=state.project.episodes.find(e=>e.id===activeEpis
  $('episodeMeta').textContent=`${ep.segments.length} 个片段 · 共引用 ${total.length} 种编号 · 当前缺少 ${miss.length} 种`;
  const pre=$('episodePreamble');pre.textContent=ep.preamble?'整集前言 / 制作说明（未自动附加到每段复制内容）：\n\n'+ep.preamble:'';pre.classList.toggle('hidden',!ep.preamble);
  const container=$('segmentsContainer');container.replaceChildren();for(let i=0;i<ep.segments.length;i++)container.append(makeSegment(ep,ep.segments[i],i));
+ syncBatchFoldLabel();
 }
-function render(){if(!activeEpisodeId&&state.project.episodes.length)activeEpisodeId=state.project.episodes[0].id;
+function render(){
+ if(!activeEpisodeId&&state.project.episodes.length)activeEpisodeId=state.project.episodes[0].id;
  if(activeEpisodeId&&!state.project.episodes.some(e=>e.id===activeEpisodeId))activeEpisodeId=state.project.episodes[0]?.id||null;
- drawSidebar();drawFolder();drawEpisode();}
+ const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
+ if(!ep?.segments.some(s=>s.id===activeSegmentId))activeSegmentId=ep?.segments[0]?.id||null;
+ saveUiState();
+ drawSidebar();drawFolder();drawEpisode();
+}
+
 async function importPrompt(){const text=$('importText').value;if(!text.trim()){toast('请先粘贴整集提示词');return;}
  $('submitImportBtn').disabled=true;
  const result=await update(api.importText(text,currentGroupId));$('submitImportBtn').disabled=false;
  if(result){$('importDialog').close();$('importText').value='';activeEpisodeId=result.data.project.episodes.at(-result.added)?.id||null;render();status(`成功加入 ${result.added} 集，共 ${result.segments} 个片段；完整原文已保存。`,'ok');}
 }
 function wire(){
+ $('foldAllBtn').onclick=()=>{
+  const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
+  if(!ep)return;
+  const all=ep.segments.length>0&&ep.segments.every(s=>collapsedSegments.has(s.id));
+  clearOtherImageSelections();clearTextSelection();
+  setAllCollapsed(!all);
+ };
  // Resize like normal desktop panes by dragging visible boundaries, not a toolbar slider.
  applySidebarWidth(storedNumber('manju-sidebar-width',264));
  resizeFromPointer($('sidebarResize'),'clientX',
@@ -596,4 +614,11 @@ function wire(){
  $('saveCodesBtn').onclick=async()=>{if(!codesTarget)return;const r=await update(api.editSegment({...codesTarget,manual:true,codes:$('codesInput').value}));if(r){$('codesDialog').close();toast('参考图编号已校正，文字原文未修改');}};
  api.onDragError(msg=>{status('原生拖拽失败：'+msg,'error');toast(msg);});
 }
-wire();api.getState().then(v=>{state=v;render();if(!state.project.assetFolder)status('请先设置一次参考图总文件夹，然后导入整集提示词。');}).catch(e=>status('读取工作台失败：'+e.message,'error'));
+wire();api.getState().then(v=>{
+ state=v;readUiState();render();
+ if(activeSegmentId)requestAnimationFrame(()=>requestAnimationFrame(()=>{
+  const card=[...document.querySelectorAll('.segment')].find(x=>x.dataset.segmentId===activeSegmentId);
+  card?.scrollIntoView({block:'start',behavior:'auto'});
+ }));
+ if(!state.project.assetFolder)status('请先设置一次参考图总文件夹，然后导入整集提示词。');
+}).catch(e=>status('读取工作台失败：'+e.message,'error'));
