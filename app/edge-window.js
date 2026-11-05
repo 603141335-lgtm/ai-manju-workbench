@@ -1,5 +1,5 @@
 'use strict';
-const {BrowserWindow,ipcMain,app,dialog,shell}=require('electron');
+const {BrowserWindow,ipcMain,app,dialog,shell,screen}=require('electron');
 const {createWatcher}=require('./edge-downloads');
 const path=require('path');
 const edge=require('./edge-profiles');
@@ -9,6 +9,7 @@ function setupEdgeWindow(parent){
   const dataFile=path.join(app.getPath('userData'),'edge-lite-records.json');
   const settingsFile=path.join(app.getPath('userData'),'edge-lite-window.json');
   const fs=require('fs');
+  let closingFromParent=false;
   let tasks=ledger.loadLedger(dataFile);
   const save=()=>ledger.saveLedger(dataFile,tasks);
   const dlConfig=path.join(app.getPath('userData'),'edge-lite-download-config.json');
@@ -26,6 +27,7 @@ function setupEdgeWindow(parent){
   monitor();
   const summary=()=>({profiles:edge.discoverProfiles(),records:tasks,downloads:{...config,...watcher.get(),notices}});
   ipcMain.handle('edge-lite:get',()=>summary());
+  ipcMain.handle('edge-lite:show',()=>{if(accountWindow&&!accountWindow.isDestroyed()){accountWindow.show();accountWindow.focus();}return true;});
   ipcMain.handle('edge-lite:launch',async(_,id)=>{
     const known=edge.discoverProfiles().find(x=>x.id===id);
     if(!known)throw Error('该 Edge 用户不存在，请刷新列表');
@@ -67,7 +69,17 @@ function setupEdgeWindow(parent){
   let bounds={width:380,height:740};
   try{
     const saved=JSON.parse(fs.readFileSync(settingsFile,'utf8'));
-    if(saved.width>=300&&saved.height>=360)bounds={...bounds,...saved};
+    const valid=Number.isInteger(saved.width)&&saved.width>=300&&
+      Number.isInteger(saved.height)&&saved.height>=360&&
+      Number.isInteger(saved.x)&&Number.isInteger(saved.y);
+    if(valid){
+      const visible=screen.getAllDisplays().some(d=>{
+        const a=d.workArea;
+        return saved.x<a.x+a.width-100&&saved.x+saved.width>a.x+100&&
+          saved.y<a.y+a.height-80&&saved.y+saved.height>a.y+80;
+      });
+      if(visible)bounds=saved;
+    }
   }catch{}
   accountWindow=new BrowserWindow({
     ...bounds,minWidth:300,minHeight:360,title:'漫剧 · Edge账号小窗',
@@ -76,8 +88,16 @@ function setupEdgeWindow(parent){
       contextIsolation:true,nodeIntegration:false,sandbox:true}
   });
   accountWindow.loadFile(path.join(__dirname,'edge-window.html'));
-  accountWindow.on('close',()=>{
+  accountWindow.on('close',event=>{
     try{fs.writeFileSync(settingsFile,JSON.stringify(accountWindow.getBounds()));}catch{}
+    if(!closingFromParent&&!parent.isDestroyed()){
+      event.preventDefault();
+      accountWindow.hide(); // can be reopened from the prompt document toolbar
+    }
+  });
+  parent.on('closed',()=>{
+    closingFromParent=true;
+    if(accountWindow&&!accountWindow.isDestroyed())accountWindow.destroy();
   });
   accountWindow.on('closed',()=>{watcher.stop();accountWindow=null;});
   return accountWindow;
