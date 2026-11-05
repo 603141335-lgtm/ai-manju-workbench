@@ -75,6 +75,12 @@ function makeSegment(episode,seg,idx){
  const sub=doc('div','segment-sub',`参考图 ${seg.codes.join('、')||'无'}　·　${seg.method}${seg.codes.length>9?'　⚠ 超过9张':''}`);sub.prepend(badge);left.append(sub);
  const right=doc('div','segment-actions');
  right.append(elBtn('复制提示词',()=>copyPrompt(seg),'primary'));
+ right.append(elBtn('分配到账号小窗',async()=>{
+  try{
+   await api.prepareEdgeSegment({episode:episode.number,segment:seg.n});
+   toast('已选择第'+episode.number+'集 第'+seg.n+'段，请在账号小窗确认登记');
+  }catch(e){toast('分配失败：'+e.message);}
+ },'secondary'));
  right.append(elBtn('编辑文字',()=>{editTarget={episodeId:episode.id,segmentId:seg.id};$('editTitle').textContent=`编辑第 ${seg.n} 段的完整提示词`;$('editText').value=seg.text;$('editDialog').showModal();}));
  right.append(elBtn('校正编号',()=>{codesTarget={episodeId:episode.id,segmentId:seg.id};$('codesInput').value=seg.codes.join('、');$('codesDialog').showModal();}));
  head.append(left,right);card.append(head);
