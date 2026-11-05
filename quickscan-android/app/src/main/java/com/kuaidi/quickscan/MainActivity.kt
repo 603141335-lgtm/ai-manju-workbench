@@ -288,16 +288,102 @@ class MainActivity:ComponentActivity(){
   }
   private fun showBatch(){
     currentPage="home";stopCamera();shell("批次 "+batchName,"查看记录 · 导出表格")
+    val records=db.all(activeBatch)
+    val photoRecords=records.filter{it.photo.isNotBlank()}
+    val selected=mutableSetOf<Long>()
+    val checkboxes=mutableMapOf<Long,CheckBox>()
     val summary=card()
-    summary.addView(label(db.all(activeBatch).size.toString()+" 条记录",22f,primary,true),margins(13))
+    summary.addView(label(records.size.toString()+" 条记录",22f,primary,true),margins(13))
     pair(summary,button("连续扫码",true){showScan()},button("导出/分享 Excel"){exportBatch()})
     pair(summary,button("拍照留底"){showScan();toast("点击扫码页的拍照按钮")},button("手动录入"){
       prompt("录入快递单号","快递单条码下方数字"){addCode(it)}
     })
     pair(summary,button("复制单号"){copyCodes()},button("切换批次"){selectBatch{showBatch()}})
+    val manager=card()
+    manager.addView(label("照片管理 · "+photoRecords.size+" 张",18f,ink,true),margins(7))
+    val count=label("已选 0 张 · 只删除照片，保留快递单号及扫码时间",12f,muted)
+    manager.addView(count,margins(9))
+    if(photoRecords.isNotEmpty()){
+      pair(manager,button("全选照片"){checkboxes.values.forEach{it.isChecked=true}},
+        button("取消选择"){checkboxes.values.forEach{it.isChecked=false}})
+      manager.addView(button("删除选中照片",true){
+        if(selected.isEmpty()){toast("请先勾选要删除的照片");return@button}
+        val ids=selected.toSet()
+        AlertDialog.Builder(this)
+          .setTitle("确认彻底删除 "+ids.size+" 张照片？")
+          .setMessage("将永久删除本软件内选中的原始照片，不会删除快递单号、时间、备注或记录。此操作不能在软件内撤销。之前另存或分享出去的照片不受影响。")
+          .setNegativeButton("取消",null)
+          .setPositiveButton("删除照片"){_,_->
+            deleteSelectedPhotos(activeBatch,ids)
+          }.show()
+      },margins(5))
+    }else{
+      manager.addView(label("这个批次没有待管理的照片",13f,muted))
+    }
     val list=card()
-    list.addView(label("本批记录",17f,ink,true),margins(9))
-    db.all(activeBatch).forEach{addRow(list,it)}
+    list.addView(label("本批记录 · 勾选带照片的快递",17f,ink,true),margins(9))
+    records.forEach{row->
+      if(row.photo.isBlank()){
+        addRow(list,row)
+      }else{
+        val line=container(false).apply{
+          gravity=Gravity.CENTER_VERTICAL
+          setPadding(dp(1),dp(5),dp(5),dp(5))
+        }
+        val check=CheckBox(this).apply{
+          contentDescription="选择照片 "+(if(row.code.isBlank())"待补单号" else row.code)
+          setOnCheckedChangeListener{_,checked->
+            if(checked)selected.add(row.id)else selected.remove(row.id)
+            count.text="已选 "+selected.size+" 张 · 只删除照片，保留快递单号及扫码时间"
+          }
+        }
+        checkboxes[row.id]=check
+        line.addView(check,LinearLayout.LayoutParams(dp(46),-2))
+        val textBlock=container().apply{
+          setPadding(dp(3),dp(11),dp(0),dp(11))
+          addView(label(if(row.code.isBlank())"📷 待补录单号" else row.code,16f,ink,true))
+          addView(label(formatTime(row.time)+"  ·  有照片 · 点击查看",12f,muted))
+          setOnClickListener{detail(row)}
+        }
+        line.addView(textBlock,LinearLayout.LayoutParams(0,-2,1f))
+        list.addView(line)
+        list.addView(View(this).apply{setBackgroundColor(canvasColor)},
+          LinearLayout.LayoutParams(-1,dp(1)))
+      }
+    }
+  }
+
+  private fun deleteSelectedPhotos(batch:Long,ids:Set<Long>){
+    Thread{
+      var deleted=0
+      var missing=0
+      var failed=0
+      val root=File(filesDir,"photos").canonicalFile
+      val rootPrefix=root.path+File.separator
+      val chosen=db.all(batch).filter{ids.contains(it.id) && it.photo.isNotBlank()}
+      chosen.forEach{row->
+        try{
+          val photo=File(row.photo).canonicalFile
+          if(!photo.path.startsWith(rootPrefix)){
+            failed++
+          }else if(!photo.exists()){
+            db.attachPhoto(row.id,"")
+            missing++
+          }else if(photo.isFile && photo.delete()){
+            db.attachPhoto(row.id,"")
+            deleted++
+          }else{
+            failed++
+          }
+        }catch(_:Exception){failed++}
+      }
+      runOnUiThread{
+        showBatch()
+        val message="已删除 "+deleted+" 张照片"+(if(missing>0)"，清理 "+missing+" 条失效照片引用" else "")+(if(failed>0)"；失败 "+failed+" 张" else "")+"。快递单号、时间和备注已保留。"
+        AlertDialog.Builder(this).setTitle("照片清理完成")
+          .setMessage(message).setPositiveButton("知道了",null).show()
+      }
+    }.start()
   }
   private fun addRow(parent:LinearLayout,row:ScanRow){
     val item=container().apply{
@@ -348,7 +434,6 @@ class MainActivity:ComponentActivity(){
     if(activeBatch==0L){selectBatch{showScan()};return}
     currentPage="scan";stopCamera();shell("连续扫码 · "+batchName,"一维条形码专用 · 扫不上就拍照")
     val box=card()
-    box.addView(label("▥  对准快递条形码",17f,ink,true),margins(5))
     box.addView(label("成功读“成功” · 重复读“重复”",12f,muted),margins(11))
     val view=PreviewView(this).apply{
       scaleType=PreviewView.ScaleType.FILL_CENTER
@@ -357,10 +442,6 @@ class MainActivity:ComponentActivity(){
     previewView=view
     val frame=FrameLayout(this)
     frame.addView(view,FrameLayout.LayoutParams(-1,-1))
-    val overlay=label("▱  对准横向条形码  ▱",18f,Color.WHITE,true).apply{
-      gravity=Gravity.CENTER;background=shape(Color.argb(90,28,34,50),12)
-    }
-    frame.addView(overlay,FrameLayout.LayoutParams(-1,dp(56),Gravity.CENTER))
     box.addView(frame,LinearLayout.LayoutParams(-1,dp(260)).apply{bottomMargin=dp(12)})
     pair(box,button("📷 拍照留底",true){takePhoto()},button("🔦 手电筒"){
       flashlight=!flashlight;camera?.cameraControl?.enableTorch(flashlight)
@@ -583,7 +664,7 @@ class MainActivity:ComponentActivity(){
   private fun showSettings(){
     currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
     val info=card()
-    info.addView(label("快递快扫 v0.7",21f,ink,true),margins(8))
+    info.addView(label("快递快扫 v0.8",21f,ink,true),margins(8))
     info.addView(label("只扫常见一维快递条形码 · 不识别二维码 · 不限次数",13f,muted))
     val audio=card()
     audio.addView(label("扫码声音",18f,ink,true),margins(6))
