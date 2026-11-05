@@ -16,6 +16,9 @@ import android.speech.tts.TextToSpeech
 import android.os.Vibrator
 import android.os.VibrationEffect
 import android.net.Uri
+import android.app.Dialog
+import android.view.WindowManager
+import androidx.core.content.FileProvider
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
@@ -66,6 +69,7 @@ class MainActivity:ComponentActivity(){
   private var voice:TextToSpeech?=null
   private var speechReady=false
   private var exportDetail=true
+  private var pendingPhotoSave:String?=null
   private val barcodeScanner by lazy { BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(
     Barcode.FORMAT_CODE_128,Barcode.FORMAT_CODE_39,Barcode.FORMAT_CODE_93,Barcode.FORMAT_ITF,
     Barcode.FORMAT_EAN_13,Barcode.FORMAT_EAN_8,Barcode.FORMAT_UPC_A,Barcode.FORMAT_UPC_E,Barcode.FORMAT_CODABAR
@@ -83,10 +87,34 @@ class MainActivity:ComponentActivity(){
           val rows=db.all(if(batch>0)batch else null).asReversed()
           val output=contentResolver.openOutputStream(uri)?:throw IllegalStateException("无法写入文件")
           output.use{XlsxWriter.write(it,rows,detail)}
-          runOnUiThread{toast("✓ Excel导出成功 · "+rows.size+"条")}
+          runOnUiThread{
+            toast("✓ Excel导出成功 · "+rows.size+"条")
+            AlertDialog.Builder(this).setTitle("Excel 已保存")
+              .setItems(arrayOf("分享给微信、QQ等软件","选择应用打开 Excel","完成")){_,choice->
+                when(choice){
+                  0->shareContent(uri,EXCEL_MIME,"选择分享 Excel 的软件")
+                  1->openContent(uri,EXCEL_MIME,"选择打开 Excel 的软件")
+                }
+              }.show()
+          }
         }catch(e:Exception){
           runOnUiThread{toast("Excel导出失败："+e.message);announce("failure")}
         }
+      }.start()
+    }
+  }
+  private val savePhotoRequest=registerForActivityResult(ActivityResultContracts.CreateDocument("image/jpeg")){uri->
+    val path=pendingPhotoSave
+    pendingPhotoSave=null
+    if(uri!=null&&!path.isNullOrBlank()){
+      Thread{
+        try{
+          val photo=File(path)
+          if(!photo.exists())throw IllegalStateException("照片不存在")
+          val out=contentResolver.openOutputStream(uri)?:throw IllegalStateException("无法写入照片")
+          photo.inputStream().use{input->out.use{output->input.copyTo(output)}}
+          runOnUiThread{toast("✓ 照片已另存到指定位置")}
+        }catch(e:Exception){runOnUiThread{toast("保存照片失败："+e.message);announce("failure")}}
       }.start()
     }
   }
@@ -262,7 +290,7 @@ class MainActivity:ComponentActivity(){
     currentPage="home";stopCamera();shell("批次 "+batchName,"查看记录 · 导出表格")
     val summary=card()
     summary.addView(label(db.all(activeBatch).size.toString()+" 条记录",22f,primary,true),margins(13))
-    pair(summary,button("连续扫码",true){showScan()},button("导出 Excel"){exportBatch()})
+    pair(summary,button("连续扫码",true){showScan()},button("导出/分享 Excel"){exportBatch()})
     pair(summary,button("拍照留底"){showScan();toast("点击扫码页的拍照按钮")},button("手动录入"){
       prompt("录入快递单号","快递单条码下方数字"){addCode(it)}
     })
@@ -288,7 +316,11 @@ class MainActivity:ComponentActivity(){
         setImageURI(Uri.fromFile(File(r.photo)));adjustViewBounds=true
         scaleType=ImageView.ScaleType.FIT_CENTER
       }
+      image.setOnClickListener{showPhotoFullscreen(r.photo)}
       layout.addView(image,LinearLayout.LayoutParams(-1,dp(240)))
+      layout.addView(label("点击图片可全屏放大，双击或双指缩放",12f,muted),margins(7))
+      pair(layout,button("全屏放大"){showPhotoFullscreen(r.photo)},button("分享照片"){sharePhoto(r.photo)})
+      layout.addView(button("另存照片到手机"){savePhoto(r.photo)},margins(7))
     }
     val code=input("补录条码下方的数字",r.code)
     val note=input("备注",r.note)
@@ -448,19 +480,110 @@ class MainActivity:ComponentActivity(){
     (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("快递单号",content))
     toast("已复制，可粘贴到腾讯文档")
   }
+  private val EXCEL_MIME="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  private fun fileUri(file:File):Uri =
+    FileProvider.getUriForFile(this,packageName+".fileprovider",file)
+  private fun shareContent(uri:Uri,mime:String,title:String){
+    try{
+      val share=Intent(Intent.ACTION_SEND).apply{
+        type=mime
+        putExtra(Intent.EXTRA_STREAM,uri)
+        clipData=ClipData.newUri(contentResolver,"快递快扫文件",uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      startActivity(Intent.createChooser(share,title))
+    }catch(e:Exception){toast("未能启动分享："+e.message);announce("failure")}
+  }
+  private fun openContent(uri:Uri,mime:String,title:String){
+    try{
+      val view=Intent(Intent.ACTION_VIEW).apply{
+        setDataAndType(uri,mime)
+        clipData=ClipData.newUri(contentResolver,"快递快扫文件",uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      startActivity(Intent.createChooser(view,title))
+    }catch(e:Exception){toast("没有可用的打开软件，请改用分享");announce("failure")}
+  }
+  private fun shareExcelDirect(detail:Boolean,open:Boolean){
+    val batch=activeBatch
+    val name=batchName.replace(Regex("[^A-Za-z0-9\\u4e00-\\u9fa5_-]"),"_").take(32)
+    Thread{
+      try{
+        val rows=db.all(batch).asReversed()
+        val directory=File(cacheDir,"exports").apply{mkdirs()}
+        val suffix=if(detail)"完整明细" else "仅单号"
+        val file=File(directory,"快递快扫_"+name+"_"+suffix+"_"+System.currentTimeMillis()+".xlsx")
+        file.outputStream().use{XlsxWriter.write(it,rows,detail)}
+        if(!file.exists()||file.length()==0L)throw IllegalStateException("生成 Excel 失败")
+        runOnUiThread{
+          val uri=fileUri(file)
+          if(open)openContent(uri,EXCEL_MIME,"选择打开 Excel 的软件")
+          else shareContent(uri,EXCEL_MIME,"选择分享 Excel 的软件")
+        }
+      }catch(e:Exception){runOnUiThread{toast("Excel处理失败："+e.message);announce("failure")}}
+    }.start()
+  }
   private fun exportBatch(){
     if(activeBatch==0L){toast("请先新建批次");announce("failure");return}
-    AlertDialog.Builder(this).setTitle("导出 Excel 文件")
-      .setItems(arrayOf("完整明细：单号、时间、备注、照片状态","仅单号：方便粘贴到腾讯文档")){_,which->
-        exportDetail=which==0
+    AlertDialog.Builder(this).setTitle("选择 Excel 内容")
+      .setItems(arrayOf("完整明细：单号、时间、备注、照片状态","仅单号：方便粘贴腾讯文档")){_,which->
+        exportDetail=(which==0)
         val suffix=if(exportDetail)"完整明细" else "仅单号"
-        exportRequest.launch("快递快扫_"+batchName+"_"+suffix+".xlsx")
+        AlertDialog.Builder(this).setTitle("接下来做什么？")
+          .setItems(arrayOf("保存到手机文件夹","分享给微信、QQ等软件","选择软件打开 Excel")){_,action->
+            when(action){
+              0->exportRequest.launch("快递快扫_"+batchName+"_"+suffix+".xlsx")
+              1->shareExcelDirect(exportDetail,false)
+              2->shareExcelDirect(exportDetail,true)
+            }
+          }.setNegativeButton("取消",null).show()
       }.setNegativeButton("取消",null).show()
+  }
+  private fun sharePhoto(path:String){
+    try{
+      val file=File(path)
+      if(!file.exists())throw IllegalStateException("照片不存在")
+      shareContent(fileUri(file),"image/jpeg","选择分享照片的软件")
+    }catch(e:Exception){toast("分享照片失败："+e.message);announce("failure")}
+  }
+  private fun savePhoto(path:String){
+    val file=File(path)
+    if(!file.exists()){toast("照片不存在");announce("failure");return}
+    pendingPhotoSave=path
+    savePhotoRequest.launch("快递留底_"+file.name)
+  }
+  private fun showPhotoFullscreen(path:String){
+    val photo=File(path)
+    if(!photo.exists()){toast("照片已不存在");return}
+    val dialog=Dialog(this,android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+    val column=container().apply{setBackgroundColor(Color.rgb(10,16,28))}
+    val top=container(false).apply{
+      gravity=Gravity.CENTER_VERTICAL
+      setPadding(dp(15),dp(18),dp(15),dp(10))
+    }
+    val close=label("← 返回",17f,Color.WHITE,true).apply{
+      setPadding(dp(7),dp(10),dp(20),dp(10))
+      setOnClickListener{dialog.dismiss()}
+    }
+    top.addView(close)
+    top.addView(label("照片留底 · 双指缩放",15f,Color.rgb(194,212,242)))
+    column.addView(top)
+    val zoom=ZoomPhotoView(this)
+    zoom.load(photo)
+    column.addView(zoom,LinearLayout.LayoutParams(-1,0,1f))
+    val actions=container(false).apply{setPadding(dp(14),dp(12),dp(14),dp(20))}
+    actions.addView(button("分享图片",true){sharePhoto(path)},LinearLayout.LayoutParams(0,-2,1f))
+    actions.addView(button("另存到手机"){savePhoto(path)},
+      LinearLayout.LayoutParams(0,-2,1f).apply{leftMargin=dp(10)})
+    column.addView(actions)
+    dialog.setContentView(column)
+    dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT)
+    dialog.show()
   }
   private fun showSettings(){
     currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
     val info=card()
-    info.addView(label("快递快扫 v0.6",21f,ink,true),margins(8))
+    info.addView(label("快递快扫 v0.7",21f,ink,true),margins(8))
     info.addView(label("只扫常见一维快递条形码 · 不识别二维码 · 不限次数",13f,muted))
     val audio=card()
     audio.addView(label("扫码声音",18f,ink,true),margins(6))
@@ -485,11 +608,11 @@ class MainActivity:ComponentActivity(){
     audio.addView(label("如只有提示音没有中文播报，请检查手机TTS语音引擎和媒体音量。",12f,muted))
     val actions=card()
     actions.addView(label("数据操作",18f,ink,true),margins(10))
-    pair(actions,button("复制单号",true){copyCodes()},button("导出 Excel"){exportBatch()})
+    pair(actions,button("复制单号",true){copyCodes()},button("导出/分享 Excel"){exportBatch()})
     val help=card()
     help.addView(label("模糊条码怎么办？",17f,ink,true),margins(7))
     help.addView(label("调整距离、角度或打开手电筒；扫不出来就拍照留底，稍后打开记录补录单号。",14f,muted),margins(10))
-    help.addView(label("记录和照片保存在本机。Excel包含单号、时间、备注和照片状态，但不包含照片文件本体。卸载软件会清空应用内数据。",13f,muted),margins(10))
+    help.addView(label("照片保存在手机本地的应用专用 files/photos 目录，普通相册不会自动显示。点记录里的照片可全屏放大、分享或另存到手机。卸载软件会删除本机记录和照片。Excel不嵌入照片。",13f,muted),margins(10))
     help.addView(button("打开系统应用设置"){
       startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+packageName)))
     },margins(5))
