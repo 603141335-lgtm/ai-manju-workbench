@@ -1,8 +1,8 @@
 {
   "name": "ai-manju-workbench",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "private": true,
-  "description": "AI漫剧文档式提示词与参考图拖拽工作台（纯文档版）",
+  "description": "文档目录三点菜单与自由拖动分隔线｜完整提示词和参考图拖拽",
   "main": "main.js",
   "license": "UNLICENSED"
 }
