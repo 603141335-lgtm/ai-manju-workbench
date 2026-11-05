@@ -19,4 +19,5 @@ const api={
  startNativeDrag:payload=>ipcRenderer.send('workspace:native-drag-start',payload),
  onDragError:cb=>ipcRenderer.on('workspace:drag-error',(_e,msg)=>cb(msg))
 };
+api.showEdgeAccounts=()=>ipcRenderer.invoke('edge-lite:show');
 contextBridge.exposeInMainWorld('manju',api);
