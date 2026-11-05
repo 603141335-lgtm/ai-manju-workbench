@@ -34,14 +34,14 @@ function edgeExeCandidates(env=process.env){
 function findEdgeExecutable(env=process.env){
   return edgeExeCandidates(env).find(p=>fs.existsSync(p))||null;
 }
-function launchProfile(profileId,{exe=findEdgeExecutable(),url='https://www.doubao.com/'}={}){
+function launchProfile(profileId,{exe=findEdgeExecutable(),url='https://www.doubao.com/',newWindow=false}={}){
   if(!isProfileDirectory(profileId))return Promise.reject(new Error('无效的 Edge 用户资料编号'));
   if(!exe)return Promise.reject(new Error('未找到 Microsoft Edge，请检查安装位置'));
   if(!/^https:\/\/www\.doubao\.com\/?$/.test(url))return Promise.reject(new Error('不支持的打开地址'));
   // Launch only a user-approved local browser profile; keep existing Edge session and extensions.
   return new Promise((resolve,reject)=>{
     try {
-      const child=spawn(exe,[`--profile-directory=${profileId}`,'--new-window',url],
+      const child=spawn(exe,[`--profile-directory=${profileId}`,...(newWindow?['--new-window']:[]),url],
         {detached:true,stdio:'ignore',windowsHide:false});
       child.once('error',reject);
       child.once('spawn',()=>{child.unref();resolve({profileId});});
