@@ -174,3 +174,38 @@
  .drag-footer{flex-wrap:wrap;}
  .image-pane .gallery{gap:5px!important;}
 }
+
+
+/* v4.5: When folded, a segment is exactly ONE title row. No buttons, badges, images or extra padding. */
+.segment-heading-main{display:grid;grid-template-columns:24px minmax(0,1fr);align-items:center;column-gap:5px;flex:1;min-width:0}
+.segment-heading-main .segment-title{grid-column:2;grid-row:1;min-width:0}
+.segment-heading-main .segment-sub{grid-column:2;grid-row:2}
+.segment-header{cursor:pointer}
+.segment-header .fold-toggle{grid-column:1;grid-row:1;align-self:center;
+  min-width:24px!important;width:24px;padding:4px!important;border:none!important;
+  background:transparent!important;color:#5d7496!important;box-shadow:none!important;
+  font-size:16px;line-height:1.25}
+.segment-header .fold-toggle:hover,.segment-header .fold-toggle:focus-visible{
+ background:#e9f0fe!important;color:#235fca!important}
+.segment.is-collapsed{margin-bottom:6px;box-shadow:none;border-radius:8px}
+.segment.is-collapsed .segment-header{padding:8px 10px;min-height:36px;border-bottom:0;
+  flex-wrap:nowrap!important;align-items:center;gap:0}
+.segment.is-collapsed .segment-heading-main{width:100%;min-width:0}
+.segment.is-collapsed .segment-title{font-size:13px;line-height:1.5;
+  text-overflow:ellipsis;white-space:nowrap;overflow:hidden;word-break:normal}
+.segment.is-collapsed .segment-sub,
+.segment.is-collapsed .segment-actions,
+.segment.is-collapsed .segment-workarea,
+.segment.is-collapsed .drag-footer,
+.segment.is-collapsed .warning,
+.segment.is-collapsed .workarea-height-handle{display:none!important}
+.segment.is-current:not(.is-collapsed){border-color:#bad0f6}
+.segment.is-current.is-collapsed{border-color:#b8ccef;background:#f8fbff}
+.tree-segment.is-current{background:#e9f1ff!important;color:#235cba!important;font-weight:700!important}
+#foldAllBtn{white-space:nowrap}
+.segment-actions .copy-success{background:#e8f7ec!important;color:#207145!important;
+ border-color:#bfe4cc!important;transition:background .2s}
+@media(max-width:820px){
+ .segment.is-collapsed .segment-header{padding:7px 9px}
+ .segment.is-collapsed .segment-title{font-size:12px}
+}
