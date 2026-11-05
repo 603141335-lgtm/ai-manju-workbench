@@ -1,5 +1,5 @@
 'use strict';
-const {app,BrowserWindow,ipcMain,dialog,clipboard,nativeImage,protocol,shell,net} = require('electron');
+const {app,BrowserWindow,ipcMain,dialog,clipboard,nativeImage,protocol,shell,net,screen} = require('electron');
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
@@ -175,11 +175,29 @@ async function boot(){
   }catch{return new Response('missing',{status:404});}
  });
  attachIpc();
- win=new BrowserWindow({width:1370,height:920,minWidth:860,minHeight:620,title:'AI漫剧素材工作台',backgroundColor:'#f5f7fb',autoHideMenuBar:true,
+ // Restore last usable bounds; never reopen a floating document entirely off-screen.
+ const boundsFile=path.join(app.getPath('userData'),'prompt-window-bounds.json');
+ let bounds={width:920,height:780};
+ try{
+  const saved=JSON.parse(fs.readFileSync(boundsFile,'utf8'));
+  const valid=Number.isInteger(saved.x)&&Number.isInteger(saved.y)&&
+   Number.isInteger(saved.width)&&saved.width>=520&&
+   Number.isInteger(saved.height)&&saved.height>=440;
+  if(valid){
+   const visible=screen.getAllDisplays().some(d=>{
+    const a=d.workArea;
+    return saved.x<a.x+a.width-120&&saved.x+saved.width>a.x+120&&
+     saved.y<a.y+a.height-70&&saved.y+saved.height>a.y+70;
+   });
+   if(visible)bounds=saved;
+  }
+ }catch{}
+ win=new BrowserWindow({...bounds,minWidth:520,minHeight:440,title:'AI漫剧素材工作台',backgroundColor:'#f5f7fb',autoHideMenuBar:true,
   webPreferences:{preload:path.join(__dirname,'preload.js'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  win.webContents.on('will-navigate',e=>e.preventDefault());
  win.loadFile(path.join(__dirname,'index.html'));
+ win.on('close',()=>{try{fs.writeFileSync(boundsFile,JSON.stringify(win.getBounds()));}catch{}});
  // v4 Lite companion: separate, freely resizable Edge account manager.
  if(process.platform==='win32')setupEdgeWindow(win);
 }
