@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI漫剧工作台 · 四套布局对比样机（不修改项目数据）</title>
+<style>
+:root{font-family:"Microsoft YaHei UI","Segoe UI",system-ui,sans-serif;color:#24324c;background:#edf1f8;font-size:13px}
+*{box-sizing:border-box}body{margin:0;padding:22px}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #5b8ef7;outline-offset:2px}
+.mast{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 auto 15px;max-width:1200px}
+.mast h1{margin:0;font-size:20px}.mast p{margin:5px 0 0;color:#687892;font-size:12px}.status{background:#e2f4e8;color:#26734e;border-radius:20px;padding:5px 10px;font-size:11px;white-space:nowrap}
+.variants{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;max-width:1200px;margin:0 auto 15px}
+.pick{min-height:70px;background:#fff;border:1.5px solid #d9e1ee;border-radius:12px;padding:12px;text-align:left;color:#2d3c5b;transition:border .15s,background .15s}
+.pick strong{display:block;font-size:13px}.pick small{display:block;font-size:11px;margin-top:4px;color:#71809a}
+.pick.active{border:2px solid #386feb;background:#eff5ff;padding:11.5px}
+.demo{max-width:1200px;margin:0 auto;background:#fff;border:1px solid #d7e0ed;border-radius:13px;box-shadow:0 12px 50px #20335814;overflow:hidden;display:flex;min-height:585px;height:585px;--accent:#3975ea;--surface:#f4f7fd;--border:#e4e9f2;--nav:#fff;--nav-text:#344766;--pane:#fff}
+.sidebar{width:232px;flex:0 0 232px;background:var(--nav);border-right:1px solid var(--border);color:var(--nav-text);min-width:0;display:flex;flex-direction:column}
+.navbrand{font-size:14px;font-weight:750;padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px}
+.mark{background:var(--accent);color:white;display:grid;place-items:center;border-radius:9px;width:30px;height:30px;font-weight:800}
+.navbuttons{display:flex;gap:5px;margin:12px 12px 13px}
+.navbuttons button{border:1px solid var(--border);border-radius:7px;background:transparent;color:inherit;padding:7px;flex:1;font-size:11px}
+.treehd{display:flex;align-items:center;justify-content:space-between;padding:13px 13px 8px;font-size:12px;font-weight:700}
+.menu-btn{border:0;background:transparent;border-radius:6px;color:inherit;font-size:17px;padding:0 5px}
+.tree{padding:0 9px;flex:1;overflow:auto}
+.tree-item{display:flex;align-items:center;gap:6px;border-radius:7px;margin-bottom:2px;padding:8px 6px;font-size:11px;cursor:pointer}
+.tree-item.on{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-weight:700}
+.tree-item.indent{padding-left:22px}.tree-item.indent2{padding-left:39px;font-size:11px}
+.tree-item .label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tree-item .dots{font-size:14px;border:0;background:transparent;color:inherit;padding:0 2px}
+.tree-bottom{border-top:1px solid var(--border);color:#8a95a7;font-size:10px;padding:13px}
+.resize{width:5px;background:var(--border);cursor:col-resize;flex:0 0 5px}
+.main{min-width:0;flex:1;display:flex;flex-direction:column;background:var(--surface)}
+.header{height:61px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 18px;background:var(--pane);border-bottom:1px solid var(--border)}
+.headertext small{font-size:10px;color:#8191a6}.headertext strong{display:block;font-size:15px;margin-top:3px}
+.headerbuttons{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.btn{border:1px solid var(--border);background:#fff;border-radius:7px;color:#425675;padding:7px 9px;font-size:11px;font-weight:650;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:white}
+.btn:hover{filter:brightness(.96)}
+.scroller{overflow:auto;flex:1;padding:15px 18px 20px}
+.subhead{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:0 0 10px}
+.subhead h2{font-size:16px;margin:0}.subhead small{color:#91a0b5;display:block;margin-top:3px}
+.series{display:flex;gap:6px;flex-wrap:wrap}
+.seg{border:1px solid var(--border);border-radius:9px;margin-bottom:9px;background:var(--pane);overflow:hidden}
+.seg-title{display:flex;align-items:center;gap:7px;padding:10px 12px;cursor:pointer;min-height:40px}
+.seg-title strong{font-size:12px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg-title .chev{color:var(--accent);font-size:14px}
+.seg-actions{display:flex;gap:5px}
+.seg-actions button{border:1px solid var(--border);border-radius:6px;background:white;color:#455875;font-size:11px;padding:5px 8px}
+.seg-actions .primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.segbody{border-top:1px solid var(--border);padding:9px 11px 11px}
+.caption{color:#8390a4;font-size:10px;margin:0 0 6px}
+.prompt{height:119px;overflow:auto;padding:10px 12px;background:#f7f9fd;border:1px solid var(--border);border-radius:7px;line-height:1.75;font-size:11px;white-space:pre-line;color:#354764}
+.imagesbar{display:flex;justify-content:space-between;align-items:center;margin:9px 0 7px}
+.imagesbar span{color:#8290a4;font-size:10px}
+.images{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}
+.imageitem{min-width:0;height:91px;background:#fff;border:1px solid #d9e3f4;border-radius:7px;text-align:center;padding:3px;cursor:pointer;position:relative}
+.imageitem.sel{border:2px solid var(--accent);padding:2px;background:#eef4ff}
+.imageitem .thumb{height:57px;border-radius:4px;display:grid;place-items:center;color:#fff;font-size:21px;position:relative;overflow:hidden}
+.imageitem:nth-child(1) .thumb{background:linear-gradient(130deg,#d5a9b8,#8e6576)}
+.imageitem:nth-child(2) .thumb{background:linear-gradient(130deg,#7f9da5,#324959)}
+.imageitem:nth-child(3) .thumb{background:linear-gradient(130deg,#8e8d9f,#30364f)}
+.imageitem:nth-child(4) .thumb{background:linear-gradient(130deg,#5879a6,#293852)}
+.imageitem:nth-child(5) .thumb{background:linear-gradient(130deg,#ba9a70,#5b6b7c)}
+.imageitem:nth-child(6) .thumb{background:linear-gradient(130deg,#909e91,#425b53)}
+.imageitem span{font-size:10px;font-weight:700;color:#516482}
+.imageitem.sel:after{content:"✓";position:absolute;right:4px;top:3px;color:white;background:var(--accent);border-radius:50%;width:14px;height:14px;font-size:10px}
+.imgfoot{display:flex;align-items:center;justify-content:space-between;gap:7px;margin-top:9px;background:#eef4ff;border:1px dashed #bcd0f4;border-radius:7px;padding:9px 12px;color:#2f63bb;font-size:11px}
+.imgfoot button{padding:5px 8px}
+.next .seg-title{padding:8px 12px}
+.next .seg-actions,.next .segbody{display:none}
+.rightdock{display:none}
+.help{max-width:1200px;margin:12px auto 0;color:#73819b;font-size:12px;line-height:1.6;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.menu-pop{position:absolute;background:#fff;padding:6px;box-shadow:0 12px 28px #15264230;border-radius:8px;z-index:20;min-width:145px;border:1px solid #d5dfef;display:none}
+.menu-pop.visible{display:block}
+.menu-pop button{display:block;width:100%;background:none;border:0;padding:8px 10px;text-align:left;color:#344461;font-size:12px;border-radius:5px}
+.menu-pop button:hover{background:#eef3fd}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:8px 14px;background:#233b62;color:white;border-radius:8px;font-size:12px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:80}
+.toast.on{opacity:1}
+/* A: calm cloud-document */
+.demo.style-a{--accent:#3975ea;--surface:#f6f8fc;--nav:#fff;--pane:#fff}
+.style-a .seg-title{background:#fff}
+/* B: practical studio, action dock */
+.demo.style-b{--accent:#278c8e;--surface:#eaf1f3;--nav:#233449;--nav-text:#dde8f0;--pane:#fff;--border:#d6e2e7}
+.style-b .header{background:#f5fbfb}
+.style-b .navbuttons button{border-color:#445569}
+.style-b .tree-bottom{color:#a9bacb}
+.style-b .tree-item.on{background:#3a5666;color:#fff}
+.style-b .scroller{padding-right:73px}
+.style-b .seg-title{border-left:3px solid var(--accent)}
+.style-b .seg-actions{display:none}
+.style-b .rightdock{display:flex;position:absolute;right:17px;top:200px;flex-direction:column;gap:7px;background:#fff;padding:8px;box-shadow:0 6px 25px #1c445219;border:1px solid var(--border);border-radius:10px;z-index:4}
+.style-b .rightdock button{width:43px;font-size:10px;white-space:normal;padding:8px 4px;line-height:1.3}
+/* C: card-focused, compact top and warmer neutral */
+.demo.style-c{--accent:#7c67c6;--surface:#f7f6fa;--nav:#f9f8fc;--nav-text:#4c4569;--pane:#fff;--border:#e7e1ef}
+.style-c .header{height:51px;padding:8px 14px}.style-c .seg{box-shadow:0 7px 22px #51466510;border-radius:15px;margin-bottom:15px}
+.style-c .seg-title{padding:14px}.style-c .seg-title strong{font-size:13px}
+.style-c .seg-actions{display:none}.style-c .segbody{padding:12px 14px}
+.style-c .prompt{height:105px}
+.style-c .series{display:flex}
+.style-c .inlineactions{display:flex!important;gap:7px;margin-bottom:9px}
+.inlineactions{display:none}
+.inlineactions .btn{padding:7px 10px}
+/* D: minimal dense, strong command line */
+.demo.style-d{--accent:#db7b39;--surface:#fffdf9;--nav:#faf9f6;--nav-text:#4d4d4a;--pane:#fff;--border:#eae5df}
+.style-d .sidebar{width:195px;flex-basis:195px}
+.style-d .navbrand{padding:10px}.style-d .header{height:49px;padding:8px 12px}.style-d .scroller{padding:9px 11px 10px}
+.style-d .subhead{margin-bottom:6px}.style-d .subhead h2{font-size:14px}
+.style-d .seg{border-radius:4px;margin-bottom:5px}.style-d .seg-title{min-height:31px;padding:6px 8px}.style-d .seg-title strong{font-size:11px}
+.style-d .seg-actions button{font-size:10px;padding:4px 6px}
+.style-d .segbody{padding:7px 9px}.style-d .prompt{height:92px;padding:6px 8px}
+.style-d .imageitem{height:73px}.style-d .imageitem .thumb{height:42px}
+.style-d .images{grid-template-columns:repeat(8,minmax(0,1fr));gap:4px}
+.style-d .imgfoot{margin-top:6px;padding:5px 8px}
+.style-d .tree-item{padding:5px 6px}.style-d .navbuttons{margin:8px}
+.style-d .compact-actionbar{display:flex!important;gap:6px;margin-bottom:7px}
+.compact-actionbar{display:none}
+@media(max-width:860px){body{padding:12px}.variants{grid-template-columns:repeat(2,minmax(0,1fr))}.sidebar{width:175px;flex-basis:175px}.style-d .sidebar{width:155px;flex-basis:155px}.navbrand{padding:10px;font-size:12px}.navbuttons{flex-wrap:wrap}.navbuttons button{flex:1 1 80px}.tree-item{font-size:10px}.header{height:auto;min-height:54px}.headerbuttons .btn{font-size:10px}.images{grid-template-columns:repeat(3,minmax(0,1fr))}.style-d .images{grid-template-columns:repeat(4,minmax(0,1fr))}.demo{height:590px}.style-b .scroller{padding-right:60px}.style-b .rightdock{right:9px;top:230px}}
+@media(max-width:550px){body{padding:8px}.variants{gap:5px}.pick{padding:7px;min-height:65px}.pick strong{font-size:11px}.pick small{font-size:10px}.mast h1{font-size:16px}.sidebar,.style-d .sidebar{width:114px;flex-basis:114px}.sidebar .navbrand{font-size:10px}.mark{width:23px;height:23px}.navbrand{gap:5px}.tree-item{padding:7px 3px}.tree-item.indent{padding-left:11px}.tree-item.indent2{padding-left:14px}.navbuttons{display:none}.resize{width:3px;flex-basis:3px}.header{padding:8px}.headertext strong{font-size:12px}.headerbuttons{gap:3px}.headerbuttons .btn{font-size:9px;padding:5px}.scroller{padding:9px}.seg-actions .btn{font-size:9px}.prompt{height:100px}.rightdock{display:none!important}}
+</style></head>
+<body>
+<div class="mast"><div><h1>AI漫剧工作台 · 界面方案对比</h1><p>仅演示配色、间距、按钮位置和排版；不会修改你的剧本或参考图。</p></div><span class="status">4 套可切换样机</span></div>
+<div class="variants" role="tablist">
+ <button class="pick active" role="tab" aria-selected="true" data-layout="a"><strong>A｜云文档清爽型</strong><small>浅色 · 标题右侧操作</small></button>
+ <button class="pick" role="tab" aria-selected="false" data-layout="b"><strong>B｜专业制作台</strong><small>深色目录 · 右侧操作条</small></button>
+ <button class="pick" role="tab" aria-selected="false" data-layout="c"><strong>C｜专注卡片型</strong><small>大卡片 · 操作紧贴提示词</small></button>
+ <button class="pick" role="tab" aria-selected="false" data-layout="d"><strong>D｜高密度精简型</strong><small>小间距 · 同屏看更多段</small></button>
+</div>
+<section class="demo style-a" id="demo" aria-label="工作台界面预览">
+ <aside class="sidebar">
+  <div class="navbrand"><span class="mark">剧</span><span>AI漫剧素材工作台</span></div>
+  <div class="navbuttons"><button data-action="import">＋ 导入剧本</button><button data-action="folder">▧ 参考图</button></div>
+  <div class="treehd"><span>文档目录</span><button class="menu-btn" id="rootMenu" aria-label="打开目录菜单">···</button></div>
+  <div class="tree">
+   <div class="tree-item"><span>▾</span><span class="label">▣《食神小祖宗》</span><button class="dots" data-menu="dir">···</button></div>
+   <div class="tree-item indent on"><span>▾</span><span class="label">▤ 第11集｜警局</span><button class="dots" data-menu="doc">···</button></div>
+   <div class="tree-item indent2"><span>·</span><span class="label">第11段｜交出录像</span></div>
+   <div class="tree-item indent2"><span>·</span><span class="label">第12段｜证据核验</span></div>
+   <div class="tree-item indent2"><span>·</span><span class="label">第13段｜反转</span></div>
+   <div class="tree-item indent"><span>▸</span><span class="label">▤ 第12集｜风波</span><button class="dots" data-menu="doc">···</button></div>
+  </div><div class="tree-bottom">项目自动保存 · 本地参考图</div>
+ </aside>
+ <div class="resize" title="正式版可拖动调整目录宽度"></div>
+ <div class="main">
+  <header class="header">
+   <div class="headertext"><small>《食神小祖宗》 / 第11集</small><strong>第11集 · 当事人陈述</strong></div>
+   <div class="headerbuttons"><button class="btn" data-action="all">全部收起</button><button class="btn" data-action="folder">图片目录</button><button class="btn" data-action="more">···</button></div>
+  </header>
+  <div class="scroller">
+   <div class="subhead"><div><h2>完整视频提示词</h2><small>13段 · 自动保存 · 图片编号保持不变</small></div><div class="series"><span class="caption">可拖动左右、整体缩放</span></div></div>
+   <article class="seg" id="segment">
+    <div class="seg-title" id="segmentTitle"><span class="chev" id="chev">▾</span><strong>第11段｜当事人陈述，原始录像交给警方｜15秒</strong><div class="seg-actions"><button class="primary" data-action="copy">复制提示词</button><button data-action="fold">收起</button><button data-action="more">···</button></div></div>
+    <div class="segbody" id="segbody">
+     <div class="inlineactions"><button class="btn primary" data-action="copy">复制完整提示词</button><button class="btn" data-action="fold">收起本段</button><button class="btn" data-action="more">编辑 / 校正</button></div>
+     <div class="compact-actionbar"><button class="btn primary" data-action="copy">复制</button><button class="btn" data-action="images">全选9张图片</button><button class="btn" data-action="fold">收起本段</button></div>
+     <p class="caption">提示词 · 完整原文，内部滚动查看</p>
+     <div class="prompt" id="prompt">需要参考图：A08、A14、A15、AG06、AG10、B02、C02、C16、C20
+连续性参考：承接上一镜，录像交给警方，现场由警方控制。
+场景与站位：人物位置固定，保持相互视线和动作连贯。
+0—5秒｜老人说明情况，杜不凡看向对方。
+5—10秒｜镜头切到录制设备，交代证据。
+10—15秒｜警方接过录像，众人神情变化。
+画风：UE5半写实国漫CG，16:9横版。
+限制：禁止背景音乐、歌曲、字幕、水印、LOGO。</div>
+     <div class="imagesbar"><b>参考图片（9张）</b><span id="selectedCount">已选 0 张 · 可多选拖拽</span></div>
+     <div class="images" id="images">
+      <div class="imageitem" data-img="A08"><div class="thumb">◉</div><span>A08</span></div>
+      <div class="imageitem" data-img="A14"><div class="thumb">◈</div><span>A14</span></div>
+      <div class="imageitem" data-img="A15"><div class="thumb">♟</div><span>A15</span></div>
+      <div class="imageitem" data-img="AG06"><div class="thumb">♟</div><span>AG06</span></div>
+      <div class="imageitem" data-img="AG10"><div class="thumb">▤</div><span>AG10</span></div>
+      <div class="imageitem" data-img="B02"><div class="thumb">▧</div><span>B02</span></div>
+     </div>
+     <div class="imgfoot"><span id="dragLabel">☷ 拖动本段全部参考图（9张）</span><button class="btn" data-action="images">全选图片</button></div>
+    </div>
+   </article>
+   <article class="seg next" id="nextSeg"><div class="seg-title" data-action="next"><span class="chev">▸</span><strong>第12段｜警方核验证据，现场风向逆转｜15秒</strong></div></article>
+   <article class="seg next"><div class="seg-title"><span class="chev">▸</span><strong>第13段｜关键证据曝光｜15秒</strong></div></article>
+  </div>
+  <div class="rightdock"><button class="btn primary" data-action="copy">复制<br>提示词</button><button class="btn" data-action="images">全选<br>图片</button><button class="btn" data-action="fold">折叠<br>本段</button><button class="btn" data-action="more">更多<br>操作</button></div>
+ </div>
+</section>
+<div class="help"><span id="description">A：最像云文档，操作集中在段落标题右侧，干净直观。</span><span>预览操作：切换风格、收起段落、选择参考图、打开“···”。</span></div>
+<div id="menu" class="menu-pop"><button data-action="import">＋ 添加大标题</button><button data-action="import">＋ 添加小标题</button><button data-action="import">＋ 新建文档</button><button data-action="more">重命名</button></div>
+<div id="toast" class="toast" aria-live="polite"></div>
+<script>
+(function(){
+ var demo=document.getElementById('demo'),desc=document.getElementById('description');
+ var description={
+  a:'A：最像云文档，操作集中在段落标题右侧，干净直观。',
+  b:'B：右侧独立操作条常驻，适合频繁复制和拖图。',
+  c:'C：放大当前段，操作按钮紧贴提示词上方，阅读最舒服。',
+  d:'D：缩短间距、缩小图片，一屏容纳更多分镜。'
+ };
+ var folded=false,menu=document.getElementById('menu'),toast=document.getElementById('toast');
+ function note(t){toast.textContent=t;toast.classList.add('on');setTimeout(function(){toast.classList.remove('on');},1500);}
+ function fold(next){folded=next;document.getElementById('segbody').style.display=folded?'none':'';document.getElementById('chev').textContent=folded?'▸':'▾';document.querySelectorAll('[data-action="fold"]').forEach(function(x){if(x.textContent.includes('收起')||x.textContent.includes('展开'))x.textContent=folded?'展开本段':'收起本段';});}
+ document.querySelectorAll('[data-layout]').forEach(function(b){
+  b.addEventListener('click',function(){
+   var id=b.dataset.layout;demo.className='demo style-'+id;desc.textContent=description[id];
+   document.querySelectorAll('[data-layout]').forEach(function(x){x.classList.toggle('active',x===b);x.setAttribute('aria-selected',String(x===b));});
+   menu.classList.remove('visible');
+  });
+ });
+ document.addEventListener('click',function(e){
+  var img=e.target.closest('[data-img]');
+  if(img){img.classList.toggle('sel');document.getElementById('selectedCount').textContent='已选 '+document.querySelectorAll('.imageitem.sel').length+' 张 · 可多选拖拽';return;}
+  var popup=e.target.closest('#rootMenu,[data-menu]');
+  if(popup){e.stopPropagation();var box=popup.getBoundingClientRect();menu.style.top=Math.min(window.innerHeight-170,box.bottom+3)+'px';menu.style.left=Math.max(8,Math.min(window.innerWidth-165,box.left))+'px';menu.classList.toggle('visible');return;}
+  var btn=e.target.closest('[data-action]');
+  if(btn){
+   var a=btn.dataset.action;
+   if(a==='fold'||a==='next'){fold(!folded);return;}
+   if(a==='all'){fold(!folded);btn.textContent=folded?'全部展开':'全部收起';return;}
+   if(a==='copy'){note('布局样机：这里是复制按钮的位置');return;}
+   if(a==='images'){document.querySelectorAll('.imageitem').forEach(function(x){x.classList.add('sel')});document.getElementById('selectedCount').textContent='已选9张 · 可多选拖拽';return;}
+   note('布局样机：只演示操作位置，不修改正式工作台');return;
+  }
+  if(e.target.closest('#segmentTitle')){fold(!folded);return;}
+  if(!e.target.closest('#menu'))menu.classList.remove('visible');
+ });
+})();
+</script>
+</body></html>
