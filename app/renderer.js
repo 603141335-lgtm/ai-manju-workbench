@@ -10,8 +10,8 @@ const segmentPanelSize=()=>Math.max(220,Math.min(1100,Number(localStorage.getIte
 /* v4.5: lightweight per-project UI state. Never writes to or alters prompts/assets. */
 let collapsedSegments=new Set(),activeSegmentId=null,uiProjectKey=null,copyFlashTimer=null,copyFlashButton=null;
 function uiKey(){
- const seed=state.project.episodes?.[0]?.id||'empty';
- return 'manju-doc-v45:'+seed+':'+String(state.project.title||'project').slice(0,90);
+ const seed=state.project.episodes?.[0]?.id||'empty:'+String(state.project.title||'project').slice(0,90);
+ return 'manju-doc-v45:'+seed;
 }
 function readUiState(){
  const key=uiKey();
@@ -28,11 +28,14 @@ function readUiState(){
     activeEpisodeId=last.episodeId;
     activeSegmentId=last.segmentId;
     expandedDocs.add(activeEpisodeId);
+    currentGroupId=state.project.episodes.find(e=>e.id===last.episodeId)?.groupId||null;
   }
  }catch{}
 }
 function saveUiState(){
  if(!uiProjectKey)return;
+ // If a brand-new empty project receives its first document, persist under the new stable project key.
+ if(uiProjectKey!==uiKey())uiProjectKey=uiKey();
  try{
   localStorage.setItem(uiProjectKey,JSON.stringify({
    collapsed:[...collapsedSegments],last:activeEpisodeId&&activeSegmentId?
@@ -601,7 +604,15 @@ function wire(){
  $('rescanBtn').onclick=async()=>{const r=await update(api.rescan());if(r)status(`扫描完成：${r.scanStats.recognized} 张编号图片、${r.scanStats.unique} 种编号。`,'ok');};
  $('testBtn').onclick=async()=>{await update(api.dragTester(),'已经打开本机拖拽验证窗口');};
  $('backupBtn').onclick=async()=>{const r=await update(api.backup());if(r)toast('项目已备份至：'+r);};
- $('restoreBtn').onclick=async()=>{if(!confirm('恢复备份将覆盖当前项目。确定继续吗？'))return;const r=await update(api.restore());if(r){activeEpisodeId=null;render();toast('备份已恢复');}};
+ $('restoreBtn').onclick=async()=>{
+ if(!confirm('恢复备份将覆盖当前项目。确定继续吗？'))return;
+ const r=await update(api.restore());
+ if(r){
+  activeEpisodeId=null;activeSegmentId=null;uiProjectKey=null;
+  collapsedSegments.clear();expandedDocs.clear();selectedImages.clear();
+  readUiState();render();toast('备份已恢复');
+ }
+};
  $('scanInfoBtn').onclick=showReport;
  $('renameBtn').onclick=async()=>{await update(api.rename($('projectTitle').value),'项目名称已保存');};
  $('projectTitle').addEventListener('keydown',e=>{if(e.key==='Enter')$('renameBtn').click();});
