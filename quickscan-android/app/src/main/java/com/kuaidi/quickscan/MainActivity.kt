@@ -65,6 +65,7 @@ class MainActivity:ComponentActivity(){
   private var latestCodeView:TextView?=null
   private var latestStatusView:TextView?=null
   private var retryPhotoForRow:Long?=null
+  private var retryPhotoCode:String?=null
   private var flashlight=false
   private var voiceEnabled=true
   private var vibrationEnabled=true
@@ -416,6 +417,7 @@ class MainActivity:ComponentActivity(){
     parent.addView(View(this).apply{setBackgroundColor(canvasColor)},LinearLayout.LayoutParams(-1,dp(1)))
   }
   private fun detail(r:ScanRow){
+    var detailDialog:AlertDialog?=null
     val layout=container().apply{setPadding(dp(16),dp(8),dp(16),0)}
     if(r.photo.isNotEmpty()&&File(r.photo).exists()){
       val image=ImageView(this).apply{
@@ -428,10 +430,22 @@ class MainActivity:ComponentActivity(){
       pair(layout,button("全屏放大"){showPhotoFullscreen(r.photo)},button("分享照片"){sharePhoto(r.photo)})
       layout.addView(button("另存照片到手机"){savePhoto(r.photo)},margins(7))
     }
+    if(r.photo.isBlank()||!File(r.photo).exists()){
+      layout.addView(button("📷 给这条记录补拍照片"){
+        detailDialog?.dismiss()
+        retryPhotoForRow=r.id
+        retryPhotoCode=r.code
+        val matching=db.batches().firstOrNull{it.id==r.batchId}
+        activeBatch=r.batchId
+        if(matching!=null)batchName=matching.name
+        showScan()
+        toast("对准面单，点击拍照图标为此记录补拍")
+      },margins(8))
+    }
     val code=input("补录条码下方的数字",r.code)
     val note=input("备注",r.note)
     layout.addView(code,margins(9));layout.addView(note,margins(8))
-    AlertDialog.Builder(this).setTitle("快递详情 · "+formatTime(r.time)).setView(layout)
+    detailDialog=AlertDialog.Builder(this).setTitle("快递详情 · "+formatTime(r.time)).setView(layout)
       .setNegativeButton("取消",null)
       .setNeutralButton("删除"){_,_->
         AlertDialog.Builder(this).setTitle("确认删除？").setPositiveButton("删除"){_,_->
@@ -441,7 +455,7 @@ class MainActivity:ComponentActivity(){
       }.setPositiveButton("保存"){_,_->
         val v=code.text.toString().trim().replace(" ","")
         if(v.isNotBlank()&&!valid(v)){toast("单号只支持字母数字和横线");return@setPositiveButton}
-        if(v.isNotEmpty()&&!duplicates&&db.all(r.batchId).any{it.id!=r.id&&it.code==v}){
+        if(v.isNotEmpty()&&db.all(r.batchId).any{it.id!=r.id&&it.code==v}){
           toast("⚠ 该批次已有相同单号")
         }else{db.update(r.id,v,note.text.toString());refresh()}
       }.show()
@@ -485,7 +499,7 @@ class MainActivity:ComponentActivity(){
     box.addView(frame,LinearLayout.LayoutParams(-1,dp(340)).apply{bottomMargin=dp(12)})
 
     val toolbar=container(false).apply{gravity=Gravity.CENTER}
-    val photo=iconAction(R.drawable.ic_action_camera,"拍照"){takePhoto(retryPhotoForRow)}
+    val photo=iconAction(R.drawable.ic_action_camera,"拍照"){takePhoto(retryPhotoForRow,retryPhotoCode)}
     val light=iconAction(R.drawable.ic_action_flash,"补光"){
       flashlight=!flashlight
       camera?.cameraControl?.enableTorch(flashlight)
@@ -571,14 +585,14 @@ class MainActivity:ComponentActivity(){
     val saved=db.save(activeBatch,code)
     if(fromCamera){
       updateScanOutcome(code,"已识别 · 正在保存照片…",Color.rgb(50,107,196))
-      takePhoto(saved)
+      takePhoto(saved,code)
     }else{
       announce("success")
       toast("✓ 手动登记："+code)
     }
     updateRecent()
   }
-  private fun takePhoto(forRow:Long?=null){
+  private fun takePhoto(forRow:Long?=null,displayCode:String?=null){
     if(!captureBusy.compareAndSet(false,true)){
       toast("上一张照片保存中，请稍后")
       return
@@ -586,7 +600,7 @@ class MainActivity:ComponentActivity(){
     val capture=imageCapture
     if(capture==null){
       captureBusy.set(false);toast("相机启动中，请稍后再拍");announce("failure")
-      if(forRow!=null)updateScanOutcome(lastCode,"照片失败 · 记录已保留",Color.rgb(198,57,57))
+      if(forRow!=null)updateScanOutcome(displayCode?:lastCode,"照片失败 · 记录已保留",Color.rgb(198,57,57))
       return
     }
     val batchAtCapture=activeBatch
@@ -600,25 +614,25 @@ class MainActivity:ComponentActivity(){
           try{
             if(forRow!=null){
               db.attachPhoto(forRow,file.absolutePath)
-              updateScanOutcome(lastCode,"✓ 单号及照片均已保存",Color.rgb(36,151,94))
+              updateScanOutcome(displayCode?:lastCode,"✓ 单号及照片均已保存",Color.rgb(36,151,94))
               announce("success")
               toast("✓ 单号及照片已保存")
             }else{
               db.save(batchAtCapture,"",file.absolutePath)
               toast("照片已保存，之后可补录单号")
             }
-            if(retryPhotoForRow==forRow && forRow!=null)retryPhotoForRow=null
+            if(retryPhotoForRow==forRow && forRow!=null){retryPhotoForRow=null;retryPhotoCode=null}
             updateRecent()
           }catch(e:Exception){
             toast("照片关联失败："+e.message);announce("failure")
-            if(forRow!=null)updateScanOutcome(lastCode,"照片关联失败 · 单号已保留",Color.rgb(198,57,57))
+            if(forRow!=null)updateScanOutcome(displayCode?:lastCode,"照片关联失败 · 单号已保留",Color.rgb(198,57,57))
           }finally{captureBusy.set(false)}
         }
         override fun onError(exception:ImageCaptureException){
           file.delete()
           captureBusy.set(false)
           toast("拍照失败，单号已保留："+exception.message)
-          if(forRow!=null)updateScanOutcome(lastCode,"照片保存失败 · 单号已保留，可补拍",Color.rgb(198,57,57))
+          if(forRow!=null)updateScanOutcome(displayCode?:lastCode,"照片保存失败 · 单号已保留，可补拍",Color.rgb(198,57,57))
           announce("failure")
         }
       }
