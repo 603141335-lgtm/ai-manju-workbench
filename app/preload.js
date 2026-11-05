@@ -5,7 +5,7 @@ const api={
  chooseFolder:()=>ipcRenderer.invoke('workspace:choose-folder'),
  rescan:()=>ipcRenderer.invoke('workspace:rescan'),
  importText:(s,groupId=null)=>ipcRenderer.invoke('workspace:import-text',{text:s,groupId}),
- importFiles:()=>ipcRenderer.invoke('workspace:import-files'),
+ importFiles:(groupId=null)=>ipcRenderer.invoke('workspace:import-files',groupId),
  removeEpisode:id=>ipcRenderer.invoke('workspace:remove-episode',id),
  createGroup:payload=>ipcRenderer.invoke('workspace:create-group',payload),
  renameGroup:payload=>ipcRenderer.invoke('workspace:rename-group',payload),
