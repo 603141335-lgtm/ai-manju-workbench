@@ -118,6 +118,12 @@ async function importPrompt(){const text=$('importText').value;if(!text.trim()){
  if(result){$('importDialog').close();$('importText').value='';activeEpisodeId=result.data.project.episodes.at(-result.added)?.id||null;render();status(`成功加入 ${result.added} 集，共 ${result.segments} 个片段；完整原文已保存。`,'ok');}
 }
 function wire(){
+ $('sidebarToggle').onclick=()=>{
+  const root=$('app');
+  root.classList.toggle('sidebar-collapsed');
+  try{localStorage.setItem('manju-sidebar-collapsed',root.classList.contains('sidebar-collapsed')?'1':'0');}catch{}
+ };
+ try{if(localStorage.getItem('manju-sidebar-collapsed')==='1')$('app').classList.add('sidebar-collapsed');}catch{}
  $('pasteBtn').onclick=$('emptyPasteBtn').onclick=()=>{$('importDialog').showModal();$('importText').focus();};
  $('submitImportBtn').onclick=importPrompt;
  $('closeImportBtn').onclick=()=>$('importDialog').close();
