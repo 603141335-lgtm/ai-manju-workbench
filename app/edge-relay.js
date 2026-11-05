@@ -140,7 +140,7 @@ function createRelay({store,port=18741}){
     }).catch(e=>{error=e.message;ready=false;server=null;throw e;});
   }
   async function stop(){if(server)await new Promise(resolve=>server.close(resolve));server=null;ready=false;}
-  const state=()=>({ready,error,port});
+  const state=()=>({ready,error,port:server?.address()?.port??port});
   return {start,stop,state};
 }
 module.exports={createLinkStore,createRelay};
