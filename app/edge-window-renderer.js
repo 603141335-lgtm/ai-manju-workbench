@@ -16,7 +16,7 @@ function render(){
   const b=document.createElement('button');b.className='profile'+(selected===p.id?' active':'');
   const name=document.createElement('span');name.textContent=p.name+' ('+p.id+')';
   const count=document.createElement('span');count.className='tag';count.textContent=used(p.id)+'/2';
-  b.append(name,count);b.onclick=()=>{selected=p.id;render();};list.append(b);
+  b.append(name,count);b.onclick=()=>{selected=p.id;act(()=>api.selectProfile(p.id),'已选择 Edge 用户：'+p.name);};list.append(b);
  }
  const linked=state.pendingSegment;
  $('linkedSegment').textContent=linked
@@ -24,6 +24,19 @@ function render(){
    : '请先在提示词文档点击“分配到账号小窗”';
  $('linkedProfile').textContent=linked?.profileId?'已关联 Edge 用户：'+linked.profileId:'请选择下方的 Edge 用户';
  $('copyPrompt').disabled=$('copyAndOpen').disabled=!linked;
+ const link=state.connection||{};
+ const connection=link.profiles?.[selected];
+ const last=connection?.lastSeen?Date.parse(connection.lastSeen):0;
+ const live=last&&Date.now()-last<45000;
+ const job=connection?.job;
+ const labels={queued:'正在等待Edge网页',needs_input:'需点选豆包输入框',filled:'已自动填入',failed:'填入失败',replaced:'已被新任务替代'};
+ $('relayStatus').textContent=link.server?.ready?
+   (connection?.paired?(live?'连接器在线':'已配对，等待浏览器打开')+
+     (job?' · '+(labels[job.status]||job.status)+'（第'+job.episode+'集第'+job.segment+'段）':''))
+     :'未配对扩展：复制密钥并在对应Edge用户的扩展中连接')
+   :'本机连接服务不可用，请检查端口18741是否被占用';
+ $('pairEdge').disabled=!selected;
+ $('sendPrompt').disabled=!selected||!linked;
  const profile=state.profiles.find(p=>p.id===selected);
  $('picked').textContent=profile?.name||'未选择账号';
  $('counter').textContent=(selected?used(selected):0)+'/2';
@@ -64,10 +77,26 @@ async function act(fn,message){
  try{state=await fn();say(message);render();}catch(e){say(e.message||String(e),true);}
 }
 async function refresh(){
- await act(()=>api.get(),'账号列表已刷新');
- if(!selected||!state.profiles.some(p=>p.id===selected)){selected=state.profiles[0]?.id||null;render();}
+ try{
+  state=await api.get();
+  if(!selected||!state.profiles.some(p=>p.id===selected)){
+    selected=state.connection?.selectedProfile||
+      state.profiles[0]?.id||null;
+  }
+  if(selected&&state.connection?.selectedProfile!==selected)
+    state=await api.selectProfile(selected);
+  render();
+ }catch(e){say('账号读取失败：'+e.message,true);}
 }
-$('copyPrompt').onclick=()=>act(()=>api.copyPrompt(),'已复制完整提示词；现在可以在 Edge 粘贴');
+$('pairEdge').onclick=()=>{
+ if(!selected){say('请先选择 Edge 用户',true);return;}
+ act(()=>api.copyPairToken(selected),'已复制此Edge用户连接密钥，请粘贴到该用户的“AI漫剧连接器”扩展');
+};
+$('sendPrompt').onclick=()=>{
+ if(!selected){say('请先选择 Edge 用户',true);return;}
+ act(()=>api.sendPrompt(selected),'提示词已发往该Edge用户；请切到豆包页面等待自动填入');
+};
+$('copyPrompt').onclick=()=>act(()=>api.copyPrompt(),'已复制完整提示词；可以在 Edge 手动粘贴');
 $('copyAndOpen').onclick=()=>{
  if(!selected){say('请先选择 Edge 用户',true);return;}
  act(()=>api.copyAndOpen(selected),'已复制完整提示词，并打开所选 Edge 用户；请在豆包粘贴');
