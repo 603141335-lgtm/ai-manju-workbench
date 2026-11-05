@@ -104,6 +104,9 @@ function card(d,id){return [...d.querySelectorAll('.segment')].find(x=>x.dataset
  assert.equal(card(d,'s1').dataset.didScroll,'yes');
  // Remember the most recently worked segment across a fresh app startup.
  card(d,'s2').querySelector('.fold-toggle').click();
+ // Folding a different segment isn't necessarily the last editing action.
+ card(d,'s1').querySelector('.copy-prompt-btn').click();
+ await pause();
  const keyAfter=w.localStorage.getItem(key);
  assert(JSON.parse(keyAfter).collapsed.includes('s2'));
  const fresh=create({[key]:keyAfter});
