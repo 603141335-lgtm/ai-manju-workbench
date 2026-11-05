@@ -1,11 +1,11 @@
 {
   "project": "快递快扫",
-  "currentVersion": "0.11",
+  "currentVersion": "0.12",
   "lastArchived": "2026-11-05",
   "githubRepo": "603141335-lgtm/ai-manju-workbench",
   "activeBranch": "quickscan-app",
   "codeDirectory": "quickscan-android",
-  "packageName": "com.kuaidi.quickscan.v011",
+  "packageName": "com.kuaidi.quickscan.v012",
   "buildSystem": "Gradle 8.9 / Android SDK 35 / Kotlin",
   "buildWorkflow": ".github/workflows/quickscan-apk.yml",
   "knownPreviousBuild": {
@@ -14,7 +14,7 @@
     "apkName": "QuickScan-APK-v0.8",
     "type": "debug-signed"
   },
-  "upgradeNotes": "Automatic code registration after 3-4 stable observations, no manual confirmation. Photo capture blocks next reading until saved. Testing required; no 100% accuracy guarantee. New debug package ID does not migrate prior records.",
+  "upgradeNotes": "v0.12 2/3-frame validation for CODE128/ITF; atomic saveIfNew and unique partial index on batch/code, JPEG quality 82 and rendering only recent 14 records. Same exact code unique per batch, but misdecoded variants cannot be ruled out. Separate debug package, no data migration.",
   "features": [
     "1D barcode-only",
     "continuous scan",
@@ -32,9 +32,12 @@
     "camera top with integrated recent scans and quick search",
     "home query across all batches",
     "automatic validated registration",
-    "3-4 consistent frame fast gate",
     "same-label lock against duplicate misreads",
     "indexed recent record queries",
-    "aligned scan UI"
+    "aligned scan UI",
+    "2/3-frame fast consensus with format/geometry checks",
+    "transactional atomic unique batch code deduplication",
+    "recent 14-row rendering optimization",
+    "JPEG 82 minimum-latency capture"
   ]
 }
