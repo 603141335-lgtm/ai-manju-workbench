@@ -87,6 +87,8 @@ function card(d,id){return [...d.querySelectorAll('.segment')].find(x=>x.dataset
  assert.equal(gallery2.querySelectorAll('.image-tile.selected').length,1);
  // Copy is complete and feedback is inside its button, not an overlay.
  const copy=card(d,'s2').querySelector('.copy-prompt-btn');
+ // Existing image-selection feedback is independent; copying itself must not show a new toast.
+ d.querySelector('#toast').classList.add('hidden');
  copy.click();await pause();
  assert.equal(copyCalls.at(-1),data.project.episodes[0].segments[1].text);
  assert.equal(copy.textContent,'✓ 已复制');
