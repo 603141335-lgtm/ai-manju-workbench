@@ -18,6 +18,12 @@ function render(){
   const count=document.createElement('span');count.className='tag';count.textContent=used(p.id)+'/2';
   b.append(name,count);b.onclick=()=>{selected=p.id;render();};list.append(b);
  }
+ const linked=state.pendingSegment;
+ $('linkedSegment').textContent=linked
+   ? '第'+linked.episode+'集 · 第'+linked.segment+'段'+(linked.title?'｜'+linked.title:'')
+   : '请先在提示词文档点击“分配到账号小窗”';
+ $('linkedProfile').textContent=linked?.profileId?'已关联 Edge 用户：'+linked.profileId:'请选择下方的 Edge 用户';
+ $('copyPrompt').disabled=$('copyAndOpen').disabled=!linked;
  const profile=state.profiles.find(p=>p.id===selected);
  $('picked').textContent=profile?.name||'未选择账号';
  $('counter').textContent=(selected?used(selected):0)+'/2';
@@ -61,6 +67,11 @@ async function refresh(){
  await act(()=>api.get(),'账号列表已刷新');
  if(!selected||!state.profiles.some(p=>p.id===selected)){selected=state.profiles[0]?.id||null;render();}
 }
+$('copyPrompt').onclick=()=>act(()=>api.copyPrompt(),'已复制完整提示词；现在可以在 Edge 粘贴');
+$('copyAndOpen').onclick=()=>{
+ if(!selected){say('请先选择 Edge 用户',true);return;}
+ act(()=>api.copyAndOpen(selected),'已复制完整提示词，并打开所选 Edge 用户；请在豆包粘贴');
+};
 $('refresh').onclick=refresh;
 $('chooseDownloads').onclick=()=>act(()=>api.chooseDownloads(),'下载目录已设置');
 $('chooseArchive').onclick=()=>act(()=>api.chooseArchive(),'归档目录已设置');
