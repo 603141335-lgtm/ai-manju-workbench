@@ -1,11 +1,11 @@
 {
   "project": "快递快扫",
-  "currentVersion": "0.10",
+  "currentVersion": "0.11",
   "lastArchived": "2026-11-05",
   "githubRepo": "603141335-lgtm/ai-manju-workbench",
   "activeBranch": "quickscan-app",
   "codeDirectory": "quickscan-android",
-  "packageName": "com.kuaidi.quickscan.v010",
+  "packageName": "com.kuaidi.quickscan.v011",
   "buildSystem": "Gradle 8.9 / Android SDK 35 / Kotlin",
   "buildWorkflow": ".github/workflows/quickscan-apk.yml",
   "knownPreviousBuild": {
@@ -14,7 +14,7 @@
     "apkName": "QuickScan-APK-v0.8",
     "type": "debug-signed"
   },
-  "upgradeNotes": "Strict mode forces reviewing confirmed candidates before DB save; CODE128 and ITF only; no automatic error-free guarantee. Debug signing prevents guaranteed in-place upgrade.",
+  "upgradeNotes": "Automatic code registration after 3-4 stable observations, no manual confirmation. Photo capture blocks next reading until saved. Testing required; no 100% accuracy guarantee. New debug package ID does not migrate prior records.",
   "features": [
     "1D barcode-only",
     "continuous scan",
@@ -29,8 +29,12 @@
     "default M.d batch naming",
     "export-only settlement note",
     "strict 8-frame consistency check and center ROI",
-    "manual review before every new barcode commit",
     "camera top with integrated recent scans and quick search",
-    "home query across all batches"
+    "home query across all batches",
+    "automatic validated registration",
+    "3-4 consistent frame fast gate",
+    "same-label lock against duplicate misreads",
+    "indexed recent record queries",
+    "aligned scan UI"
   ]
 }
