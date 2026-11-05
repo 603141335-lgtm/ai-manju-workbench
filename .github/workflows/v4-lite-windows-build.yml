@@ -1,0 +1,28 @@
+name: v4 Lite Windows portable
+on:
+  push:
+    branches:
+      - feature/v4-edge-lite
+  workflow_dispatch:
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install packaging tools
+        run: npm install --no-save electron@latest @electron/packager@latest
+      - name: Build Windows x64 portable
+        shell: pwsh
+        run: |
+          $electronVersion = node -p "require('electron/package.json').version"
+          npx electron-packager app AI-Manju-Workbench --platform=win32 --arch=x64 --out=release --overwrite --asar --electron-version=$electronVersion
+      - name: Upload portable Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Manju-Workbench-v4-Lite-Windows-x64
+          path: release/AI-Manju-Workbench-win32-x64/
+          if-no-files-found: error
+          retention-days: 14
