@@ -6,6 +6,104 @@ let state={project:{episodes:[],chosenPaths:{}},assetList:[],scanStats:{}},activ
 let toastTimer=null;
 let currentGroupId=null,expandedGroups=new Set(),expandedDocs=new Set(),docAction=null;
 const segmentPanelSize=()=>Math.max(220,Math.min(1100,Number(localStorage.getItem('manju-pane-size')||340)));
+
+/* v4.5: lightweight per-project UI state. Never writes to or alters prompts/assets. */
+let collapsedSegments=new Set(),activeSegmentId=null,uiProjectKey=null,copyFlashTimer=null,copyFlashButton=null;
+function uiKey(){
+ const seed=state.project.episodes?.[0]?.id||'empty';
+ return 'manju-doc-v45:'+seed+':'+String(state.project.title||'project').slice(0,90);
+}
+function readUiState(){
+ const key=uiKey();
+ if(uiProjectKey===key)return;
+ uiProjectKey=key;collapsedSegments.clear();activeSegmentId=null;
+ try{
+  const value=JSON.parse(localStorage.getItem(key)||'{}');
+  const validIds=new Set((state.project.episodes||[]).flatMap(e=>e.segments.map(s=>s.id)));
+  if(Array.isArray(value.collapsed)){
+    collapsedSegments=new Set(value.collapsed.filter(id=>typeof id==='string'&&validIds.has(id)));
+  }
+  const last=value.last;
+  if(last&&state.project.episodes.some(e=>e.id===last.episodeId&&e.segments.some(x=>x.id===last.segmentId))){
+    activeEpisodeId=last.episodeId;
+    activeSegmentId=last.segmentId;
+    expandedDocs.add(activeEpisodeId);
+  }
+ }catch{}
+}
+function saveUiState(){
+ if(!uiProjectKey)return;
+ try{
+  localStorage.setItem(uiProjectKey,JSON.stringify({
+   collapsed:[...collapsedSegments],last:activeEpisodeId&&activeSegmentId?
+     {episodeId:activeEpisodeId,segmentId:activeSegmentId}:null
+  }));
+ }catch{}
+}
+function markCurrentSegment(episodeId,segmentId){
+ if(!episodeId||!segmentId)return;
+ activeEpisodeId=episodeId;activeSegmentId=segmentId;
+ saveUiState();
+ document.querySelectorAll('.segment').forEach(el=>el.classList.toggle('is-current',el.dataset.segmentId===segmentId));
+ document.querySelectorAll('.tree-segment').forEach(el=>el.classList.toggle('is-current',el.dataset.segmentId===segmentId));
+}
+function setCollapsed(episodeId,segmentId,collapsed){
+ const exists=state.project.episodes.some(e=>e.id===episodeId&&e.segments.some(x=>x.id===segmentId));
+ if(!exists)return;
+ if(collapsed)collapsedSegments.add(segmentId);else collapsedSegments.delete(segmentId);
+ const card=[...document.querySelectorAll('.segment')].find(el=>el.dataset.segmentId===segmentId);
+ if(card){
+  card.classList.toggle('is-collapsed',collapsed);
+  const toggle=card.querySelector('.fold-toggle');
+  if(toggle){
+   toggle.textContent=collapsed?'▸':'▾';
+   toggle.title=collapsed?'展开本段':'收起本段';
+   toggle.setAttribute('aria-expanded',String(!collapsed));
+   toggle.setAttribute('aria-label',(collapsed?'展开':'收起')+'第'+card.dataset.segmentNo+'段');
+  }
+ }
+ saveUiState();
+}
+function setAllCollapsed(value){
+ const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
+ if(!ep)return;
+ for(const seg of ep.segments)setCollapsed(ep.id,seg.id,value);
+ const button=$('foldAllBtn');
+ if(button)button.textContent=value?'全部展开':'全部收起';
+}
+function syncBatchFoldLabel(){
+ const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
+ const all=!!ep&&ep.segments.length>0&&ep.segments.every(s=>collapsedSegments.has(s.id));
+ $('foldAllBtn').textContent=all?'全部展开':'全部收起';
+}
+function jumpToSegment(episodeId,segmentId,{expand=true}={}){
+ const ep=state.project.episodes.find(e=>e.id===episodeId);
+ if(!ep||!ep.segments.some(x=>x.id===segmentId))return;
+ const changed=activeEpisodeId!==episodeId;
+ activeEpisodeId=episodeId;activeSegmentId=segmentId;
+ expandedDocs.add(episodeId);
+ if(expand)collapsedSegments.delete(segmentId);
+ saveUiState();
+ if(changed)render();
+ else{setCollapsed(episodeId,segmentId,false);drawSidebar();syncBatchFoldLabel();}
+ requestAnimationFrame(()=>{
+  const card=[...document.querySelectorAll('.segment')].find(el=>el.dataset.segmentId===segmentId);
+  if(!card)return;
+  card.scrollIntoView({block:'start',behavior:'auto'});
+  markCurrentSegment(episodeId,segmentId);
+ });
+}
+function flashCopied(button){
+ if(!button)return;
+ if(copyFlashTimer)clearTimeout(copyFlashTimer);
+ if(copyFlashButton&&copyFlashButton.isConnected){copyFlashButton.textContent='复制提示词';copyFlashButton.classList.remove('copy-success');}
+ copyFlashButton=button;button.textContent='✓ 已复制';button.classList.add('copy-success');
+ copyFlashTimer=setTimeout(()=>{
+  if(button.isConnected){button.textContent='复制提示词';button.classList.remove('copy-success');}
+  if(copyFlashButton===button)copyFlashButton=null;
+ },1300);
+}
+
 function clearTextSelection(){try{window.getSelection()?.removeAllRanges();}catch{}}
 function clearOtherImageSelections(keep=null){
  for(const id of [...selectedImages.keys()])if(id!==keep)selectedImages.delete(id);
