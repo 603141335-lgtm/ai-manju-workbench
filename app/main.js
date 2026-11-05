@@ -113,12 +113,12 @@ function attachIpc(){
   for(const item of ep)item.groupId=groupId;
   project.episodes.push(...ep);await save();return {added:ep.length,segments:ep.reduce((n,e)=>n+e.segments.length,0),data:await getState()};
  });
- ipcMain.handle('workspace:import-files',async()=>{
+ ipcMain.handle('workspace:import-files',async(_event,groupId)=>{
   const selected=await dialog.showOpenDialog(win,{title:'选择一个或多个 TXT / MD 提示词文件',properties:['openFile','multiSelections'],filters:[{name:'提示词文本',extensions:['txt','md','markdown']}]});
   if(selected.canceled)return null;let added=0;
   for(const file of selected.filePaths){const stat=await fsp.stat(file);if(stat.size>20_000_000)continue;let buf=await fsp.readFile(file);let s=buf.toString('utf8').replace(/^\uFEFF/,'');
    // GBK source: browsers often export UTF-8; users can paste instead for ANSI.
-   const parsed=parseMultiEpisode(s,path.basename(file)); project.episodes.push(...parsed);added+=parsed.length;
+   const parsed=parseMultiEpisode(s,path.basename(file)); for(const ep of parsed)ep.groupId=cleanGroupId(groupId);project.episodes.push(...parsed);added+=parsed.length;
   }
   await save();return {added,data:await getState()};
  });
