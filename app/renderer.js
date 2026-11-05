@@ -112,6 +112,7 @@ function openDocDialog(action,id=null,title=''){
   'rename-group':'重命名标题','rename-document':'重命名文档'
  }[action]||'文档';
  $('docNameInput').value=title;
+ $('docDialogDelete').classList.toggle('hidden',action!=='rename-group');
  $('docDialogHelp').textContent=action==='document'?'文档创建后可继续编辑提示词、导入参考图。':
     '大标题、小标题只用于管理目录，不会改变已有提示词。';
  $('docDialog').showModal();$('docNameInput').focus();$('docNameInput').select();
@@ -132,7 +133,16 @@ async function saveDocDialog(){
   if(result?.episode){activeEpisodeId=result.episode.id;render();}
  }else if(action==='rename-group')result=await update(api.renameGroup({id,title:name}),'标题已修改');
  else if(action==='rename-document')result=await update(api.renameDocument({id,title:name}),'文档名称已修改');
- if(result){$('docDialog').close();docAction=null;}
+ if(result){
+  if(result.group&&['root','sub'].includes(action)){
+    currentGroupId=result.group.id;
+    for(const g of state.project.groups||[]){
+      if(g.id===currentGroupId||g.id===(result.group.parentId||''))expandedGroups.delete(g.id);
+    }
+    drawSidebar();
+  }
+  $('docDialog').close();docAction=null;
+ }
 }
 function drawFolder(){
  const f=state.project.assetFolder;
@@ -266,6 +276,14 @@ function wire(){
  $('newDocBtn').onclick=()=>openDocDialog('document');
  $('docDialogClose').onclick=$('docDialogCancel').onclick=()=>$('docDialog').close();
  $('docDialogSave').onclick=saveDocDialog;
+ $('docDialogDelete').onclick=async()=>{
+  if(!docAction||docAction.action!=='rename-group')return;
+  const id=docAction.id;
+  const title=(state.project.groups||[]).find(g=>g.id===id)?.title||'当前标题';
+  if(!confirm('删除标题「'+title+'」？标题下的文档会自动移到上级，文字和图片都不会删除。'))return;
+  const removed=await update(api.removeGroup(id),'标题已删除，文档已保留');
+  if(removed){currentGroupId=null;docAction=null;$('docDialog').close();drawSidebar();}
+ };
  $('docNameInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();saveDocDialog();}};
  $('renameDocBtn').onclick=()=>{
   const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
