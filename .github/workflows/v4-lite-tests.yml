@@ -25,3 +25,13 @@ jobs:
         run: node tests/test_edge_lite.js
       - name: Download safety tests
         run: node tests/test_edge_downloads.js
+      - name: Episode numbering regression
+        run: node tests/test_episode_number.js
+      - name: Local Edge extension relay and profile isolation
+        run: node tests/test_edge_relay.js
+      - name: Edge extension syntax
+        shell: bash
+        run: |
+          node --check edge-extension/background.js
+          node --check edge-extension/content.js
+          node --check edge-extension/popup.js
