@@ -5,7 +5,7 @@ const api=window.manju;
 let state={project:{episodes:[],chosenPaths:{}},assetList:[],scanStats:{}},activeEpisodeId=null,editTarget=null,codesTarget=null,selectedImages=new Map(),currentFilter='';
 let toastTimer=null;
 let currentGroupId=null,expandedGroups=new Set(),expandedDocs=new Set(),docAction=null;
-const segmentPanelSize=()=>Math.max(220,Math.min(720,Number(localStorage.getItem('manju-pane-size')||340)));
+const segmentPanelSize=()=>Math.max(220,Math.min(1100,Number(localStorage.getItem('manju-pane-size')||340)));
 function clearTextSelection(){try{window.getSelection()?.removeAllRanges();}catch{}}
 function clearOtherImageSelections(keep=null){
  for(const id of [...selectedImages.keys()])if(id!==keep)selectedImages.delete(id);
@@ -117,11 +117,14 @@ function setAllPanelHeight(height){
  return n;
 }
 function setAllPanelWidth(width){
- const available=Math.max(320,document.querySelector('.main')?.clientWidth||window.innerWidth-200);
- const n=clamp(Math.round(width),Math.min(340,available),available);
- for(const card of document.querySelectorAll('.segment'))card.style.width=n+'px';
- try{localStorage.setItem('manju-panel-width',String(n));}catch{}
- return n;
+ const available=Math.max(1,document.querySelector('#segmentsContainer')?.clientWidth||
+    document.querySelector('.main')?.clientWidth||window.innerWidth-200);
+ const n=clamp(Math.round(width),Math.min(320,available),available);
+ const minPercent=Math.min(100,Math.round(320/available*100));
+ const percent=clamp(Math.round(n/available*100),minPercent,100);
+ for(const card of document.querySelectorAll('.segment'))card.style.width=percent+'%';
+ try{localStorage.setItem('manju-panel-width-percent',String(percent));}catch{}
+ return percent;
 }
 function unifiedResizeHandle(handle,card,area){
  handle.addEventListener('pointerdown',e=>{
@@ -333,8 +336,8 @@ function refreshSelected(gallery,seg){const set=selectedImages.get(seg.id)||new 
 }
 function makeSegment(episode,seg,idx){
  const card=doc('article','segment');card.dataset.segmentId=seg.id;
- const savedWidth=storedNumber('manju-panel-width',0);
- if(savedWidth)card.style.width=savedWidth+'px';
+ const widthPercent=clamp(storedNumber('manju-panel-width-percent',100),25,100);
+ card.style.width=widthPercent+'%';
  const head=doc('div','segment-header');const left=doc('div');left.append(doc('div','segment-title',`${String(idx+1).padStart(2,'0')} · 第${seg.n}段｜${seg.title}`));
  const present=seg.codes.filter(c=>assetFor(c)).length;const badge=doc('span','countbadge'+(present!==seg.codes.length?' bad':''),`参考图 ${present}/${seg.codes.length}`);
  const sub=doc('div','segment-sub',`参考图 ${seg.codes.join('、')||'无'}　·　${seg.method}${seg.codes.length>9?'　⚠ 超过9张':''}`);sub.prepend(badge);left.append(sub);
