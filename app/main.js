@@ -218,7 +218,16 @@ function attachIpc(){
  });
 }
 async function boot(){
- project=blank();try{project=sanitizeProject(JSON.parse(await fsp.readFile(storeFile(),'utf8')));}catch{}
+ project=blank();
+ try{
+  const raw=await fsp.readFile(storeFile(),'utf8'),saved=JSON.parse(raw);
+  // Create a one-time backup before introducing new document title groups.
+  if((Number(saved.version)||1)<2){
+   const backup=storeFile()+'.before-document-upgrade.json';
+   if(!fs.existsSync(backup))await fsp.copyFile(storeFile(),backup);
+  }
+  project=sanitizeProject(saved);
+ }catch{}
  await scanFolder(project.assetFolder);
  protocol.handle('manju-img',async(request)=>{
   try{const id=new URL(request.url).pathname.split('/').filter(Boolean).pop();const asset=assets.get(id);
