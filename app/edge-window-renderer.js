@@ -33,6 +33,12 @@ async function refresh(){
  if(!selected||!state.profiles.some(p=>p.id===selected)){selected=state.profiles[0]?.id||null;render();}
 }
 $('refresh').onclick=refresh;
+$('chooseDownloads').onclick=()=>act(()=>api.chooseDownloads(),'下载目录已设置');
+$('chooseArchive').onclick=()=>act(()=>api.chooseArchive(),'归档目录已设置');
+$('armDownload').onclick=()=>act(()=>api.armDownload($('downloadTask').value),'已准备接收这段视频');
+$('cancelDownload').onclick=()=>act(()=>api.cancelDownload(),'已取消等待');
+$('openArchive').onclick=()=>act(()=>api.openArchive(),'已打开归档目录');
+setInterval(async()=>{try{state=await api.get();render();}catch{}},3000);
 $('open').onclick=async()=>{
  if(!selected)return;
  try{await api.launch(selected);say('已请求打开 Edge 用户窗口');}catch(e){say(e.message,true);}
