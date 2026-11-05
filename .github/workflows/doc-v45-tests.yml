@@ -1,0 +1,32 @@
+name: Document Workbench V45 Collapse regression
+on:
+  push:
+    branches:
+      - feature/doc-v4-5-collapse
+  workflow_dispatch:
+jobs:
+  test:
+    name: Document UI tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install UI test DOM
+        run: npm install --no-save --no-package-lock jsdom@26
+      - name: JavaScript syntax
+        run: |
+          node --check app/renderer.js
+          node --check app/main.js
+          node --check app/preload.js
+      - name: Reference parser tests
+        run: node tests/test_parser.js
+      - name: Document UI context menu + drag interaction tests
+        run: node tests/test_doc_ui.js
+      - name: v4.5 fold, persistence, navigation and selection tests
+        run: node tests/test_doc_v45.js
