@@ -57,7 +57,9 @@ function rootOptions(){return [
 function groupOptions(g){
  return [
  ['＋ 新建大标题',()=>openDocDialog('root')],
- ...(g.parentId?[]:[['＋ 在此创建小标题',()=>{currentGroupId=g.id;openDocDialog('sub');}]]),
+ ...(g.parentId?
+   [['＋ 新建同级小标题',()=>{currentGroupId=g.parentId;openDocDialog('sub');}]]:
+   [['＋ 在此创建小标题',()=>{currentGroupId=g.id;openDocDialog('sub');}]]),
  ['＋ 在此创建文档',()=>{currentGroupId=g.id;openDocDialog('document');}],
  ['重命名标题',()=>openDocDialog('rename-group',g.id,g.title)],
  ['删除标题（保留文档）',()=>deleteGroup(g),true]
@@ -73,7 +75,7 @@ function documentOptions(ep){
  return [
  ['＋ 新建大标题',()=>openDocDialog('root')],
  ['＋ 同级新建文档',()=>{currentGroupId=ep.groupId||null;openDocDialog('document');}],
- ...(own&&!own.parentId?[['＋ 在所属标题下建小标题',()=>{currentGroupId=own.id;openDocDialog('sub');}]]:[]),
+ ...(own?[['＋ 新建小标题',()=>{currentGroupId=own.parentId||own.id;openDocDialog('sub');}]]:[]),
  ['重命名文档',()=>openDocDialog('rename-document',ep.id,ep.title)],
  ['移动到其他标题',()=>moveCurrentDocument(ep.id)],
  ['展开／折叠分镜段落',()=>{if(expandedDocs.has(ep.id))expandedDocs.delete(ep.id);else expandedDocs.add(ep.id);drawSidebar();}]
