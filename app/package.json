@@ -1,8 +1,8 @@
 {
   "name": "ai-manju-workbench",
-  "version": "4.3.0",
+  "version": "4.4.0",
   "private": true,
-  "description": "文档目录三点菜单与自由拖动分隔线｜完整提示词和参考图拖拽",
+  "description": "纯文档版：左侧三点菜单、可拖宽度、提示词与参考图整体同步缩放",
   "main": "main.js",
   "license": "UNLICENSED"
 }
