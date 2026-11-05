@@ -156,6 +156,7 @@ function createTile(episode,seg,code,gallery){
   const set=selectedImages.get(seg.id)||new Set();if(set.has(item.id))tile.classList.add('selected');
   tile.addEventListener('click',e=>{
    if(e.target.tagName==='SELECT')return;
+   clearTextSelection();clearOtherImageSelections(seg.id);
    let current=selectedImages.get(seg.id)||new Set();
    if(e.ctrlKey||e.metaKey){if(current.has(item.id))current.delete(item.id);else current.add(item.id);}
    else if(e.shiftKey){const all=chosenForSegment(seg).map(a=>a.id);const last=gallery.dataset.lastSelected;const anchor=all.indexOf(last);const here=all.indexOf(item.id);if(anchor>=0&&here>=0){current=new Set(all.slice(Math.min(anchor,here),Math.max(anchor,here)+1));}else current=new Set([item.id]);}
@@ -163,6 +164,7 @@ function createTile(episode,seg,code,gallery){
    selectedImages.set(seg.id,current);gallery.dataset.lastSelected=item.id;refreshSelected(gallery,seg);
   });
   tile.addEventListener('dragstart',e=>{
+   clearTextSelection();clearOtherImageSelections(seg.id);
    const selected=selectedImages.get(seg.id)||new Set();
    // Dragging an unselected thumbnail means only this one image.
    // Dragging a selected thumbnail means all selected images.
@@ -177,7 +179,7 @@ function createTile(episode,seg,code,gallery){
  if(versions.length>1){const sel=doc('select');for(const opt of versions){const o=doc('option','',opt.relative);o.value=opt.id;if(item&&item.id===opt.id)o.selected=true;sel.append(o);}sel.title='同编号多张图：选择使用哪一张';sel.addEventListener('click',e=>e.stopPropagation());sel.addEventListener('change',async(e)=>{await update(api.chooseVersion({code,assetId:e.target.value}),`已切换 ${code} 图片版本`);});tile.append(sel);}
  return tile;
 }
-function refreshSelected(gallery,seg){const set=selectedImages.get(seg.id)||new Set();gallery.querySelectorAll('.image-tile').forEach(tile=>tile.classList.toggle('selected',set.has(tile.dataset.imageId)));const btn=gallery.parentElement.querySelector('.selected-count');if(btn)btn.textContent=`已选择 ${set.size} 张`;
+function refreshSelected(gallery,seg){const set=selectedImages.get(seg.id)||new Set();gallery.querySelectorAll('.image-tile').forEach(tile=>tile.classList.toggle('selected',set.has(tile.dataset.imageId)));const btn=gallery.closest('.segment')?.querySelector('.selected-count');if(btn)btn.textContent=`已选择 ${set.size} 张`;
 }
 function makeSegment(episode,seg,idx){
  const card=doc('article','segment');card.dataset.segmentId=seg.id;
@@ -189,28 +191,42 @@ function makeSegment(episode,seg,idx){
  right.append(elBtn('编辑文字',()=>{editTarget={episodeId:episode.id,segmentId:seg.id};$('editTitle').textContent=`编辑第 ${seg.n} 段的完整提示词`;$('editText').value=seg.text;$('editDialog').showModal();}));
  right.append(elBtn('校正编号',()=>{codesTarget={episodeId:episode.id,segmentId:seg.id};$('codesInput').value=seg.codes.join('、');$('codesDialog').showModal();}));
  head.append(left,right);card.append(head);
- const content=doc('div','content');const promptHead=doc('div','prompt-head');promptHead.append(doc('div','prompt-label','完整视频提示词 · 可直接选中复制'));content.append(promptHead);
- const prompt=doc('div','prompt-box',seg.text);content.append(prompt);card.append(content);
- const imagehead=doc('div','image-head');imagehead.append(doc('b','',`参考图片（${present} 张）`));imagehead.append(doc('span','','Ctrl+点击多选 · Shift+点击连续选 · 图片区 Ctrl+A 全选'));card.append(imagehead);
- const gallery=doc('div','gallery');gallery.tabIndex=0;gallery.dataset.lastSelected='';
+ const workarea=doc('div','segment-workarea');
+ workarea.style.height=segmentPanelSize()+'px';
+ card.append(workarea);
+ const content=doc('div','content');
+ const promptHead=doc('div','prompt-head');
+ promptHead.append(doc('div','prompt-label','完整提示词 · 在小窗内滚动，复制不删减'));
+ const prompt=doc('div','prompt-box',seg.text);
+ prompt.tabIndex=0;prompt.addEventListener('pointerdown',()=>clearOtherImageSelections());
+ prompt.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){
+   e.preventDefault();selectTextIn(prompt);
+  }
+ });
+ promptHead.append(elBtn('全选文字',()=>selectTextIn(prompt),'secondary text-select'));
+ content.append(promptHead,prompt);workarea.append(content);
+ const imagePane=doc('div','image-pane');workarea.append(imagePane);
+ const imagehead=doc('div','image-head');imagehead.append(doc('b','',`参考图片（${present} 张）`));imagehead.append(doc('span','','Ctrl多选 · Shift连选 · Ctrl+A全选'));imagePane.append(imagehead);
+ const gallery=doc('div','gallery');gallery.tabIndex=0;gallery.dataset.segmentId=seg.id;gallery.dataset.lastSelected='';gallery.addEventListener('pointerdown',()=>clearTextSelection());
  gallery.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){
-   e.preventDefault();selectedImages.set(seg.id,new Set(chosenForSegment(seg).map(a=>a.id)));refreshSelected(gallery,seg);toast(`已全选本段 ${chosenForSegment(seg).length} 张图片`);
+   e.preventDefault();selectImagesIn(seg,gallery);toast(`已全选本段 ${chosenForSegment(seg).length} 张图片`);
   }
  });
  for(const code of seg.codes)gallery.append(createTile(episode,seg,code,gallery));
  if(!seg.codes.length)gallery.append(doc('div','warning','本段暂未识别到参考图编号。可点击「校正编号」。'));
- card.append(gallery);
+ imagePane.append(gallery);
  const dragFooter=doc('div','drag-footer');const handle=doc('div','drag-handle',`☷ 按住这里拖动本段全部图片（${present} 张）`);handle.draggable=present>0;
  handle.addEventListener('dragstart',e=>{e.preventDefault();api.startNativeDrag({mode:'group',episodeId:episode.id,segmentId:seg.id});});
  const hint=doc('div','drag-hint','拖到 Edge、豆包、即梦等网页的文件上传区域');
- const selectAll=elBtn('全选本段',()=>{selectedImages.set(seg.id,new Set(chosenForSegment(seg).map(a=>a.id)));refreshSelected(gallery,seg);gallery.focus();},'secondary');
- const clear=elBtn('清空选择',()=>{selectedImages.set(seg.id,new Set());refreshSelected(gallery,seg);},'secondary');
+ const selectAll=elBtn('全选本段图片',()=>selectImagesIn(seg,gallery),'secondary');
+ const clear=elBtn('清空图片选择',()=>{selectedImages.delete(seg.id);refreshSelected(gallery,seg);},'secondary');
  dragFooter.append(handle,hint,doc('span','selected-count','已选择 0 张'),selectAll,clear);card.append(dragFooter);
  if(present!==seg.codes.length)card.append(doc('div','warning','缺图：'+seg.codes.filter(c=>!assetFor(c)).join('、')+'。工具不会拿 A01 替代 A01-01。'));
  return card;
 }
-async function copyPrompt(seg){try{await api.copy(seg.text);toast('已复制第 '+seg.n+' 段完整提示词（无删减）');}catch(e){toast('复制失败：'+e.message);}}
+async function copyPrompt(seg){try{clearTextSelection();clearOtherImageSelections();await api.copy(seg.text);toast('已复制第 '+seg.n+' 段完整提示词（无删减）');}catch(e){toast('复制失败：'+e.message);}}
 function drawEpisode(){const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
  $('empty').classList.toggle('hidden',!!ep);$('episodeView').classList.toggle('hidden',!ep);
  if(!ep){$('toolbarTitle');$('workspaceTitle').textContent='选择一个剧集开始制作';return;}
