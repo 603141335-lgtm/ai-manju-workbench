@@ -9,15 +9,24 @@ const {parseMultiEpisode,parseFilenameCode,safeName,detectSegmentCodes,extractCo
 protocol.registerSchemesAsPrivileged([{scheme:'manju-img',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
 const imageExtensions = new Set(['.png','.jpg','.jpeg','.webp','.bmp','.gif','.avif','.tif','.tiff']);
 let win, project, assets = new Map(), byCode = new Map(), scanStats={}, saveQueue=Promise.resolve();
-const blank = () => ({version:1,title:'我的AI漫剧项目',assetFolder:'',episodes:[],chosenPaths:{}});
+const blank = () => ({version:2,title:'我的AI漫剧项目',assetFolder:'',groups:[],episodes:[],chosenPaths:{}});
 const storeFile = () => path.join(app.getPath('userData'),'workbench.json');
 function sanitizeProject(input){
  if(!input || typeof input!=='object')return blank();
  const p=blank();
  p.title=String(input.title||p.title).slice(0,200);
  p.assetFolder=String(input.assetFolder||'');
+ p.groups=Array.isArray(input.groups)?input.groups.slice(0,250).map(g=>({
+  id:String(g.id||'').slice(0,100),title:String(g.title||'未命名标题').slice(0,180),
+  parentId:g.parentId?String(g.parentId).slice(0,100):null
+ })).filter(g=>g.id):[];
+ // Damaged/legacy tree relations become root groups; document contents remain untouched.
+ const groupIds=new Set(p.groups.map(g=>g.id));
+ for(const g of p.groups)if(g.parentId===g.id||!groupIds.has(g.parentId))g.parentId=null;
  p.episodes=Array.isArray(input.episodes)?input.episodes.slice(0,500).map(e=>({
-  id:String(e.id||'').slice(0,100),number:Number.isSafeInteger(e.number)?e.number:null,
+  id:String(e.id||'').slice(0,100),
+  groupId:groupIds.has(e.groupId)?String(e.groupId):null,
+  number:Number.isSafeInteger(e.number)?e.number:null,
   title:String(e.title||'未命名剧集').slice(0,500),original:String(e.original||''),preamble:String(e.preamble||''),
   segments:Array.isArray(e.segments)?e.segments.slice(0,800).map(s=>({
    id:String(s.id||'').slice(0,100),n:Number(s.n)||1,title:String(s.title||''),text:String(s.text||''),
@@ -63,6 +72,9 @@ async function scanFolder(folder){
 function chosen(code){const list=byCode.get(code)||[];return list.find(a=>a.path===project.chosenPaths[code])||list[0]||null;}
 function currentPaths(codes){return Array.from(new Set(codes.map(c=>chosen(c)?.path).filter(Boolean)));}
 function getEpisode(id){return project.episodes.find(e=>e.id===id);}
+function getGroup(id){return project.groups.find(g=>g.id===id);}
+function makeId(){return 'doc_'+Date.now().toString(36)+'_'+require('crypto').randomBytes(5).toString('hex');}
+function cleanGroupId(id){return id&&getGroup(id)?id:null;}
 function getSegment(episode,segId){return episode?.segments.find(s=>s.id===segId);}
 function findAssetById(id){return assets.get(id);}
 function findDragPaths(msg){
@@ -93,9 +105,12 @@ function attachIpc(){
   project.assetFolder=result.filePaths[0];await save();await scanFolder(project.assetFolder);return getState();
  });
  ipcMain.handle('workspace:rescan',async()=>{await scanFolder(project.assetFolder);return getState();});
- ipcMain.handle('workspace:import-text',async(_event,source)=>{
-  const text=String(source||'');if(text.length>20_000_000)throw Error('一次导入文本超过 20MB，请分批');
-  const ep=parseMultiEpisode(text);if(!ep.length)throw Error('没有识别到有效提示词');
+ ipcMain.handle('workspace:import-text',async(_event,input)=>{
+  const source=typeof input==='object'&&input!==null?String(input.text||''):String(input||'');
+  const groupId=cleanGroupId(input&&typeof input==='object'?input.groupId:null);
+  if(source.length>20_000_000)throw Error('一次导入文本超过 20MB，请分批');
+  const ep=parseMultiEpisode(source);if(!ep.length)throw Error('没有识别到有效提示词');
+  for(const item of ep)item.groupId=groupId;
   project.episodes.push(...ep);await save();return {added:ep.length,segments:ep.reduce((n,e)=>n+e.segments.length,0),data:await getState()};
  });
  ipcMain.handle('workspace:import-files',async()=>{
@@ -107,11 +122,49 @@ function attachIpc(){
   }
   await save();return {added,data:await getState()};
  });
+ ipcMain.handle('workspace:create-group',async(_event,{title,parentId}={})=>{
+  const parent=parentId?getGroup(parentId):null;
+  if(parentId&&!parent)throw Error('上级标题已不存在');
+  if(parent?.parentId)throw Error('仅支持大标题与小标题两级');
+  const clean=String(title||'').trim().slice(0,180);
+  if(!clean)throw Error('请输入标题名称');
+  const group={id:makeId(),title:clean,parentId:parent?.id||null};
+  project.groups.push(group);await save();return {group,data:await getState()};
+ });
+ ipcMain.handle('workspace:rename-group',async(_event,{id,title})=>{
+  const g=getGroup(id);if(!g)throw Error('标题不存在');
+  const name=String(title||'').trim().slice(0,180);if(!name)throw Error('标题不可为空');
+  g.title=name;await save();return getState();
+ });
+ ipcMain.handle('workspace:remove-group',async(_event,id)=>{
+  const g=getGroup(id);if(!g)throw Error('标题不存在');
+  // Non-destructive: keep documents and subheadings, reparent rather than delete.
+  for(const ep of project.episodes)if(ep.groupId===id)ep.groupId=g.parentId||null;
+  for(const child of project.groups)if(child.parentId===id)child.parentId=null;
+  project.groups=project.groups.filter(item=>item.id!==id);
+  await save();return getState();
+ });
+ ipcMain.handle('workspace:create-document',async(_event,{title,groupId}={})=>{
+  const name=String(title||'').trim().slice(0,180);if(!name)throw Error('请输入文档名称');
+  const seg={id:makeId(),n:1,title:'第1段',text:'',codes:[],method:'未找到编号',manual:false};
+  const ep={id:makeId(),groupId:cleanGroupId(groupId),number:null,title:name,original:'',
+    preamble:'',segments:[seg]};
+  project.episodes.push(ep);await save();return {episode:ep,data:await getState()};
+ });
+ ipcMain.handle('workspace:rename-document',async(_event,{id,title})=>{
+  const ep=getEpisode(id);if(!ep)throw Error('文档不存在');
+  const name=String(title||'').trim().slice(0,180);if(!name)throw Error('文档名不可为空');
+  ep.title=name;await save();return getState();
+ });
+ ipcMain.handle('workspace:move-document',async(_event,{id,groupId})=>{
+  const ep=getEpisode(id);if(!ep)throw Error('文档不存在');
+  ep.groupId=cleanGroupId(groupId);await save();return getState();
+ });
  ipcMain.handle('workspace:remove-episode',async(_event,id)=>{project.episodes=project.episodes.filter(e=>e.id!==id);await save();return getState();});
  ipcMain.handle('workspace:rename',async(_event,title)=>{project.title=String(title||'我的AI漫剧项目').slice(0,120);await save();return getState();});
  ipcMain.handle('workspace:edit-segment',async(_event,{episodeId,segmentId,text,codes,manual})=>{
   const ep=getEpisode(episodeId),seg=getSegment(ep,segmentId);if(!seg)throw Error('片段不存在');
-  if(typeof text==='string'){if(text.length>250000)throw Error('单段提示词过长');seg.text=text;if(!manual){const det=detectSegmentCodes(text);seg.codes=det.codes;seg.method=det.method;seg.manual=false;}}
+  if(typeof text==='string'){if(text.length>250000)throw Error('单段提示词过长');seg.text=text; if(ep.segments.length===1)ep.original=text; if(!manual){const det=detectSegmentCodes(text);seg.codes=det.codes;seg.method=det.method;seg.manual=false;}}
   if(manual){seg.codes=extractCodes(String(codes||''));seg.method='手动校正';seg.manual=true;}
   await save();return getState();
  });
@@ -174,7 +227,7 @@ async function boot(){
   }catch{return new Response('missing',{status:404});}
  });
  attachIpc();
- win=new BrowserWindow({width:1370,height:920,minWidth:860,minHeight:620,title:'AI漫剧素材工作台',backgroundColor:'#f5f7fb',autoHideMenuBar:true,
+ win=new BrowserWindow({width:1140,height:850,minWidth:640,minHeight:480,title:'AI漫剧提示词与参考图工作台',backgroundColor:'#f5f7fb',autoHideMenuBar:true,
   webPreferences:{preload:path.join(__dirname,'preload.js'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  win.webContents.on('will-navigate',e=>e.preventDefault());
