@@ -84,7 +84,7 @@ function makeSegment(episode,seg,idx){
     try{saved=localStorage.getItem(key);}catch{}
     const typed=prompt('本集未识别出集数，请输入实际集数（不会修改提示词正文）',saved||'');
     if(typed===null)return;
-    if(!/^\\d{1,5}$/.test(typed.trim())||Number(typed)<1)throw Error('请输入1到99999之间的集数');
+    if(!/^\d{1,5}$/.test(typed.trim())||Number(typed)<1)throw Error('请输入1到99999之间的集数');
     number=Number(typed.trim());
     try{localStorage.setItem(key,String(number));}catch{}
    }
