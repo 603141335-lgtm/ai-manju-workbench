@@ -59,8 +59,13 @@ function groupOptions(g){
  ...(g.parentId?[]:[['＋ 在此创建小标题',()=>{currentGroupId=g.id;openDocDialog('sub');}]]),
  ['＋ 在此创建文档',()=>{currentGroupId=g.id;openDocDialog('document');}],
  ['重命名标题',()=>openDocDialog('rename-group',g.id,g.title)],
- ['删除标题（保留文档）',()=>openDocDialog('rename-group',g.id,g.title),true]
+ ['删除标题（保留文档）',()=>deleteGroup(g),true]
  ];
+}
+async function deleteGroup(g){
+ if(!confirm('删除标题「'+g.title+'」？旗下文档仍然保留，会移到上一级目录。'))return;
+ const result=await update(api.removeGroup(g.id),'标题已删除，文档已保留');
+ if(result&&currentGroupId===g.id){currentGroupId=g.parentId||null;drawSidebar();}
 }
 function documentOptions(ep){
  const own=state.project.groups?.find(g=>g.id===ep.groupId);
@@ -164,8 +169,8 @@ function drawSidebar(){
     render();document.querySelector('.main')?.scrollTo({top:0,behavior:'instant'});
   },'tree-doc-title');
   item.title=ep.title;row.append(item);
-  const edit=elBtn('⋯',()=>openDocDialog('rename-document',ep.id,ep.title),'tree-ellipsis');
-  edit.title='重命名文档';row.append(edit);tree.append(row);
+  const edit=elBtn('···',()=>showTreeMenu(edit,documentOptions(ep)),'tree-ellipsis');
+  edit.title='文档选项';edit.setAttribute('aria-haspopup','menu');edit.setAttribute('aria-expanded','false');row.append(edit);tree.append(row);
   if(expandedDocs.has(ep.id)){
    for(const seg of ep.segments){
     const leaf=elBtn('↳ 第'+seg.n+'段 '+(seg.title||''),()=>{
@@ -195,8 +200,8 @@ function drawSidebar(){
     currentGroupId=g.id;drawSidebar();
   },'tree-group-title'+(depth===0?' root':' sub'));
   title.title=g.title;row.append(title);
-  const rename=elBtn('⋯',()=>openDocDialog('rename-group',g.id,g.title),'tree-ellipsis');
-  rename.title='重命名标题';row.append(rename);tree.append(row);
+  const rename=elBtn('···',()=>showTreeMenu(rename,groupOptions(g)),'tree-ellipsis');
+  rename.title='标题选项';rename.setAttribute('aria-haspopup','menu');rename.setAttribute('aria-expanded','false');row.append(rename);tree.append(row);
   if(expanded){
     for(const child of children)renderGroup(child,depth+1);
     for(const ep of docs)renderDocument(ep,depth+1);
