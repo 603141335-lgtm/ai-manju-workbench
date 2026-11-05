@@ -282,7 +282,7 @@ function wire(){
  $('pasteBtn').onclick=$('emptyPasteBtn').onclick=()=>{$('importDialog').showModal();$('importText').focus();};
  $('submitImportBtn').onclick=importPrompt;
  $('closeImportBtn').onclick=()=>$('importDialog').close();
- $('filesBtn').onclick=async()=>{const r=await update(api.importFiles());if(r){activeEpisodeId=r.data.project.episodes.at(-r.added)?.id||activeEpisodeId;render();status(`导入 ${r.added} 集成功`,'ok');}};
+ $('filesBtn').onclick=async()=>{const r=await update(api.importFiles(currentGroupId));if(r){activeEpisodeId=r.data.project.episodes.at(-r.added)?.id||activeEpisodeId;render();status(`导入 ${r.added} 集成功`,'ok');}};
  $('chooseFolderBtn').onclick=async()=>{const r=await update(api.chooseFolder());if(r)status(`素材库读取完毕：${r.scanStats.images} 张图片，其中 ${r.scanStats.recognized} 张提取到编号。`,'ok');};
  $('rescanBtn').onclick=async()=>{const r=await update(api.rescan());if(r)status(`扫描完成：${r.scanStats.recognized} 张编号图片、${r.scanStats.unique} 种编号。`,'ok');};
  $('testBtn').onclick=async()=>{await update(api.dragTester(),'已经打开本机拖拽验证窗口');};
@@ -292,7 +292,6 @@ function wire(){
  $('renameBtn').onclick=async()=>{await update(api.rename($('projectTitle').value),'项目名称已保存');};
  $('projectTitle').addEventListener('keydown',e=>{if(e.key==='Enter')$('renameBtn').click();});
  $('filterEpisodes').addEventListener('input',e=>{currentFilter=e.target.value.trim().toLowerCase();drawSidebar();});
- $('episodeList').addEventListener('click',()=>{});
  $('exportBtn').onclick=async()=>{const r=await update(api.exportEpisode(activeEpisodeId));if(r)status(`已导出本集：${r.images} 张参考图，缺少 ${r.missing} 处，失败 ${r.errors.length} 处；结果已打开。`,r.errors.length?'error':'ok');};
  $('removeBtn').onclick=async()=>{const e=state.project.episodes.find(x=>x.id===activeEpisodeId);if(!e)return;if(!confirm('确定从项目中删除「'+e.title+'」吗？这不会删除原始图片。'))return;await update(api.removeEpisode(e.id),'已从项目中删除剧集');};
  $('closeEditBtn').onclick=()=>$('editDialog').close();
