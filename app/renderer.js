@@ -241,10 +241,44 @@ function render(){if(!activeEpisodeId&&state.project.episodes.length)activeEpiso
  drawSidebar();drawFolder();drawEpisode();}
 async function importPrompt(){const text=$('importText').value;if(!text.trim()){toast('请先粘贴整集提示词');return;}
  $('submitImportBtn').disabled=true;
- const result=await update(api.importText(text));$('submitImportBtn').disabled=false;
+ const result=await update(api.importText(text,currentGroupId));$('submitImportBtn').disabled=false;
  if(result){$('importDialog').close();$('importText').value='';activeEpisodeId=result.data.project.episodes.at(-result.added)?.id||null;render();status(`成功加入 ${result.added} 集，共 ${result.segments} 个片段；完整原文已保存。`,'ok');}
 }
 function wire(){
+ // One slider changes both the prompt pane and the picture pane of every segment.
+ const initial=segmentPanelSize();
+ $('panelSize').value=String(initial);$('panelSizeText').textContent=String(initial);
+ $('panelSize').addEventListener('input',e=>{
+  const height=Math.max(220,Math.min(720,Number(e.target.value)||340));
+  $('panelSizeText').textContent=String(height);
+  try{localStorage.setItem('manju-pane-size',String(height));}catch{}
+  document.querySelectorAll('.segment-workarea').forEach(panel=>{panel.style.height=height+'px';});
+ });
+ $('newRootBtn').onclick=()=>openDocDialog('root');
+ $('newSubBtn').onclick=()=>{
+  if(!currentGroupId){toast('请先在左侧选择一个大标题');return;}
+  openDocDialog('sub');
+ };
+ $('newDocBtn').onclick=()=>openDocDialog('document');
+ $('docDialogClose').onclick=$('docDialogCancel').onclick=()=>$('docDialog').close();
+ $('docDialogSave').onclick=saveDocDialog;
+ $('docNameInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();saveDocDialog();}};
+ $('renameDocBtn').onclick=()=>{
+  const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
+  if(ep)openDocDialog('rename-document',ep.id,ep.title);
+ };
+ $('moveDocBtn').onclick=async()=>{
+  const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
+  if(!ep)return;
+  const groups=state.project.groups||[];
+  const names=['根目录',...groups.map(g=>(g.parentId?'　↳ ':'')+g.title)];
+  const response=prompt('输入目标目录的序号（原文不变）：\n'+names.map((name,i)=>i+'．'+name).join('\n'),'0');
+  if(response===null)return;
+  if(!/^\d+$/.test(response)||Number(response)>=names.length){toast('请输入有效目录序号');return;}
+  const groupId=Number(response)===0?null:groups[Number(response)-1].id;
+  const result=await update(api.moveDocument({id:ep.id,groupId}),'文档已移动');
+  if(result){currentGroupId=groupId;render();}
+ };
  $('pasteBtn').onclick=$('emptyPasteBtn').onclick=()=>{$('importDialog').showModal();$('importText').focus();};
  $('submitImportBtn').onclick=importPrompt;
  $('closeImportBtn').onclick=()=>$('importDialog').close();
@@ -258,6 +292,7 @@ function wire(){
  $('renameBtn').onclick=async()=>{await update(api.rename($('projectTitle').value),'项目名称已保存');};
  $('projectTitle').addEventListener('keydown',e=>{if(e.key==='Enter')$('renameBtn').click();});
  $('filterEpisodes').addEventListener('input',e=>{currentFilter=e.target.value.trim().toLowerCase();drawSidebar();});
+ $('episodeList').addEventListener('click',()=>{});
  $('exportBtn').onclick=async()=>{const r=await update(api.exportEpisode(activeEpisodeId));if(r)status(`已导出本集：${r.images} 张参考图，缺少 ${r.missing} 处，失败 ${r.errors.length} 处；结果已打开。`,r.errors.length?'error':'ok');};
  $('removeBtn').onclick=async()=>{const e=state.project.episodes.find(x=>x.id===activeEpisodeId);if(!e)return;if(!confirm('确定从项目中删除「'+e.title+'」吗？这不会删除原始图片。'))return;await update(api.removeEpisode(e.id),'已从项目中删除剧集');};
  $('closeEditBtn').onclick=()=>$('editDialog').close();
