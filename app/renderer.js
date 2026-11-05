@@ -118,6 +118,7 @@ async function importPrompt(){const text=$('importText').value;if(!text.trim()){
  if(result){$('importDialog').close();$('importText').value='';activeEpisodeId=result.data.project.episodes.at(-result.added)?.id||null;render();status(`成功加入 ${result.added} 集，共 ${result.segments} 个片段；完整原文已保存。`,'ok');}
 }
 function wire(){
+ $('edgeAccountBtn').onclick=async()=>{try{await api.showEdgeAccounts();}catch(e){toast('打开账号小窗失败：'+e.message);}};
  $('sidebarToggle').onclick=()=>{
   const root=$('app');
   root.classList.toggle('sidebar-collapsed');
