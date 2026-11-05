@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "AI漫剧工作台 · Edge连接器",
+  "version": "0.2.0",
+  "description": "将本地工作台选中的提示词填入当前 Edge 用户的豆包输入框；不会自动点击生成。",
+  "permissions": [
+    "storage",
+    "tabs",
+    "windows"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "连接AI漫剧工作台",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://doubao.com/*",
+        "https://*.doubao.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
