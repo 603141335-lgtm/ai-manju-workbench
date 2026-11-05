@@ -80,8 +80,9 @@ async function refresh(){
  try{
   state=await api.get();
   if(!selected||!state.profiles.some(p=>p.id===selected)){
-    selected=state.connection?.selectedProfile||
-      state.profiles[0]?.id||null;
+    // Never silently assign the first browser profile: user must explicitly choose once.
+    const stored=state.connection?.selectedProfile;
+    selected=state.profiles.some(p=>p.id===stored)?stored:null;
   }
   if(selected&&state.connection?.selectedProfile!==selected)
     state=await api.selectProfile(selected);
