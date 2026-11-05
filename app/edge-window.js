@@ -1,5 +1,6 @@
 'use strict';
-const {BrowserWindow,ipcMain,app}=require('electron');
+const {BrowserWindow,ipcMain,app,dialog,shell}=require('electron');
+const {createWatcher}=require('./edge-downloads');
 const path=require('path');
 const edge=require('./edge-profiles');
 const ledger=require('./edge-ledger');
@@ -10,7 +11,20 @@ function setupEdgeWindow(parent){
   const fs=require('fs');
   let tasks=ledger.loadLedger(dataFile);
   const save=()=>ledger.saveLedger(dataFile,tasks);
-  const summary=()=>({profiles:edge.discoverProfiles(),records:tasks});
+  const dlConfig=path.join(app.getPath('userData'),'edge-lite-download-config.json');
+  let config={source:app.getPath('downloads'),root:path.join(app.getPath('videos'),'AI漫剧成片')};
+  try{config={...config,...JSON.parse(fs.readFileSync(dlConfig,'utf8'))};}catch{}
+  fs.mkdirSync(config.root,{recursive:true});
+  let watcher;
+  let notices=[];
+  const note=e=>{notices.unshift({...e,at:new Date().toISOString()});notices=notices.slice(0,25);};
+  function monitor(){
+    if(watcher)watcher.stop();
+    watcher=createWatcher({source:config.source,notify:note});
+    watcher.start();
+  }
+  monitor();
+  const summary=()=>({profiles:edge.discoverProfiles(),records:tasks,downloads:{...config,...watcher.get(),notices}});
   ipcMain.handle('edge-lite:get',()=>summary());
   ipcMain.handle('edge-lite:launch',async(_,id)=>{
     const known=edge.discoverProfiles().find(x=>x.id===id);
@@ -33,7 +47,24 @@ function setupEdgeWindow(parent){
     for(const t of tasks)if(t.profileId===profileId&&t.status==='submitted')t.status='reset';
     save();return summary();
   });
-  let bounds={width:350,height:600};
+  ipcMain.handle('edge-lite:choose-downloads',async()=>{
+    const result=await dialog.showOpenDialog(accountWindow,{properties:['openDirectory'],title:'选择 Edge 插件实际保存视频的目录'});
+    if(!result.canceled&&result.filePaths[0]){config.source=result.filePaths[0];fs.writeFileSync(dlConfig,JSON.stringify(config));monitor();}
+    return summary();
+  });
+  ipcMain.handle('edge-lite:choose-archive',async()=>{
+    const result=await dialog.showOpenDialog(accountWindow,{properties:['openDirectory','createDirectory'],title:'选择视频归档总目录'});
+    if(!result.canceled&&result.filePaths[0]){config.root=result.filePaths[0];fs.writeFileSync(dlConfig,JSON.stringify(config));}
+    return summary();
+  });
+  ipcMain.handle('edge-lite:arm-download',(_,id)=>{
+    const t=tasks.find(x=>x.id===id&&x.status==='submitted');
+    if(!t)throw Error('请先登记一次生成并选择对应段落');
+    watcher.arm(t,config.root);return summary();
+  });
+  ipcMain.handle('edge-lite:cancel-download',()=>{watcher.disarm();return summary();});
+  ipcMain.handle('edge-lite:open-archive',async()=>{await shell.openPath(config.root);return summary();});
+  let bounds={width:380,height:740};
   try{
     const saved=JSON.parse(fs.readFileSync(settingsFile,'utf8'));
     if(saved.width>=300&&saved.height>=360)bounds={...bounds,...saved};
@@ -48,7 +79,7 @@ function setupEdgeWindow(parent){
   accountWindow.on('close',()=>{
     try{fs.writeFileSync(settingsFile,JSON.stringify(accountWindow.getBounds()));}catch{}
   });
-  accountWindow.on('closed',()=>{accountWindow=null;});
+  accountWindow.on('closed',()=>{watcher.stop();accountWindow=null;});
   return accountWindow;
 }
 module.exports={setupEdgeWindow};
