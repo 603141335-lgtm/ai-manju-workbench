@@ -65,22 +65,54 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,5));
  copy.click();await tick();
  assert.equal(api.lastCopied,state.project.episodes[0].segments[1].text,'Copies complete second segment');
  assert.equal(galleries[1].querySelectorAll('.image-tile.selected').length,0,'Copy clears old image selection');
- const range=document.getElementById('panelSize');
- range.value='240';range.dispatchEvent(new window.Event('input',{bubbles:true}));
- for(const pane of document.querySelectorAll('.segment-workarea'))assert.equal(pane.style.height,'240px');
- const create=async(btn,title)=>{
-  document.getElementById(btn).click();
+ // Drag the native-feeling vertical divider to resize the document outline.
+ assert.equal(document.getElementById('panelSize'),null,'No toolbar slider');
+ const side=document.getElementById('sidebarResize');
+ assert(side,'sidebar resize divider exists');
+ side.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,button:0,clientX:264}));
+ window.dispatchEvent(new window.MouseEvent('pointermove',{bubbles:true,clientX:340}));
+ window.dispatchEvent(new window.MouseEvent('pointerup',{bubbles:true}));
+ assert.equal(document.querySelector('.sidebar').style.flexBasis,'340px');
+ // Drag the upper/lower pane divider; also drag the total height handle.
+ const pane=document.querySelector('.segment-workarea');
+ const split=document.querySelector('.pane-divider');
+ assert(split,'Prompt/image resize divider exists');
+ split.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,button:0,clientY:100}));
+ window.dispatchEvent(new window.MouseEvent('pointermove',{bubbles:true,clientY:110}));
+ window.dispatchEvent(new window.MouseEvent('pointerup',{bubbles:true}));
+ assert(pane.dataset.promptRatio&&pane.style.gridTemplateRows.includes('8px'));
+ const handle=document.querySelector('.workarea-height-handle');
+ handle.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,button:0,clientY:100}));
+ window.dispatchEvent(new window.MouseEvent('pointermove',{bubbles:true,clientY:140}));
+ window.dispatchEvent(new window.MouseEvent('pointerup',{bubbles:true}));
+ for(const p of document.querySelectorAll('.segment-workarea'))assert.equal(p.style.height,'380px','Both panes grow together');
+ const create=async(label,title)=>{
+  const menu=document.getElementById('treeMenu');
+  const action=[...menu.querySelectorAll('button')].find(b=>b.textContent.includes(label));
+  assert(action,'Menu must include '+label);
+  action.click();
   document.getElementById('docNameInput').value=title;
   document.getElementById('docDialogSave').click();await tick();
  };
- await create('newRootBtn','《食神小祖宗》大剧本');
+ assert(!document.getElementById('newRootBtn'),'Top row create buttons have been removed');
+ document.getElementById('rootMenuBtn').click();
+ await create('新建大标题','《食神小祖宗》大剧本');
  assert.equal(state.project.groups[0].title,'《食神小祖宗》大剧本');
- document.querySelector('.tree-group-title.root').click();
- await create('newSubBtn','1-10集提示词');
+ const rootGroup=document.querySelector('.tree-group-title.root');
+ rootGroup.parentElement.querySelector('.tree-ellipsis').click();
+ await create('创建小标题','1-10集提示词');
  assert.equal(state.project.groups[1].parentId,state.project.groups[0].id);
- document.querySelector('.tree-group-title.sub').click();
- await create('newDocBtn','第11集');
+ const sub=document.querySelector('.tree-group-title.sub');
+ sub.parentElement.querySelector('.tree-ellipsis').click();
+ await create('创建文档','第11集');
  assert.equal(state.project.episodes.at(-1).groupId,state.project.groups[1].id);
  assert(document.querySelectorAll('.doc-tree-row').length>=3);
- console.log('PASS document UI: tree buttons, no Edge UI, complete copy, scoped selections, sync resizing');
+ // The document has an independent three-dot menu and can be renamed.
+ const created=[...document.querySelectorAll('.doc-tree-row')]
+   .find(row=>row.textContent.includes('第11集'));
+ assert(created,'new document is displayed in the left tree');
+ created.querySelector('.tree-ellipsis').click();
+ await create('重命名文档','第11集｜新标题');
+ assert.equal(state.project.episodes.at(-1).title,'第11集｜新标题');
+ console.log('PASS document UI: 3-dot menus, drag dividers, text-image selection isolation, complete copy');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>dom.window.close());
