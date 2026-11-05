@@ -4,6 +4,27 @@ const doc=(tag,cls,text)=>{const a=document.createElement(tag);if(cls)a.classNam
 const api=window.manju;
 let state={project:{episodes:[],chosenPaths:{}},assetList:[],scanStats:{}},activeEpisodeId=null,editTarget=null,codesTarget=null,selectedImages=new Map(),currentFilter='';
 let toastTimer=null;
+let currentGroupId=null,expandedGroups=new Set(),collapsedDocs=new Set(),docAction=null;
+const segmentPanelSize=()=>Math.max(220,Math.min(720,Number(localStorage.getItem('manju-pane-size')||340)));
+function clearTextSelection(){try{window.getSelection()?.removeAllRanges();}catch{}}
+function clearOtherImageSelections(keep=null){
+ for(const id of [...selectedImages.keys()])if(id!==keep)selectedImages.delete(id);
+ document.querySelectorAll('.segment .gallery').forEach(g=>{
+  if(g.dataset.segmentId!==keep){g.querySelectorAll('.image-tile.selected').forEach(t=>t.classList.remove('selected'));
+    const n=g.closest('.segment')?.querySelector('.selected-count');if(n)n.textContent='已选择 0 张';}
+ });
+}
+function selectTextIn(block){
+ clearOtherImageSelections();clearTextSelection();
+ const range=document.createRange();range.selectNodeContents(block);
+ const selection=window.getSelection();selection.addRange(range);block.focus({preventScroll:true});
+}
+function selectImagesIn(seg,gallery){
+ clearTextSelection();clearOtherImageSelections(seg.id);
+ selectedImages.set(seg.id,new Set(chosenForSegment(seg).map(a=>a.id)));
+ refreshSelected(gallery,seg);gallery.focus({preventScroll:true});
+}
+
 function toast(message){const el=$('toast');el.textContent=message;el.classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add('hidden'),5500);}
 function status(message,type='info'){$('status').textContent=message;$('status').className='status '+type;}
 function assetFor(code){const group=state.assetList.find(a=>a.code===code);if(!group)return null;const p=state.project.chosenPaths?.[code];return group.items.find(a=>a.path===p)||group.items[0]||null;}
@@ -12,16 +33,106 @@ function chosenForSegment(seg){return seg.codes.map(c=>assetFor(c)).filter(Boole
 function elBtn(label,click,className='secondary'){const b=doc('button',className,label);b.addEventListener('click',click);return b;}
 async function update(promise,msg){try{const result=await promise;if(result?.project){state=result;}else if(result?.data?.project){state=result.data;}if(msg)toast(msg);render();return result;}catch(e){status('操作失败：'+e.message,'error');toast('操作失败：'+e.message);return null;}}
 function drawSidebar(){
- $('projectTitle').value=state.project.title; const e=state.project.episodes; const total=e.reduce((n,p)=>n+p.segments.length,0);
- $('projectStats').textContent=`${e.length} 集 · ${total} 段`; $('episodeCount').textContent=e.length+' 集';
- const box=$('episodeList');box.replaceChildren();let count=0;
- for(const episode of e){if(currentFilter&&!episode.title.toLowerCase().includes(currentFilter)&&!String(episode.number||'').includes(currentFilter))continue;count++;
-  const b=doc('button','episode-item'+(episode.id===activeEpisodeId?' selected':''));
-  const name=doc('div','',episode.title.length>42?episode.title.slice(0,40)+'…':episode.title);name.title=episode.title;
-  const desc=doc('span','small',`${episode.segments.length} 个片段 · ${[...new Set(episode.segments.flatMap(s=>s.codes))].length} 种参考图`);
-  b.append(name,desc);b.addEventListener('click',()=>{activeEpisodeId=episode.id;render();$('.main')?.scrollTo({top:0,behavior:'instant'});});box.append(b);
+ const episodes=state.project.episodes||[],groups=state.project.groups||[];
+ const total=episodes.reduce((n,e)=>n+e.segments.length,0);
+ $('projectTitle').value=state.project.title;
+ $('projectStats').textContent=episodes.length+' 份文档 · '+total+' 段';
+ $('episodeCount').textContent=episodes.length+' 份';
+ const selected=groups.find(g=>g.id===currentGroupId);
+ $('currentGroupHint').textContent='当前位置：'+(selected?selected.title:'根目录');
+ const tree=$('episodeList');tree.replaceChildren();
+ const query=currentFilter;
+ function matchesEpisode(ep){
+  return !query||ep.title.toLowerCase().includes(query)||
+    String(ep.number??'').includes(query)||
+    ep.segments.some(s=>String(s.title).toLowerCase().includes(query));
  }
- if(!count)box.append(doc('div','muted tiny','没有符合条件的剧集'));
+ function section(label){const el=doc('div','tree-section-label',label);tree.append(el);}
+ function renderDocument(ep,depth){
+  const row=doc('div','doc-tree-row doc-depth-'+depth+(ep.id===activeEpisodeId?' selected':''));
+  row.setAttribute('role','treeitem');
+  const caret=elBtn(collapsedDocs.has(ep.id)?'▸':'▾',()=>{
+    if(collapsedDocs.has(ep.id))collapsedDocs.delete(ep.id);else collapsedDocs.add(ep.id);
+    drawSidebar();
+  },'tree-caret');
+  row.append(caret);
+  const item=elBtn('▤ '+ep.title,()=>{
+    activeEpisodeId=ep.id;currentGroupId=ep.groupId||null;
+    clearOtherImageSelections();clearTextSelection();
+    render();document.querySelector('.main')?.scrollTo({top:0,behavior:'instant'});
+  },'tree-doc-title');
+  item.title=ep.title;row.append(item);
+  const edit=elBtn('⋯',()=>openDocDialog('rename-document',ep.id,ep.title),'tree-ellipsis');
+  edit.title='重命名文档';row.append(edit);tree.append(row);
+  if(!collapsedDocs.has(ep.id)){
+   for(const seg of ep.segments){
+    const leaf=elBtn('↳ 第'+seg.n+'段 '+(seg.title||''),()=>{
+      activeEpisodeId=ep.id;currentGroupId=ep.groupId||null;
+      clearOtherImageSelections();render();
+      requestAnimationFrame(()=>document.querySelector('[data-segment-id="'+seg.id+'"]')?.scrollIntoView({block:'start',behavior:'smooth'}));
+    },'tree-segment doc-depth-'+(depth+1));
+    leaf.title='跳转到第'+seg.n+'段';tree.append(leaf);
+   }
+  }
+ }
+ function renderGroup(g,depth=0){
+  const children=groups.filter(x=>x.parentId===g.id);
+  const docs=episodes.filter(x=>x.groupId===g.id&&matchesEpisode(x));
+  const matched=!query||g.title.toLowerCase().includes(query)||
+    docs.length||children.some(c=>c.title.toLowerCase().includes(query)||
+      episodes.some(ep=>ep.groupId===c.id&&matchesEpisode(ep)));
+  if(!matched)return;
+  const expanded=!expandedGroups.has(g.id)||!!query;
+  const row=doc('div','doc-tree-row doc-depth-'+depth+(currentGroupId===g.id?' group-selected':''));
+  row.setAttribute('role','treeitem');
+  row.append(elBtn(expanded?'▾':'▸',()=>{
+    if(expandedGroups.has(g.id))expandedGroups.delete(g.id);else expandedGroups.add(g.id);
+    drawSidebar();
+  },'tree-caret'));
+  const title=elBtn((depth===0?'▣ ':'▤ ')+g.title,()=>{
+    currentGroupId=g.id;drawSidebar();
+  },'tree-group-title'+(depth===0?' root':' sub'));
+  title.title=g.title;row.append(title);
+  const rename=elBtn('⋯',()=>openDocDialog('rename-group',g.id,g.title),'tree-ellipsis');
+  rename.title='重命名标题';row.append(rename);tree.append(row);
+  if(expanded){
+    for(const child of children)renderGroup(child,depth+1);
+    for(const ep of docs)renderDocument(ep,depth+1);
+  }
+ }
+ for(const group of groups.filter(g=>!g.parentId))renderGroup(group);
+ const ungrouped=episodes.filter(ep=>!ep.groupId&&matchesEpisode(ep));
+ if(ungrouped.length){section('未分类文档');for(const ep of ungrouped)renderDocument(ep,0);}
+ if(!tree.children.length)tree.append(doc('div','muted tiny','还没有文档。先创建标题或导入提示词。'));
+}
+function openDocDialog(action,id=null,title=''){
+ docAction={action,id};
+ $('docDialogTitle').textContent={
+  root:'新建大标题',sub:'新建小标题',document:'新建文档',
+  'rename-group':'重命名标题','rename-document':'重命名文档'
+ }[action]||'文档';
+ $('docNameInput').value=title;
+ $('docDialogHelp').textContent=action==='document'?'文档创建后可继续编辑提示词、导入参考图。':
+    '大标题、小标题只用于管理目录，不会改变已有提示词。';
+ $('docDialog').showModal();$('docNameInput').focus();$('docNameInput').select();
+}
+async function saveDocDialog(){
+ if(!docAction)return;
+ const name=$('docNameInput').value.trim();
+ if(!name){toast('请输入标题名称');return;}
+ const {action,id}=docAction;
+ let result;
+ if(action==='root')result=await update(api.createGroup({title:name,parentId:null}),'大标题已创建');
+ else if(action==='sub'){
+  const group=(state.project.groups||[]).find(g=>g.id===currentGroupId);
+  if(!group){toast('先在左侧选择大标题');return;}
+  result=await update(api.createGroup({title:name,parentId:group.parentId||group.id}),'小标题已创建');
+ }else if(action==='document'){
+  result=await update(api.createDocument({title:name,groupId:currentGroupId}),'新文档已创建');
+  if(result?.episode){activeEpisodeId=result.episode.id;render();}
+ }else if(action==='rename-group')result=await update(api.renameGroup({id,title:name}),'标题已修改');
+ else if(action==='rename-document')result=await update(api.renameDocument({id,title:name}),'文档名称已修改');
+ if(result){$('docDialog').close();docAction=null;}
 }
 function drawFolder(){
  const f=state.project.assetFolder;
