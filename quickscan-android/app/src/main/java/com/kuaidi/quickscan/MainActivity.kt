@@ -12,6 +12,9 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.speech.tts.TextToSpeech
+import android.os.Vibrator
+import android.os.VibrationEffect
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -38,10 +41,10 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity:ComponentActivity(){
-  private val primary=Color.rgb(72,89,224)
-  private val ink=Color.rgb(36,46,66)
-  private val muted=Color.rgb(128,142,166)
-  private val canvasColor=Color.rgb(247,248,252)
+  private val primary=Color.rgb(40,100,213)
+  private val ink=Color.rgb(26,42,65)
+  private val muted=Color.rgb(116,132,155)
+  private val canvasColor=Color.rgb(244,247,253)
   private lateinit var db:ScanDb
   private lateinit var page:LinearLayout
   private var activeBatch=0L
@@ -58,30 +61,46 @@ class MainActivity:ComponentActivity(){
   private var autoPhoto=false
   private var duplicates=false
   private var flashlight=false
+  private var voiceEnabled=true
+  private var vibrationEnabled=true
+  private var voice:TextToSpeech?=null
+  private var speechReady=false
+  private var exportDetail=true
   private val barcodeScanner by lazy { BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(
     Barcode.FORMAT_CODE_128,Barcode.FORMAT_CODE_39,Barcode.FORMAT_CODE_93,Barcode.FORMAT_ITF,
     Barcode.FORMAT_EAN_13,Barcode.FORMAT_EAN_8,Barcode.FORMAT_UPC_A,Barcode.FORMAT_UPC_E,Barcode.FORMAT_CODABAR
   ).build()) }
   private val permissionRequest=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->
-    if(granted)showScan() else toast("请允许相机权限才能扫码拍照")
+    if(granted)showScan() else {toast("请允许相机权限才能扫码拍照");announce("failure")}
   }
-  private val exportRequest=registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")){uri->
-    if(uri!=null)try{
-      val output=contentResolver.openOutputStream(uri)
-      if(output==null){toast("文件写入失败");return@registerForActivityResult}
-      output.bufferedWriter(Charsets.UTF_8).use{w->
-        w.write("\uFEFF序号,快递单号,扫描时间,备注,照片状态\r\n")
-        db.all(if(activeBatch>0)activeBatch else null).reversed().forEachIndexed{idx,row->
-          val safeCode=if(row.code.isBlank())"" else "=\""+row.code.replace("\"","")+"\""
-          w.write(listOf((idx+1).toString(),csv(safeCode),csv(formatTime(row.time)),csv(row.note),csv(if(row.photo.isEmpty())"无" else "有")).joinToString(",")+"\r\n")
+  private val exportRequest=registerForActivityResult(ActivityResultContracts.CreateDocument(
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")){uri->
+    if(uri!=null){
+      val batch=activeBatch
+      val detail=exportDetail
+      Thread{
+        try{
+          val rows=db.all(if(batch>0)batch else null).asReversed()
+          val output=contentResolver.openOutputStream(uri)?:throw IllegalStateException("无法写入文件")
+          output.use{XlsxWriter.write(it,rows,detail)}
+          runOnUiThread{toast("✓ Excel导出成功 · "+rows.size+"条")}
+        }catch(e:Exception){
+          runOnUiThread{toast("Excel导出失败："+e.message);announce("failure")}
         }
-      }
-      toast("已导出 CSV")
-    }catch(e:Exception){toast("导出失败："+e.message)}
+      }.start()
+    }
   }
   override fun onCreate(savedInstanceState:Bundle?){
     super.onCreate(savedInstanceState)
     db=ScanDb(this)
+    voiceEnabled=getPreferences(MODE_PRIVATE).getBoolean("voiceEnabled",true)
+    vibrationEnabled=getPreferences(MODE_PRIVATE).getBoolean("vibrationEnabled",true)
+    voice=TextToSpeech(this){status->
+      if(status==TextToSpeech.SUCCESS){
+        val result=voice?.setLanguage(Locale.SIMPLIFIED_CHINESE)
+        speechReady=result!=null && result!=TextToSpeech.LANG_MISSING_DATA && result!=TextToSpeech.LANG_NOT_SUPPORTED
+      }
+    }
     val first=db.batches().firstOrNull()
     activeBatch=first?.id?:0L
     batchName=first?.name?:""
@@ -91,6 +110,8 @@ class MainActivity:ComponentActivity(){
     stopCamera()
     if(executor.isShutdown.not())executor.shutdown()
     if(barcodeScanner!=null)barcodeScanner.close()
+    voice?.stop()
+    voice?.shutdown()
     db.close()
     super.onDestroy()
   }
@@ -103,13 +124,13 @@ class MainActivity:ComponentActivity(){
   private fun container(vertical:Boolean=true)=LinearLayout(this).apply{orientation=if(vertical)LinearLayout.VERTICAL else LinearLayout.HORIZONTAL}
   private fun margins(bottom:Int=11)=LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(bottom)}
   private fun button(t:String,main:Boolean=false,action:()->Unit)=label(t,14f,if(main)Color.WHITE else primary,true).apply{
-    gravity=Gravity.CENTER;background=shape(if(main)primary else Color.rgb(238,240,255),12)
-    setPadding(dp(11),dp(13),dp(11),dp(13));setOnClickListener{action()}
+    gravity=Gravity.CENTER;background=shape(if(main)primary else Color.rgb(231,240,255),14)
+    setPadding(dp(11),dp(14),dp(11),dp(14));setOnClickListener{action()}
   }
   private fun card():LinearLayout=container().apply{
     setPadding(dp(16),dp(15),dp(16),dp(15))
-    background=shape(Color.WHITE,18)
-    elevation=dp(2).toFloat()
+    background=shape(Color.WHITE,20)
+    elevation=dp(1).toFloat()
     page.addView(this,margins(13))
   }
   private fun pair(box:LinearLayout,a:View,b:View){
@@ -127,27 +148,60 @@ class MainActivity:ComponentActivity(){
     val root=container().apply{setBackgroundColor(canvasColor)}
     setContentView(root)
     val header=container().apply{
-      background=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,intArrayOf(Color.rgb(65,166,241),primary))
-      setPadding(dp(19),dp(22),dp(19),dp(20))
+      background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(22,49,106),Color.rgb(44,102,210)))
+      setPadding(dp(19),dp(20),dp(19),dp(21))
     }
-    header.addView(label(title,23f,Color.WHITE,true))
-    header.addView(label(sub,12f,Color.rgb(232,241,255)))
+    val heading=container(false).apply{gravity=Gravity.CENTER_VERTICAL}
+    val icon=ImageView(this).apply{setImageResource(R.drawable.ic_quickscan_launcher)}
+    heading.addView(icon,LinearLayout.LayoutParams(dp(46),dp(46)).apply{rightMargin=dp(12)})
+    val labels=container()
+    labels.addView(label(title,22f,Color.WHITE,true),margins(2))
+    labels.addView(label(sub,12f,Color.rgb(211,228,255)))
+    heading.addView(labels,LinearLayout.LayoutParams(0,-2,1f))
+    header.addView(heading)
     root.addView(header)
-    val scroller=ScrollView(this).apply{isFillViewport=true}
-    page=container().apply{setPadding(dp(13),dp(16),dp(13),dp(6))}
+    val scroller=ScrollView(this).apply{isFillViewport=true;isVerticalScrollBarEnabled=false}
+    page=container().apply{setPadding(dp(14),dp(16),dp(14),dp(8))}
     scroller.addView(page)
     root.addView(scroller,LinearLayout.LayoutParams(-1,0,1f))
     val navigation=container(false).apply{
-      setBackgroundColor(Color.WHITE);setPadding(dp(7),dp(7),dp(7),dp(8))
+      setBackgroundColor(Color.WHITE);setPadding(dp(8),dp(7),dp(8),dp(9))
     }
-    listOf("批次" to "home","扫码" to "scan","查件" to "search","设置" to "settings").forEach{(text,tag)->
-      val item=label(text,14f,if(currentPage==tag)primary else muted,currentPage==tag).apply{
-        gravity=Gravity.CENTER;setPadding(0,dp(12),0,dp(12))
+    listOf("▦ 批次" to "home","▥ 扫码" to "scan","⌕ 查件" to "search","⚙ 设置" to "settings").forEach{(title,tag)->
+      val active=currentPage==tag
+      val view=label(title,13f,if(active)primary else muted,active).apply{
+        gravity=Gravity.CENTER;setPadding(dp(1),dp(12),dp(1),dp(12))
+        if(active)background=shape(Color.rgb(234,242,255),14)
         setOnClickListener{when(tag){"home"->showHome();"scan"->showScan();"search"->showSearch();else->showSettings()}}
       }
-      navigation.addView(item,LinearLayout.LayoutParams(0,-2,1f))
+      navigation.addView(view,LinearLayout.LayoutParams(0,-2,1f).apply{leftMargin=dp(3);rightMargin=dp(3)})
     }
     root.addView(navigation)
+  }
+  private fun announce(kind:String){
+    val phrase=when(kind){"success"->"成功";"duplicate"->"重复";else->"失败"}
+    if(vibrationEnabled){
+      try{(getSystemService(VIBRATOR_SERVICE) as Vibrator)
+        .vibrate(VibrationEffect.createOneShot(if(kind=="success")65L else 160L,85))}
+      catch(_:Exception){}
+    }
+    if(!voiceEnabled)return
+    if(speechReady){
+      try{
+        voice?.speak(phrase,TextToSpeech.QUEUE_FLUSH,null,"scan_"+System.currentTimeMillis())
+        return
+      }catch(_:Exception){}
+    }
+    try{
+      val tone=ToneGenerator(AudioManager.STREAM_MUSIC,85)
+      val which=when(kind){
+        "success"->ToneGenerator.TONE_PROP_ACK
+        "duplicate"->ToneGenerator.TONE_PROP_NACK
+        else->ToneGenerator.TONE_SUP_ERROR
+      }
+      tone.startTone(which,if(kind=="success")160 else 300)
+      android.os.Handler(mainLooper).postDelayed({tone.release()},400)
+    }catch(_:Exception){}
   }
   private fun toast(t:String)=Toast.makeText(this,t,Toast.LENGTH_SHORT).show()
   private fun formatTime(t:Long)=SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.CHINA).format(Date(t))
@@ -180,7 +234,7 @@ class MainActivity:ComponentActivity(){
     currentPage="home";stopCamera();shell("快递快扫","离线扫码 · 一键拍照 · 批次登记")
     val intro=card()
     intro.addView(label("今日快递登记",20f,ink,true),margins(5))
-    intro.addView(label("仅识别一维条形码，不识别二维码",12f,muted),margins(14))
+    intro.addView(label("仅识别快递一维条形码 · 离线保存 · 语音播报",12f,muted),margins(14))
     pair(intro,button("＋ 新建批次",true){
       prompt("新建批次","例如 "+today(),today()){name->
         if(name.isNotEmpty()){activeBatch=db.newBatch(name);batchName=name;showBatch()}
@@ -188,7 +242,8 @@ class MainActivity:ComponentActivity(){
     },button("开始扫码"){selectBatch{showScan()}})
     val batches=db.batches()
     val stat=card()
-    stat.addView(label(batches.size.toString()+" 个批次 · "+batches.sumOf{it.count}+" 条记录",17f,primary,true))
+    stat.addView(label("📦  "+batches.size+" 个批次",17f,ink,true),margins(4))
+    stat.addView(label("累计登记 "+batches.sumOf{it.count}+" 条快递记录",14f,primary,true))
     val list=card()
     list.addView(label("历史批次",18f,ink,true),margins(12))
     if(batches.isEmpty())list.addView(label("还没有记录，创建批次即可开始",14f,muted))
@@ -207,7 +262,7 @@ class MainActivity:ComponentActivity(){
     currentPage="home";stopCamera();shell("批次 "+batchName,"查看记录 · 导出表格")
     val summary=card()
     summary.addView(label(db.all(activeBatch).size.toString()+" 条记录",22f,primary,true),margins(13))
-    pair(summary,button("连续扫码",true){showScan()},button("导出 CSV"){exportBatch()})
+    pair(summary,button("连续扫码",true){showScan()},button("导出 Excel"){exportBatch()})
     pair(summary,button("拍照留底"){showScan();toast("点击扫码页的拍照按钮")},button("手动录入"){
       prompt("录入快递单号","快递单条码下方数字"){addCode(it)}
     })
@@ -261,7 +316,8 @@ class MainActivity:ComponentActivity(){
     if(activeBatch==0L){selectBatch{showScan()};return}
     currentPage="scan";stopCamera();shell("连续扫码 · "+batchName,"一维条形码专用 · 扫不上就拍照")
     val box=card()
-    box.addView(label("将快递条形码放入取景框",16f,ink,true),margins(10))
+    box.addView(label("▥  对准快递条形码",17f,ink,true),margins(5))
+    box.addView(label("成功读“成功” · 重复读“重复”",12f,muted),margins(11))
     val view=PreviewView(this).apply{
       scaleType=PreviewView.ScaleType.FILL_CENTER
       background=shape(Color.rgb(28,34,50),15)
@@ -318,7 +374,7 @@ class MainActivity:ComponentActivity(){
         val analyzer=ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
         analyzer.setAnalyzer(executor){proxy->analyze(proxy)}
         camera=p.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,imageCapture,analyzer)
-      }catch(e:Exception){toast("相机启动失败："+e.message)}
+      }catch(e:Exception){toast("相机启动失败："+e.message);announce("failure")}
     },ContextCompat.getMainExecutor(this))
   }
   @androidx.camera.core.ExperimentalGetImage
@@ -338,22 +394,18 @@ class MainActivity:ComponentActivity(){
   }
   private fun valid(v:String)=v.matches(Regex("[A-Za-z0-9_-]{6,80}"))
   private fun addCode(raw:String){
-    if(activeBatch==0L){toast("请先新建批次");return}
+    if(activeBatch==0L){toast("请先新建批次");announce("failure");return}
     val code=raw.trim().replace(" ","")
-    if(!valid(code)){toast("请输入有效的快递单号");return}
-    if(!duplicates&&db.duplicate(activeBatch,code)){toast("⚠ 重复件："+code);return}
+    if(!valid(code)){toast("请输入有效的快递单号");announce("failure");return}
+    if(!duplicates&&db.duplicate(activeBatch,code)){toast("⚠ 重复件："+code);announce("duplicate");return}
     val saved=db.save(activeBatch,code)
-    try{
-      ToneGenerator(AudioManager.STREAM_NOTIFICATION,55).apply{
-        startTone(ToneGenerator.TONE_PROP_BEEP,75);release()
-      }
-    }catch(_:Exception){}
+    announce("success")
     toast("✓ 已登记："+code);updateRecent()
     if(autoPhoto)takePhoto(saved)
   }
   private fun takePhoto(forRow:Long?=null){
     val capture=imageCapture
-    if(capture==null){toast("相机启动中，请稍后再拍");return}
+    if(capture==null){toast("相机启动中，请稍后再拍");announce("failure");return}
     val dir=File(filesDir,"photos").apply{mkdirs()}
     val file=File(dir,"scan_"+System.currentTimeMillis()+"_"+(100..999).random()+".jpg")
     capture.takePicture(
@@ -365,7 +417,7 @@ class MainActivity:ComponentActivity(){
           else if(activeBatch!=0L)db.save(activeBatch,"",file.absolutePath)
           toast("照片已保存，可随时补录");updateRecent()
         }
-        override fun onError(exception:ImageCaptureException){toast("拍照失败："+exception.message)}
+        override fun onError(exception:ImageCaptureException){toast("拍照失败："+exception.message);announce("failure")}
       }
     )
   }
@@ -397,20 +449,47 @@ class MainActivity:ComponentActivity(){
     toast("已复制，可粘贴到腾讯文档")
   }
   private fun exportBatch(){
-    if(activeBatch==0L){toast("请先新建批次");return}
-    exportRequest.launch("快递快扫_"+batchName+".csv")
+    if(activeBatch==0L){toast("请先新建批次");announce("failure");return}
+    AlertDialog.Builder(this).setTitle("导出 Excel 文件")
+      .setItems(arrayOf("完整明细：单号、时间、备注、照片状态","仅单号：方便粘贴到腾讯文档")){_,which->
+        exportDetail=which==0
+        val suffix=if(exportDetail)"完整明细" else "仅单号"
+        exportRequest.launch("快递快扫_"+batchName+"_"+suffix+".xlsx")
+      }.setNegativeButton("取消",null).show()
   }
   private fun showSettings(){
-    currentPage="settings";stopCamera();shell("设置与说明","完全免费 · 本机离线保存")
-    val card=card()
-    card.addView(label("快递快扫 v0.5",19f,ink,true),margins(9))
-    card.addView(label("只扫描常见快递一维条形码，自动排除 QR 二维码、Data Matrix、PDF417 等。",14f,muted))
+    currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
+    val info=card()
+    info.addView(label("快递快扫 v0.6",21f,ink,true),margins(8))
+    info.addView(label("只扫常见一维快递条形码 · 不识别二维码 · 不限次数",13f,muted))
+    val audio=card()
+    audio.addView(label("扫码声音",18f,ink,true),margins(6))
+    audio.addView(label("成功读“成功”，重复读“重复”，输入或拍照错误读“失败”",12f,muted),margins(8))
+    audio.addView(CheckBox(this).apply{
+      text="中文语音播报";isChecked=voiceEnabled
+      setOnCheckedChangeListener{_,enabled->
+        voiceEnabled=enabled;getPreferences(MODE_PRIVATE).edit().putBoolean("voiceEnabled",enabled).apply()
+      }
+    })
+    audio.addView(CheckBox(this).apply{
+      text="震动提示";isChecked=vibrationEnabled
+      setOnCheckedChangeListener{_,enabled->
+        vibrationEnabled=enabled;getPreferences(MODE_PRIVATE).edit().putBoolean("vibrationEnabled",enabled).apply()
+      }
+    })
+    audio.addView(button("测试声音：成功 / 重复 / 失败"){
+      announce("success")
+      android.os.Handler(mainLooper).postDelayed({announce("duplicate")},900)
+      android.os.Handler(mainLooper).postDelayed({announce("failure")},1800)
+    },margins(6))
+    audio.addView(label("如只有提示音没有中文播报，请检查手机TTS语音引擎和媒体音量。",12f,muted))
     val actions=card()
-    pair(actions,button("复制单号",true){copyCodes()},button("导出 CSV"){exportBatch()})
+    actions.addView(label("数据操作",18f,ink,true),margins(10))
+    pair(actions,button("复制单号",true){copyCodes()},button("导出 Excel"){exportBatch()})
     val help=card()
     help.addView(label("模糊条码怎么办？",17f,ink,true),margins(7))
-    help.addView(label("调整距离、角度或手电筒；无法识别时点击拍照留底，稍后可通过记录补录单号。",14f,muted),margins(9))
-    help.addView(label("数据保存在手机应用内部。卸载软件会删除记录和照片，重要数据请先导出；CSV 不包含照片文件本体。",13f,muted))
+    help.addView(label("调整距离、角度或打开手电筒；扫不出来就拍照留底，稍后打开记录补录单号。",14f,muted),margins(10))
+    help.addView(label("记录和照片保存在本机。Excel包含单号、时间、备注和照片状态，但不包含照片文件本体。卸载软件会清空应用内数据。",13f,muted),margins(10))
     help.addView(button("打开系统应用设置"){
       startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+packageName)))
     },margins(5))
