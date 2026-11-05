@@ -1,0 +1,27 @@
+name: v4 Lite Node regression
+on:
+  push:
+    branches:
+      - feature/v4-edge-lite
+  pull_request:
+    branches:
+      - main
+jobs:
+  node-regression:
+    name: Node tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parser regression
+        run: node tests/test_parser.js
+      - name: Edge profile and ledger tests
+        run: node tests/test_edge_lite.js
+      - name: Download safety tests
+        run: node tests/test_edge_downloads.js
