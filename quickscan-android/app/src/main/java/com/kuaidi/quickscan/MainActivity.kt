@@ -59,9 +59,7 @@ class MainActivity:ComponentActivity(){
   private var previewView:PreviewView?=null
   private val executor=Executors.newSingleThreadExecutor()
   private val strictGate=StrictBarcodeGate()
-  private var pendingCode:String?=null
-  private var confirmScanButton:TextView?=null
-  private var discardScanButton:TextView?=null
+  private var latestAcceptedCode=""
   private var scanRowsBox:LinearLayout?=null
   private var scanSearch:EditText?=null
   private var scanCount:TextView?=null
@@ -294,7 +292,7 @@ class MainActivity:ComponentActivity(){
     currentPage="home";stopCamera();shell("快递快扫","扫码登记 · 批次管理 · 直接查询")
     val intro=card()
     intro.addView(label("今天："+today(),21f,ink,true),margins(5))
-    intro.addView(label("只扫快递一维码 · 严格复核后入库",12f,muted),margins(14))
+    intro.addView(label("只扫快递一维码 · 快速自动登记",12f,muted),margins(14))
     pair(intro,button("＋ 新建批次",true){newBatchDialog{showScan()}},button("开始扫码"){selectBatch{showScan()}})
     val batches=db.batches()
     val stats=card()
@@ -496,27 +494,18 @@ class MainActivity:ComponentActivity(){
     latestStatusView?.text=status
     latestStatusView?.setTextColor(color)
   }
-  private fun clearCandidate(){
-    pendingCode=null
-    confirmScanButton?.visibility=View.GONE
-    discardScanButton?.visibility=View.GONE
-    strictGate.clearPending()
-    updateScanOutcome("等待识别…","将单张条形码放在框内，识别后核对单号",muted)
-  }
   private fun onStableCandidate(code:String){
-    if(currentPage!="scan"||captureBusy.get()||pendingCode!=null)return
+    if(currentPage!="scan"||captureBusy.get())return
     if(db.duplicate(activeBatch,code)){
-      updateScanOutcome(code,"重复单号 · 不会再次入库",Color.rgb(194,122,26))
+      updateScanOutcome(code,"重复单号 · 未再次保存",Color.rgb(185,119,37))
       val now=System.currentTimeMillis()
-      if(duplicateAnnounced!=code||now-duplicateTime>6500L){
-        duplicateAnnounced=code;duplicateTime=now;announce("duplicate")
+      if(duplicateAnnounced!=code||now-duplicateTime>1800L){
+        duplicateAnnounced=code;duplicateTime=now
+        announce("duplicate")
       }
       return
     }
-    pendingCode=code
-    updateScanOutcome(code,"待人工核对 · 尚未保存",Color.rgb(190,118,25))
-    confirmScanButton?.visibility=View.VISIBLE
-    discardScanButton?.visibility=View.VISIBLE
+    addCode(code,true)
   }
   private fun iconAction(resource:Int,description:String,action:()->Unit):LinearLayout{
     val holder=container().apply{gravity=Gravity.CENTER}
@@ -540,113 +529,127 @@ class MainActivity:ComponentActivity(){
     currentPage="scan"
     stopCamera()
     strictGate.reset()
-    pendingCode=null
-    val root=container().apply{setBackgroundColor(canvasColor)}
+    val root=container().apply{setBackgroundColor(Color.WHITE)}
     setContentView(root)
 
     val top=container(false).apply{
       gravity=Gravity.CENTER_VERTICAL
       setBackgroundColor(Color.WHITE)
-      setPadding(dp(13),dp(9),dp(13),dp(9))
+      setPadding(dp(14),dp(7),dp(14),dp(7))
     }
-    val back=label("‹",30f,ink,true).apply{
+    val back=label("‹",29f,ink,true).apply{
       gravity=Gravity.CENTER
+      contentDescription="返回首页"
       setOnClickListener{showHome()}
     }
-    top.addView(back,LinearLayout.LayoutParams(dp(36),dp(42)))
-    val heading=container()
-    heading.addView(label(batchName,20f,ink,true))
-    heading.addView(label("严谨识别 · 核对后自动拍照",11f,muted))
+    top.addView(back,LinearLayout.LayoutParams(dp(38),dp(40)))
+    val heading=container().apply{gravity=Gravity.CENTER_VERTICAL}
+    heading.addView(label(batchName,19f,ink,true))
     top.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
-    top.addView(button("批次"){selectBatch{showScan()}},LinearLayout.LayoutParams(dp(72),-2))
+    top.addView(button("切换批次"){selectBatch{showScan()}},
+      LinearLayout.LayoutParams(dp(92),-2))
     root.addView(top)
-
-    val view=PreviewView(this).apply{
+    val cameraView=PreviewView(this).apply{
       scaleType=PreviewView.ScaleType.FILL_CENTER
-      setBackgroundColor(Color.rgb(26,35,43))
+      setBackgroundColor(Color.rgb(28,34,40))
     }
-    previewView=view
-    val cameraFrame=FrameLayout(this).apply{setBackgroundColor(Color.rgb(26,35,43))}
-    cameraFrame.addView(view,FrameLayout.LayoutParams(-1,-1))
+    previewView=cameraView
+    val cameraFrame=FrameLayout(this).apply{setBackgroundColor(Color.rgb(28,34,40))}
+    cameraFrame.addView(cameraView,FrameLayout.LayoutParams(-1,-1))
     cameraFrame.addView(ScanGuideOverlay(this),FrameLayout.LayoutParams(-1,-1))
-    root.addView(cameraFrame,LinearLayout.LayoutParams(-1,
-      dp((resources.displayMetrics.heightPixels/resources.displayMetrics.density*0.41f).toInt().coerceIn(235,370))))
+    val screenHeight=(resources.displayMetrics.heightPixels/resources.displayMetrics.density).toInt()
+    root.addView(cameraFrame,LinearLayout.LayoutParams(-1,dp((screenHeight*0.37f).toInt().coerceIn(220,335))))
     val controls=container(false).apply{
-      gravity=Gravity.CENTER
+      gravity=Gravity.CENTER_VERTICAL
       setBackgroundColor(Color.WHITE)
-      setPadding(dp(10),dp(9),dp(10),dp(9))
+      setPadding(dp(12),dp(9),dp(12),dp(9))
     }
     listOf(
       iconAction(R.drawable.ic_action_camera,"拍照"){takePhoto(retryPhotoForRow,retryPhotoCode)},
-      iconAction(R.drawable.ic_action_flash,"手电筒"){
-        flashlight=!flashlight;camera?.cameraControl?.enableTorch(flashlight)
+      iconAction(R.drawable.ic_action_flash,"补光"){
+        flashlight=!flashlight
+        camera?.cameraControl?.enableTorch(flashlight)
       },
-      iconAction(R.drawable.ic_action_keyboard,"手动录入"){
-        prompt("手动输入单号","请核对快递条码下方文字"){addCode(it)}
+      iconAction(R.drawable.ic_action_keyboard,"录入"){
+        prompt("手动输入单号","请核对条码下方单号"){addCode(it)}
       },
-      iconAction(R.drawable.ic_action_records,"记录"){showBatch()}
+      iconAction(R.drawable.ic_action_records,"批次记录"){showBatch()}
     ).forEach{controls.addView(it,LinearLayout.LayoutParams(0,-2,1f))}
     root.addView(controls)
 
-    val status=container().apply{
-      background=shape(Color.WHITE,0)
-      setPadding(dp(15),dp(11),dp(15),dp(12))
-    }
-    status.addView(label("最新识别结果",11f,muted),margins(4))
-    latestCodeView=label("等待识别…",23f,ink,true).apply{setTextIsSelectable(true)}
-    status.addView(latestCodeView,margins(4))
-    latestStatusView=label("连续多帧一致才显示；核对单号再入库",12f,muted)
-    status.addView(latestStatusView,margins(8))
-    val actions=container(false).apply{gravity=Gravity.CENTER_VERTICAL}
-    confirmScanButton=button("确认登记并拍照",true){
-      val code=pendingCode?:return@button
-      pendingCode=null
-      confirmScanButton?.visibility=View.GONE
-      discardScanButton?.visibility=View.GONE
-      addCode(code,true)
-    }.apply{visibility=View.GONE}
-    discardScanButton=button("重新识别"){
-      clearCandidate()
-    }.apply{visibility=View.GONE}
-    actions.addView(confirmScanButton,LinearLayout.LayoutParams(0,-2,2f))
-    actions.addView(discardScanButton,LinearLayout.LayoutParams(0,-2,1f).apply{leftMargin=dp(8)})
-    status.addView(actions)
-    root.addView(status)
-    val line=View(this).apply{setBackgroundColor(Color.rgb(229,235,244))}
+    val line=View(this).apply{setBackgroundColor(Color.rgb(227,233,241))}
     root.addView(line,LinearLayout.LayoutParams(-1,dp(1)))
+    val latest=container().apply{
+      setPadding(dp(15),dp(10),dp(15),dp(11))
+      setBackgroundColor(Color.WHITE)
+    }
+    latest.addView(label("最新单号",12f,muted),margins(4))
+    latestCodeView=label("等待识别…",21f,ink,true).apply{
+      setTextIsSelectable(true);maxLines=1
+    }
+    latest.addView(latestCodeView,margins(4))
+    latestStatusView=label("自动识别 · 自动记录 · 自动留照片",12f,muted)
+    latest.addView(latestStatusView)
+    root.addView(latest)
+    root.addView(View(this).apply{setBackgroundColor(Color.rgb(231,236,244))},
+      LinearLayout.LayoutParams(-1,dp(6)))
 
-    val searchAndList=container().apply{setPadding(dp(11),dp(11),dp(11),dp(6))}
+    val bottom=container().apply{
+      setPadding(dp(14),dp(12),dp(14),dp(8))
+      setBackgroundColor(Color.WHITE)
+    }
     val titleRow=container(false).apply{gravity=Gravity.CENTER_VERTICAL}
-    scanCount=label("扫码记录 · "+db.all(activeBatch).size+" 件",16f,ink,true)
+    scanCount=label("扫码记录",17f,ink,true)
     titleRow.addView(scanCount,LinearLayout.LayoutParams(0,-2,1f))
-    titleRow.addView(button("导出"){exportBatch()})
-    searchAndList.addView(titleRow,margins(7))
-    scanSearch=input("搜索本批完整单号或末四位")
-    searchAndList.addView(scanSearch,margins(8))
+    titleRow.addView(button("导出 Excel"){exportBatch()})
+    bottom.addView(titleRow,margins(9))
+    scanSearch=input("搜索单号 / 后四位")
+    bottom.addView(scanSearch,margins(9))
     scanRowsBox=container()
-    searchAndList.addView(scanRowsBox)
-    val scroller=ScrollView(this).apply{
+    bottom.addView(scanRowsBox)
+    val scroll=ScrollView(this).apply{
       isFillViewport=true;isVerticalScrollBarEnabled=false
     }
-    scroller.addView(searchAndList)
-    root.addView(scroller,LinearLayout.LayoutParams(-1,0,1f))
+    scroll.addView(bottom)
+    root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
     scanSearch?.addTextChangedListener(object:TextWatcher{
       override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
       override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){updateRecent()}
       override fun afterTextChanged(s:Editable?){}
     })
     updateRecent()
-    startCamera(view)
+    startCamera(cameraView)
   }
   private fun updateRecent(){
     if(currentPage!="scan")return
-    val found=scanRowsBox?:return
-    found.removeAllViews()
+    val holder=scanRowsBox?:return
+    holder.removeAllViews()
     val q=scanSearch?.text?.toString()?.trim().orEmpty()
-    val rows=db.all(activeBatch,q).take(if(q.isEmpty())60 else 120)
-    scanCount?.text="扫码记录 · "+db.all(activeBatch).size+" 件"
-    if(rows.isEmpty())found.addView(label(if(q.isEmpty())"暂无记录 · 扫码后在此显示" else "未找到该单号",13f,muted))
-    else rows.forEach{addRow(found,it)}
+    val total=db.count(activeBatch)
+    scanCount?.text="扫码记录 · "+total+" 件"
+    val rows=db.recent(activeBatch,q,35)
+    if(rows.isEmpty()){
+      holder.addView(label(if(q.isBlank())"暂无扫码记录" else "没有匹配单号",13f,muted))
+      return
+    }
+    rows.forEachIndexed{idx,item->
+      val line=container(false).apply{
+        gravity=Gravity.CENTER_VERTICAL
+        setPadding(dp(1),dp(10),dp(1),dp(10))
+        setOnClickListener{detail(item)}
+      }
+      val number=label(if(q.isEmpty())(total-idx).toString()+"." else "·",13f,muted)
+      line.addView(number,LinearLayout.LayoutParams(dp(39),-2))
+      val info=container()
+      info.addView(label(item.code.ifBlank{"📷 待补录"},17f,ink,true),margins(4))
+      info.addView(label(formatTime(item.time),12f,muted))
+      line.addView(info,LinearLayout.LayoutParams(0,-2,1f))
+      line.addView(label(if(item.photo.isBlank())"待拍照" else "有照片",12f,muted),
+        LinearLayout.LayoutParams(-2,-2).apply{leftMargin=dp(7)})
+      holder.addView(line)
+      holder.addView(View(this).apply{setBackgroundColor(Color.rgb(239,242,248))},
+        LinearLayout.LayoutParams(-1,dp(1)))
+    }
   }
   private fun startCamera(view:PreviewView){
     val future=ProcessCameraProvider.getInstance(this)
@@ -665,18 +668,18 @@ class MainActivity:ComponentActivity(){
   @androidx.camera.core.ExperimentalGetImage
   private fun analyze(proxy:ImageProxy){
     val media=proxy.image
-    if(media==null||pendingCode!=null||captureBusy.get()||!processing.compareAndSet(false,true)){
+    if(media==null||captureBusy.get()||!processing.compareAndSet(false,true)){
       proxy.close();return
     }
-    val input=InputImage.fromMediaImage(media,proxy.imageInfo.rotationDegrees)
+    val image=InputImage.fromMediaImage(media,proxy.imageInfo.rotationDegrees)
     val rotated=proxy.imageInfo.rotationDegrees%180!=0
-    val imageWidth=if(rotated)media.height else media.width
-    val imageHeight=if(rotated)media.width else media.height
-    barcodeScanner.process(input).addOnSuccessListener{barcodes->
-      if(currentPage=="scan" && pendingCode==null && !captureBusy.get()){
-        val match=strictGate.observe(barcodes,imageWidth,imageHeight,System.currentTimeMillis())
-        if(match!=null){
-          runOnUiThread{if(currentPage=="scan"&&pendingCode==null)onStableCandidate(match)}
+    val w=if(rotated)media.height else media.width
+    val h=if(rotated)media.width else media.height
+    barcodeScanner.process(image).addOnSuccessListener{codes->
+      if(currentPage=="scan" && !captureBusy.get()){
+        val result=strictGate.observe(codes,w,h,System.currentTimeMillis())
+        if(result!=null)runOnUiThread{
+          if(currentPage=="scan"&&!captureBusy.get())onStableCandidate(result)
         }
       }
     }.addOnCompleteListener{processing.set(false);proxy.close()}
@@ -698,7 +701,8 @@ class MainActivity:ComponentActivity(){
     }
     val saved=db.save(activeBatch,code)
     if(fromCamera){
-      updateScanOutcome(code,"已确认单号 · 正在保存照片…",Color.rgb(50,107,196))
+      updateScanOutcome(code,"✓ 已登记 · 正在保存照片",Color.rgb(36,151,94))
+      announce("success")
       takePhoto(saved,code)
     }else{
       announce("success")
@@ -729,8 +733,7 @@ class MainActivity:ComponentActivity(){
             if(forRow!=null){
               db.attachPhoto(forRow,file.absolutePath)
               updateScanOutcome(displayCode?:lastCode,"✓ 单号及照片均已保存",Color.rgb(36,151,94))
-              announce("success")
-              toast("✓ 单号及照片已保存")
+              toast("✓ 照片已留存")
             }else{
               db.save(batchAtCapture,"",file.absolutePath)
               toast("照片已保存，之后可补录单号")
@@ -882,8 +885,8 @@ class MainActivity:ComponentActivity(){
   private fun showSettings(){
     currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
     val info=card()
-    info.addView(label("快递快扫 v0.10",21f,ink,true),margins(8))
-    info.addView(label("严谨识别仅支持 CODE128 / ITF 快递一维码。多帧稳定识别后必须核对并点击确认才入库，防止误识别数据直接保存。",13f,muted))
+    info.addView(label("快递快扫 v0.11",21f,ink,true),margins(8))
+    info.addView(label("支持 CODE128 / ITF 一维快递条码。多帧校验成功即自动登记、播报并留照片；同号重复提醒。极端光照或破损标签仍可能误读，请抽查记录。",13f,muted))
     val audio=card()
     audio.addView(label("扫码声音",18f,ink,true),margins(6))
     audio.addView(label("成功读“成功”，重复读“重复”，输入或拍照错误读“失败”",12f,muted),margins(8))
@@ -917,15 +920,12 @@ class MainActivity:ComponentActivity(){
     },margins(5))
   }
   private fun stopCamera(){
-    pendingCode=null
     strictGate.reset()
     scanRowsBox=null
     scanSearch=null
     scanCount=null
     latestCodeView=null
     latestStatusView=null
-    confirmScanButton=null
-    discardScanButton=null
     provider?.unbindAll()
     provider=null;camera=null;imageCapture=null;previewView=null;flashlight=false
   }
