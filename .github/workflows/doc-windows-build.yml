@@ -1,0 +1,35 @@
+name: Document Workbench Windows portable
+on:
+  push:
+    branches:
+      - feature/doc-focused-workbench
+  workflow_dispatch:
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Electron packager
+        run: npm install --no-save --no-package-lock electron@latest @electron/packager@latest
+      - name: Package Windows x64
+        shell: pwsh
+        run: |
+          $electronVersion = node -p "require('electron/package.json').version"
+          npx electron-packager app AI-Manju-Documents --platform=win32 --arch=x64 --out=release --overwrite --asar --electron-version=$electronVersion
+      - name: Upload small replacement for existing portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Manju-Documents-app-asar-update
+          path: release/AI-Manju-Documents-win32-x64/resources/app.asar
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload full Windows portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Manju-Documents-Windows-x64
+          path: release/AI-Manju-Documents-win32-x64/
+          if-no-files-found: error
+          retention-days: 14
