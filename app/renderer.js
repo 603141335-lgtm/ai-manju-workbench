@@ -77,8 +77,20 @@ function makeSegment(episode,seg,idx){
  right.append(elBtn('复制提示词',()=>copyPrompt(seg),'primary'));
  right.append(elBtn('分配到账号小窗',async()=>{
   try{
-   await api.prepareEdgeSegment({episode:episode.number,segment:seg.n});
-   toast('已选择第'+episode.number+'集 第'+seg.n+'段，请在账号小窗确认登记');
+   let number=window.ManjuEpisode.inferEpisode(episode);
+   const key='manju-episode-number-'+episode.id;
+   if(!number){
+    let saved=null;
+    try{saved=localStorage.getItem(key);}catch{}
+    const typed=prompt('本集未识别出集数，请输入实际集数（不会修改提示词正文）',saved||'');
+    if(typed===null)return;
+    if(!/^\\d{1,5}$/.test(typed.trim())||Number(typed)<1)throw Error('请输入1到99999之间的集数');
+    number=Number(typed.trim());
+    try{localStorage.setItem(key,String(number));}catch{}
+   }
+   const pending={episode:number,segment:seg.n,title:seg.title,prompt:seg.text,codes:seg.codes};
+   await api.prepareEdgeSegment(pending);
+   toast('第'+number+'集 第'+seg.n+'段已关联；请在账号小窗选择 Edge 用户');
   }catch(e){toast('分配失败：'+e.message);}
  },'secondary'));
  right.append(elBtn('编辑文字',()=>{editTarget={episodeId:episode.id,segmentId:seg.id};$('editTitle').textContent=`编辑第 ${seg.n} 段的完整提示词`;$('editText').value=seg.text;$('editDialog').showModal();}));
