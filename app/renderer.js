@@ -56,6 +56,7 @@ function rootOptions(){return [
 ];}
 function groupOptions(g){
  return [
+ ['＋ 新建大标题',()=>openDocDialog('root')],
  ...(g.parentId?[]:[['＋ 在此创建小标题',()=>{currentGroupId=g.id;openDocDialog('sub');}]]),
  ['＋ 在此创建文档',()=>{currentGroupId=g.id;openDocDialog('document');}],
  ['重命名标题',()=>openDocDialog('rename-group',g.id,g.title)],
@@ -70,6 +71,7 @@ async function deleteGroup(g){
 function documentOptions(ep){
  const own=state.project.groups?.find(g=>g.id===ep.groupId);
  return [
+ ['＋ 新建大标题',()=>openDocDialog('root')],
  ['＋ 同级新建文档',()=>{currentGroupId=ep.groupId||null;openDocDialog('document');}],
  ...(own&&!own.parentId?[['＋ 在所属标题下建小标题',()=>{currentGroupId=own.id;openDocDialog('sub');}]]:[]),
  ['重命名文档',()=>openDocDialog('rename-document',ep.id,ep.title)],
@@ -107,18 +109,49 @@ function resizeFromPointer(handle,axis,getStart,onMove){
   window.addEventListener('pointercancel',end);
  });
 }
-function applyPromptRatio(area,percent){
- const n=clamp(Math.round(percent),20,80);
- area.dataset.promptRatio=String(n);
- area.style.gridTemplateRows='minmax(0,'+n+'fr) 8px minmax(0,'+(100-n)+'fr)';
- try{localStorage.setItem('manju-prompt-ratio',String(n));}catch{}
- return n;
-}
+// Both sections are one unit: height and width change together. Text and image data stay intact.
 function setAllPanelHeight(height){
- const n=clamp(Math.round(height),220,720);
+ const n=clamp(Math.round(height),220,1100);
  for(const area of document.querySelectorAll('.segment-workarea'))area.style.height=n+'px';
  try{localStorage.setItem('manju-pane-size',String(n));}catch{}
  return n;
+}
+function setAllPanelWidth(width){
+ const available=Math.max(320,document.querySelector('.main')?.clientWidth||window.innerWidth-200);
+ const n=clamp(Math.round(width),Math.min(340,available),available);
+ for(const card of document.querySelectorAll('.segment'))card.style.width=n+'px';
+ try{localStorage.setItem('manju-panel-width',String(n));}catch{}
+ return n;
+}
+function unifiedResizeHandle(handle,card,area){
+ handle.addEventListener('pointerdown',e=>{
+  if(e.button!==undefined&&e.button!==0)return;
+  e.preventDefault();e.stopPropagation();closeTreeMenu();
+  const startX=e.clientX,startY=e.clientY;
+  const startWidth=card.getBoundingClientRect().width||document.querySelector('.main')?.clientWidth||900;
+  const startHeight=area.getBoundingClientRect().height||segmentPanelSize();
+  const move=event=>{
+   if(event.clientX!==startX)setAllPanelWidth(startWidth+event.clientX-startX);
+   if(event.clientY!==startY)setAllPanelHeight(startHeight+event.clientY-startY);
+  };
+  const end=()=>{
+   window.removeEventListener('pointermove',move);
+   window.removeEventListener('pointerup',end);
+   window.removeEventListener('pointercancel',end);
+   document.body.classList.remove('dragging-split');
+  };
+  document.body.classList.add('dragging-split');
+  window.addEventListener('pointermove',move);
+  window.addEventListener('pointerup',end);
+  window.addEventListener('pointercancel',end);
+ });
+ handle.addEventListener('keydown',e=>{
+  if(!['ArrowDown','ArrowUp','ArrowRight','ArrowLeft'].includes(e.key))return;
+  e.preventDefault();
+  if(e.key==='ArrowDown'||e.key==='ArrowUp')
+   setAllPanelHeight((area.getBoundingClientRect().height||segmentPanelSize())+(e.key==='ArrowDown'?20:-20));
+  else setAllPanelWidth((card.getBoundingClientRect().width||640)+(e.key==='ArrowRight'?20:-20));
+ });
 }
 async function moveCurrentDocument(id=activeEpisodeId){
  const ep=state.project.episodes.find(x=>x.id===id);if(!ep)return;
@@ -300,6 +333,8 @@ function refreshSelected(gallery,seg){const set=selectedImages.get(seg.id)||new 
 }
 function makeSegment(episode,seg,idx){
  const card=doc('article','segment');card.dataset.segmentId=seg.id;
+ const savedWidth=storedNumber('manju-panel-width',0);
+ if(savedWidth)card.style.width=savedWidth+'px';
  const head=doc('div','segment-header');const left=doc('div');left.append(doc('div','segment-title',`${String(idx+1).padStart(2,'0')} · 第${seg.n}段｜${seg.title}`));
  const present=seg.codes.filter(c=>assetFor(c)).length;const badge=doc('span','countbadge'+(present!==seg.codes.length?' bad':''),`参考图 ${present}/${seg.codes.length}`);
  const sub=doc('div','segment-sub',`参考图 ${seg.codes.join('、')||'无'}　·　${seg.method}${seg.codes.length>9?'　⚠ 超过9张':''}`);sub.prepend(badge);left.append(sub);
@@ -314,7 +349,7 @@ function makeSegment(episode,seg,idx){
  head.append(left,right);card.append(head);
  const workarea=doc('div','segment-workarea');
  workarea.style.height=segmentPanelSize()+'px';
- applyPromptRatio(workarea,storedNumber('manju-prompt-ratio',50));
+ // Fixed 50/50 layout: resize both text and pictures together, never alter their ratio.
  card.append(workarea);
  const content=doc('div','content');
  const promptHead=doc('div','prompt-head');
@@ -328,35 +363,10 @@ function makeSegment(episode,seg,idx){
  });
  promptHead.append(elBtn('全选文字',()=>selectTextIn(prompt),'secondary text-select'));
  content.append(promptHead,prompt);workarea.append(content);
- const divider=doc('div','pane-divider');
- divider.title='上下拖动：调节提示词与参考图的空间比例';
- divider.setAttribute('role','separator');divider.tabIndex=0;
- divider.setAttribute('aria-label','上下拖动调整提示词和参考图比例');
- divider.setAttribute('aria-orientation','horizontal');
- divider.textContent='⋮⋮';
+ const divider=doc('div','pane-divider fixed-divider');
+ divider.setAttribute('aria-hidden','true');
+ divider.title='提示词和参考图同步缩放：拖动右下角的整体缩放手柄';
  workarea.append(divider);
- divider.addEventListener('pointerdown',e=>{
-  if(e.button!==undefined&&e.button!==0)return;
-  e.preventDefault();
-  const initial=Number(workarea.dataset.promptRatio)||50;
-  const start=e.clientY,height=Math.max(1,workarea.getBoundingClientRect().height);
-  const move=ev=>applyPromptRatio(workarea,initial+(ev.clientY-start)/height*100);
-  const end=()=>{
-   window.removeEventListener('pointermove',move);
-   window.removeEventListener('pointerup',end);
-   window.removeEventListener('pointercancel',end);
-   document.body.classList.remove('dragging-split');
-  };
-  document.body.classList.add('dragging-split');
-  window.addEventListener('pointermove',move);
-  window.addEventListener('pointerup',end);
-  window.addEventListener('pointercancel',end);
- });
- divider.addEventListener('keydown',e=>{
-  if(e.key==='ArrowUp'||e.key==='ArrowDown'){
-   e.preventDefault();applyPromptRatio(workarea,(Number(workarea.dataset.promptRatio)||50)+(e.key==='ArrowDown'?5:-5));
-  }
- });
  const imagePane=doc('div','image-pane');workarea.append(imagePane);
  const imagehead=doc('div','image-head');imagehead.append(doc('b','',`参考图片（${present} 张）`));imagehead.append(doc('span','','Ctrl多选 · Shift连选 · Ctrl+A全选'));imagePane.append(imagehead);
  const gallery=doc('div','gallery');gallery.tabIndex=0;gallery.dataset.segmentId=seg.id;gallery.dataset.lastSelected='';gallery.addEventListener('pointerdown',()=>clearTextSelection());
@@ -368,19 +378,12 @@ function makeSegment(episode,seg,idx){
  for(const code of seg.codes)gallery.append(createTile(episode,seg,code,gallery));
  if(!seg.codes.length)gallery.append(doc('div','warning','本段暂未识别到参考图编号。可点击「校正编号」。'));
  imagePane.append(gallery);
- const heightHandle=doc('div','workarea-height-handle','⋯   上下拖动改变本段整体高度（文字与图片一起缩放）   ⋯');
- heightHandle.title='上下拖动调整文字和图片的整体高度';
- heightHandle.tabIndex=0;heightHandle.setAttribute('role','separator');
- heightHandle.setAttribute('aria-orientation','horizontal');
- card.append(heightHandle);
- resizeFromPointer(heightHandle,'clientY',
-   ()=>Number(workarea.style.height.replace('px',''))||segmentPanelSize(),
-   v=>setAllPanelHeight(v));
- heightHandle.addEventListener('keydown',e=>{
-  if(e.key==='ArrowUp'||e.key==='ArrowDown'){
-   e.preventDefault();setAllPanelHeight((Number(workarea.style.height.replace('px',''))||340)+(e.key==='ArrowDown'?20:-20));
-  }
- });
+ const unifiedHandle=doc('div','unified-resize-handle','◢');
+ unifiedHandle.title='拖动右下角：同时改变提示词和参考图区的整体宽度、高度';
+ unifiedHandle.tabIndex=0;unifiedHandle.setAttribute('role','separator');
+ unifiedHandle.setAttribute('aria-label','整体放大或缩小提示词与参考图');
+ workarea.append(unifiedHandle);
+ unifiedResizeHandle(unifiedHandle,card,workarea);
  const dragFooter=doc('div','drag-footer');const handle=doc('div','drag-handle',`☷ 按住这里拖动本段全部图片（${present} 张）`);handle.draggable=present>0;
  handle.addEventListener('dragstart',e=>{e.preventDefault();api.startNativeDrag({mode:'group',episodeId:episode.id,segmentId:seg.id});});
  const hint=doc('div','drag-hint','拖到 Edge、豆包、即梦等网页的文件上传区域');
