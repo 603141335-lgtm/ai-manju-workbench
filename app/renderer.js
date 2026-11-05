@@ -302,6 +302,8 @@ function drawSidebar(){
   const item=elBtn('▤ '+ep.title,()=>{
     activeEpisodeId=ep.id;currentGroupId=ep.groupId||null;
     clearOtherImageSelections();clearTextSelection();
+    activeSegmentId=ep.segments[0]?.id||null;saveUiState();
+    expandedDocs.add(ep.id);
     render();document.querySelector('.main')?.scrollTo({top:0,behavior:'instant'});
   },'tree-doc-title');
   item.title=ep.title;row.append(item);
@@ -310,11 +312,11 @@ function drawSidebar(){
   if(expandedDocs.has(ep.id)){
    for(const seg of ep.segments){
     const leaf=elBtn('↳ 第'+seg.n+'段 '+(seg.title||''),()=>{
-      activeEpisodeId=ep.id;currentGroupId=ep.groupId||null;
-      clearOtherImageSelections();render();
-      requestAnimationFrame(()=>document.querySelector('[data-segment-id="'+seg.id+'"]')?.scrollIntoView({block:'start',behavior:'smooth'}));
-    },'tree-segment doc-depth-'+(depth+1));
-    leaf.title='跳转到第'+seg.n+'段';tree.append(leaf);
+      currentGroupId=ep.groupId||null;clearOtherImageSelections();clearTextSelection();
+      jumpToSegment(ep.id,seg.id);
+    },'tree-segment doc-depth-'+(depth+1)+(activeSegmentId===seg.id?' is-current':''));
+    leaf.dataset.segmentId=seg.id;
+    leaf.title='跳转并展开第'+seg.n+'段';tree.append(leaf);
    }
   }
  }
@@ -435,18 +437,33 @@ function createTile(episode,seg,code,gallery){
 function refreshSelected(gallery,seg){const set=selectedImages.get(seg.id)||new Set();gallery.querySelectorAll('.image-tile').forEach(tile=>tile.classList.toggle('selected',set.has(tile.dataset.imageId)));const btn=gallery.closest('.segment')?.querySelector('.selected-count');if(btn)btn.textContent=`已选择 ${set.size} 张`;
 }
 function makeSegment(episode,seg,idx){
- const card=doc('article','segment');card.dataset.segmentId=seg.id;
+ const card=doc('article','segment'+(collapsedSegments.has(seg.id)?' is-collapsed':'')+(activeSegmentId===seg.id?' is-current':''));
+ card.dataset.segmentId=seg.id;card.dataset.segmentNo=String(seg.n);
  const widthPercent=clamp(storedNumber('manju-panel-width-percent',100),25,100);
  card.style.width=widthPercent+'%';
- const head=doc('div','segment-header');const left=doc('div');left.append(doc('div','segment-title',`${String(idx+1).padStart(2,'0')} · 第${seg.n}段｜${seg.title}`));
- const present=seg.codes.filter(c=>assetFor(c)).length;const badge=doc('span','countbadge'+(present!==seg.codes.length?' bad':''),`参考图 ${present}/${seg.codes.length}`);
- const sub=doc('div','segment-sub',`参考图 ${seg.codes.join('、')||'无'}　·　${seg.method}${seg.codes.length>9?'　⚠ 超过9张':''}`);sub.prepend(badge);left.append(sub);
+ const head=doc('div','segment-header');const left=doc('div','segment-heading-main');
+ const toggleFold=()=>{
+  const next=!collapsedSegments.has(seg.id);
+  setCollapsed(episode.id,seg.id,next);
+  markCurrentSegment(episode.id,seg.id);
+  syncBatchFoldLabel();
+ };
+ const foldButton=elBtn(collapsedSegments.has(seg.id)?'▸':'▾',toggleFold,'fold-toggle');
+ foldButton.title=collapsedSegments.has(seg.id)?'展开本段':'收起本段';
+ foldButton.setAttribute('aria-expanded',String(!collapsedSegments.has(seg.id)));
+ foldButton.setAttribute('aria-label',(collapsedSegments.has(seg.id)?'展开':'收起')+'第'+seg.n+'段');
+ left.append(foldButton,doc('div','segment-title',`${String(idx+1).padStart(2,'0')} · 第${seg.n}段｜${seg.title}`));
+ const present=seg.codes.filter(c=>assetFor(c)).length;
+ const badge=doc('span','countbadge'+(present!==seg.codes.length?' bad':''),`参考图 ${present}/${seg.codes.length}`);
+ const sub=doc('div','segment-sub',`参考图 ${seg.codes.join('、')||'无'}　·　${seg.method}${seg.codes.length>9?'　⚠ 超过9张':''}`);
+ sub.prepend(badge);left.append(sub);
  const right=doc('div','segment-actions');
- right.append(elBtn('复制提示词',()=>copyPrompt(seg),'primary'));
- const collapseBtn=elBtn('收起本段',()=>{
-  const collapsed=card.classList.toggle('is-collapsed');
-  collapseBtn.textContent=collapsed?'展开本段':'收起本段';
- },'secondary');right.append(collapseBtn);
+ const copyButton=elBtn('复制提示词',()=>copyPrompt(seg,copyButton,episode.id),'primary copy-prompt-btn');
+ right.append(copyButton);
+ right.append(elBtn('收起本段',toggleFold,'secondary'));
+ head.addEventListener('click',e=>{
+  if(!e.target.closest('button'))toggleFold();
+ });
  right.append(elBtn('编辑文字',()=>{editTarget={episodeId:episode.id,segmentId:seg.id};$('editTitle').textContent=`编辑第 ${seg.n} 段的完整提示词`;$('editText').value=seg.text;$('editDialog').showModal();}));
  right.append(elBtn('校正编号',()=>{codesTarget={episodeId:episode.id,segmentId:seg.id};$('codesInput').value=seg.codes.join('、');$('codesDialog').showModal();}));
  head.append(left,right);card.append(head);
@@ -496,7 +513,14 @@ function makeSegment(episode,seg,idx){
  if(present!==seg.codes.length)card.append(doc('div','warning','缺图：'+seg.codes.filter(c=>!assetFor(c)).join('、')+'。工具不会拿 A01 替代 A01-01。'));
  return card;
 }
-async function copyPrompt(seg){try{clearTextSelection();clearOtherImageSelections();await api.copy(seg.text);toast('已复制第 '+seg.n+' 段完整提示词（无删减）');}catch(e){toast('复制失败：'+e.message);}}
+async function copyPrompt(seg,button=null,episodeId=activeEpisodeId){
+ try{
+  clearTextSelection();clearOtherImageSelections();
+  await api.copy(seg.text);
+  markCurrentSegment(episodeId,seg.id);
+  flashCopied(button);
+ }catch(e){toast('复制失败：'+e.message);}
+}
 function drawEpisode(){const ep=state.project.episodes.find(e=>e.id===activeEpisodeId);
  $('empty').classList.toggle('hidden',!!ep);$('episodeView').classList.toggle('hidden',!ep);
  if(!ep){$('toolbarTitle');$('workspaceTitle').textContent='选择一个剧集开始制作';return;}
