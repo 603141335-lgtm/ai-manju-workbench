@@ -496,15 +496,8 @@ class MainActivity:ComponentActivity(){
   }
   private fun onStableCandidate(code:String){
     if(currentPage!="scan"||captureBusy.get())return
-    if(db.duplicate(activeBatch,code)){
-      updateScanOutcome(code,"重复单号 · 未再次保存",Color.rgb(185,119,37))
-      val now=System.currentTimeMillis()
-      if(duplicateAnnounced!=code||now-duplicateTime>1800L){
-        duplicateAnnounced=code;duplicateTime=now
-        announce("duplicate")
-      }
-      return
-    }
+    // The transactional DB insert is the single source of truth for duplicates.
+    // Avoid two separate SELECT queries on every barcode scan.
     addCode(code,true)
   }
   private fun iconAction(resource:Int,description:String,action:()->Unit):LinearLayout{
@@ -627,7 +620,7 @@ class MainActivity:ComponentActivity(){
     val q=scanSearch?.text?.toString()?.trim().orEmpty()
     val total=db.count(activeBatch)
     scanCount?.text="扫码记录 · "+total+" 件"
-    val rows=db.recent(activeBatch,q,35)
+    val rows=db.recent(activeBatch,q,if(q.isEmpty())14 else 100)
     if(rows.isEmpty()){
       holder.addView(label(if(q.isBlank())"暂无扫码记录" else "没有匹配单号",13f,muted))
       return
@@ -658,7 +651,10 @@ class MainActivity:ComponentActivity(){
         if(currentPage!="scan"||previewView!==view)return@addListener
         val p=future.get();provider=p;p.unbindAll()
         val preview=Preview.Builder().build().also{it.surfaceProvider=view.surfaceProvider}
-        imageCapture=ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build()
+        imageCapture=ImageCapture.Builder()
+          .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+          .setJpegQuality(82)
+          .build()
         val analyzer=ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
         analyzer.setAnalyzer(executor){proxy->analyze(proxy)}
         camera=p.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,imageCapture,analyzer)
@@ -690,25 +686,33 @@ class MainActivity:ComponentActivity(){
     if(fromCamera&&captureBusy.get())return
     val code=raw.trim().replace(" ","")
     if(!valid(code)){
-      toast("单号需要10-40位字母数字或横线");announce("failure")
-      if(fromCamera)updateScanOutcome(code,"单号不合格 · 未登记",Color.rgb(198,57,57))
+      toast("单号需要10-40位字母数字或横线")
+      announce("failure")
+      if(fromCamera)updateScanOutcome(code,"单号无效 · 未保存",Color.rgb(198,57,57))
       return
     }
-    if(db.duplicate(activeBatch,code)){
-      updateScanOutcome(code,"重复单号 · 未登记",Color.rgb(200,126,24))
-      toast("⚠ 重复件："+code);announce("duplicate")
+    val saved=try{db.saveIfNew(activeBatch,code)}catch(e:Exception){
+      toast("登记失败："+e.message);announce("failure");return
+    }
+    if(saved<0L){
+      updateScanOutcome(code,"重复单号 · 不再登记",Color.rgb(185,119,37))
+      val now=System.currentTimeMillis()
+      if(duplicateAnnounced!=code||now-duplicateTime>1700L){
+        duplicateAnnounced=code;duplicateTime=now
+        announce("duplicate")
+      }
       return
     }
-    val saved=db.save(activeBatch,code)
+    latestAcceptedCode=code
     if(fromCamera){
-      updateScanOutcome(code,"✓ 已登记 · 正在保存照片",Color.rgb(36,151,94))
-      announce("success")
+      updateScanOutcome(code,"✓ 已登记 · 照片保存中",Color.rgb(36,151,94))
+      // Keep the parcel in the frame until photo callback confirms it is saved.
       takePhoto(saved,code)
     }else{
       announce("success")
-      toast("✓ 手动登记："+code)
+      toast("✓ 已手动登记："+code)
+      updateRecent()
     }
-    updateRecent()
   }
   private fun takePhoto(forRow:Long?=null,displayCode:String?=null){
     if(!captureBusy.compareAndSet(false,true)){
@@ -733,7 +737,7 @@ class MainActivity:ComponentActivity(){
             if(forRow!=null){
               db.attachPhoto(forRow,file.absolutePath)
               updateScanOutcome(displayCode?:lastCode,"✓ 单号及照片均已保存",Color.rgb(36,151,94))
-              toast("✓ 照片已留存")
+              announce("success")
             }else{
               db.save(batchAtCapture,"",file.absolutePath)
               toast("照片已保存，之后可补录单号")
@@ -751,6 +755,7 @@ class MainActivity:ComponentActivity(){
           toast("拍照失败，单号已保留："+exception.message)
           if(forRow!=null)updateScanOutcome(displayCode?:lastCode,"照片保存失败 · 单号已保留，可补拍",Color.rgb(198,57,57))
           announce("failure")
+          updateRecent()
         }
       }
     )
@@ -885,8 +890,8 @@ class MainActivity:ComponentActivity(){
   private fun showSettings(){
     currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
     val info=card()
-    info.addView(label("快递快扫 v0.11",21f,ink,true),margins(8))
-    info.addView(label("支持 CODE128 / ITF 一维快递条码。多帧校验成功即自动登记、播报并留照片；同号重复提醒。极端光照或破损标签仍可能误读，请抽查记录。",13f,muted))
+    info.addView(label("快递快扫 v0.12",21f,ink,true),margins(8))
+    info.addView(label("极速识别：CODE128 连续2帧、ITF 连续3帧同码校验，自动登记并拍照；数据库事务和唯一索引防止同一批次单号重复。拍照完成才提示成功，请保持面单在镜头内。",13f,muted))
     val audio=card()
     audio.addView(label("扫码声音",18f,ink,true),margins(6))
     audio.addView(label("成功读“成功”，重复读“重复”，输入或拍照错误读“失败”",12f,muted),margins(8))
