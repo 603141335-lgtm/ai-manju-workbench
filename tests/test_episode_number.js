@@ -1,0 +1,11 @@
+'use strict';
+const assert=require('node:assert/strict');
+const n=require('../app/episode-number');
+assert.equal(n.inferEpisode({number:10,title:'第1集'}),10);
+assert.equal(n.inferEpisode({number:null,title:'《食神》 第10集｜凶宅'}),10);
+assert.equal(n.inferEpisode({number:null,title:'第十二集｜夜市'}),12);
+assert.equal(n.inferEpisode({number:null,title:'临时导入',original:'第7集｜测试\n第1段'}),7);
+assert.equal(n.inferEpisode({number:null,title:'没有集数信息'}),null);
+assert.equal(n.validSegment(0),false);
+assert.equal(n.validSegment(3),true);
+console.log('PASS episode number inferred or explicitly missing; no invented number');
