@@ -1,5 +1,5 @@
 'use strict';
-const {BrowserWindow,ipcMain,app,dialog,shell,screen}=require('electron');
+const {BrowserWindow,ipcMain,app,dialog,shell,screen,clipboard}=require('electron');
 const {createWatcher}=require('./edge-downloads');
 const path=require('path');
 const edge=require('./edge-profiles');
@@ -32,11 +32,33 @@ function setupEdgeWindow(parent){
     const episode=Number(data?.episode),segment=Number(data?.segment);
     if(!Number.isSafeInteger(episode)||episode<1||episode>99999||
        !Number.isSafeInteger(segment)||segment<1||segment>99999)throw Error('请先选定有效的集数与段落');
-    pendingSegment={episode,segment,key:Date.now()+'-'+Math.random().toString(36).slice(2)};
+    const prompt=String(data?.prompt||'');
+    if(!prompt.trim()||prompt.length>250000)throw Error('本段提示词为空或超长，请检查段落内容');
+    pendingSegment={
+      episode,segment,prompt,
+      title:String(data?.title||'').slice(0,180),
+      codes:Array.isArray(data?.codes)?data.codes.slice(0,60).map(String):[],
+      profileId:null,
+      key:Date.now()+'-'+Math.random().toString(36).slice(2)
+    };
     if(accountWindow&&!accountWindow.isDestroyed()){accountWindow.show();accountWindow.focus();}
     return summary();
   });
   ipcMain.handle('edge-lite:show',()=>{if(accountWindow&&!accountWindow.isDestroyed()){accountWindow.show();accountWindow.focus();}return true;});
+  ipcMain.handle('edge-lite:copy-prompt',()=>{
+    if(!pendingSegment)throw Error('请先在提示词文档选择要制作的段落');
+    clipboard.writeText(pendingSegment.prompt);
+    return summary();
+  });
+  ipcMain.handle('edge-lite:copy-and-open',async(_,id)=>{
+    if(!pendingSegment)throw Error('请先在提示词文档选择段落');
+    const known=edge.discoverProfiles().find(x=>x.id===id);
+    if(!known)throw Error('所选 Edge 用户不存在，请刷新账号列表');
+    clipboard.writeText(pendingSegment.prompt);
+    await edge.launchProfile(id);
+    pendingSegment.profileId=id;
+    return summary();
+  });
   ipcMain.handle('edge-lite:launch',async(_,id)=>{
     const known=edge.discoverProfiles().find(x=>x.id===id);
     if(!known)throw Error('该 Edge 用户不存在，请刷新列表');
@@ -46,7 +68,12 @@ function setupEdgeWindow(parent){
   ipcMain.handle('edge-lite:submit',(_,value)=>{
     const profiles=edge.discoverProfiles();
     if(!profiles.some(p=>p.id===value?.profileId))throw Error('请先选择有效的 Edge 用户');
-    const item=ledger.makeRecord(value);tasks.push(item);save();return summary();
+    const item=ledger.makeRecord(value);
+    tasks.push(item);
+    if(pendingSegment&&pendingSegment.episode===item.episode&&pendingSegment.segment===item.segment)
+      pendingSegment.profileId=item.profileId;
+    save();
+    return summary();
   });
   ipcMain.handle('edge-lite:undo',(_,id)=>{
     const target=tasks.find(t=>t.id===id);
