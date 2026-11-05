@@ -41,7 +41,7 @@ class MainActivity:ComponentActivity(){
   private val primary=Color.rgb(72,89,224)
   private val ink=Color.rgb(36,46,66)
   private val muted=Color.rgb(128,142,166)
-  private val background=Color.rgb(247,248,252)
+  private val canvasColor=Color.rgb(247,248,252)
   private lateinit var db:ScanDb
   private lateinit var page:LinearLayout
   private var activeBatch=0L
@@ -120,11 +120,11 @@ class MainActivity:ComponentActivity(){
   }
   private fun input(hint:String,value:String="")=EditText(this).apply{
     setSingleLine(true);setText(value);setTextSize(16f);setTextColor(ink)
-    setHint(hint);setHintTextColor(muted);background=shape(background,12)
+    setHint(hint);setHintTextColor(muted);background=shape(canvasColor,12)
     setPadding(dp(12),dp(11),dp(12),dp(11))
   }
   private fun shell(title:String,sub:String){
-    val root=container().apply{setBackgroundColor(background)}
+    val root=container().apply{setBackgroundColor(canvasColor)}
     setContentView(root)
     val header=container().apply{
       background=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,intArrayOf(Color.rgb(65,166,241),primary))
@@ -133,7 +133,7 @@ class MainActivity:ComponentActivity(){
     header.addView(label(title,23f,Color.WHITE,true))
     header.addView(label(sub,12f,Color.rgb(232,241,255)))
     root.addView(header)
-    val scroller=ScrollView(this).apply{fillViewport=true}
+    val scroller=ScrollView(this).apply{isFillViewport=true}
     page=container().apply{setPadding(dp(13),dp(16),dp(13),dp(6))}
     scroller.addView(page)
     root.addView(scroller,LinearLayout.LayoutParams(-1,0,1f))
@@ -195,7 +195,7 @@ class MainActivity:ComponentActivity(){
     batches.forEach{batch->
       val item=container().apply{
         setPadding(dp(12),dp(12),dp(12),dp(12))
-        background=shape(background,12)
+        background=shape(canvasColor,12)
         addView(label(batch.name+"  ·  "+batch.count+" 件",17f,ink,true))
         addView(label(formatTime(batch.created),12f,muted))
         setOnClickListener{activeBatch=batch.id;batchName=batch.name;showBatch()}
@@ -224,7 +224,7 @@ class MainActivity:ComponentActivity(){
       setOnClickListener{detail(row)}
     }
     parent.addView(item)
-    parent.addView(View(this).apply{setBackgroundColor(background)},LinearLayout.LayoutParams(-1,dp(1)))
+    parent.addView(View(this).apply{setBackgroundColor(canvasColor)},LinearLayout.LayoutParams(-1,dp(1)))
   }
   private fun detail(r:ScanRow){
     val layout=container().apply{setPadding(dp(16),dp(8),dp(16),0)}
