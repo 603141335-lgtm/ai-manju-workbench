@@ -72,7 +72,7 @@ function card(d,id){return [...d.querySelectorAll('.segment')].find(x=>x.dataset
  assert(key,'Stored state key must exist');
  assert.deepEqual(JSON.parse(w.localStorage.getItem(key)).collapsed.sort(),['s1','s2']);
  // Renderer rerender must retain collapse state without changing prompt data.
- w.eval('render()');
+ d.querySelector('#rescanBtn').click();await pause();
  assert([...d.querySelectorAll('.segment')].every(c=>c.classList.contains('is-collapsed')));
  d.querySelector('#foldAllBtn').click();
  assert([...d.querySelectorAll('.segment')].every(c=>!c.classList.contains('is-collapsed')));
