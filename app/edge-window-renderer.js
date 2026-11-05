@@ -8,7 +8,7 @@ function render(){
  if(!state.profiles.length){const p=document.createElement('p');p.className='muted small';p.textContent='未找到 Edge 用户资料。请先在 Edge 中添加用户。';list.append(p);}
  for(const p of state.profiles){
   const b=document.createElement('button');b.className='profile'+(selected===p.id?' active':'');
-  const name=document.createElement('span');name.textContent=p.name;
+  const name=document.createElement('span');name.textContent=p.name+' ('+p.id+')';
   const count=document.createElement('span');count.className='tag';count.textContent=used(p.id)+'/2';
   b.append(name,count);b.onclick=()=>{selected=p.id;render();};list.append(b);
  }
@@ -16,7 +16,30 @@ function render(){
  $('picked').textContent=profile?.name||'未选择账号';
  $('counter').textContent=(selected?used(selected):0)+'/2';
  $('open').disabled=$('submit').disabled=$('reset').disabled=!profile;
- const recent=$('recent');recent.replaceChildren();
+  // A task is explicitly selected before monitoring a single new video download.
+  const dl=state.downloads||{};
+  const paths=$('downloadPaths');
+  paths.textContent='下载：'+(dl.source||'未设置')+'\n归档：'+(dl.root||'未设置');
+  paths.style.whiteSpace='pre-wrap';
+  const armed=dl.armed,news=dl.notices?.[0];
+  $('downloadState').textContent=armed
+    ? '等待：第'+armed.task.episode+'集 第'+armed.task.segment+'段（下载后自动检查）'
+    : news?.kind==='archived'?'已归档：'+news.target
+    : news?.kind==='ambiguous'?'发现多个下载，已停止自动命名，请手动核对'
+    : news?.kind==='expired'?'已超时，源文件未移动'
+    : dl.lastError||'当前未等待下载';
+  const dlSelect=$('downloadTask'),previous=dlSelect.value;
+  dlSelect.replaceChildren();
+  for(const t of state.records.filter(t=>t.profileId===selected&&t.status==='submitted').slice().reverse()){
+    const option=document.createElement('option');
+    option.value=t.id;
+    option.textContent='第'+t.episode+'集 第'+t.segment+'段 · '+t.createdAt.slice(11,16);
+    dlSelect.append(option);
+  }
+  if([...dlSelect.options].some(x=>x.value===previous))dlSelect.value=previous;
+  $('armDownload').disabled=!!armed||!dlSelect.options.length;
+  $('cancelDownload').disabled=!armed;
+  const recent=$('recent');recent.replaceChildren();
  for(const t of state.records.filter(t=>t.profileId===selected&&t.status==='submitted').slice(-8).reverse()){
   const line=document.createElement('div');line.className='row';
   const name=document.createElement('span');name.textContent=`第${t.episode}集 第${t.segment}段`;
