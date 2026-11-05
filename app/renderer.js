@@ -25,6 +25,108 @@ function selectImagesIn(seg,gallery){
  refreshSelected(gallery,seg);gallery.focus({preventScroll:true});
 }
 
+
+let openMenuAnchor=null;
+function closeTreeMenu(){
+ const menu=$('treeMenu');menu.classList.add('hidden');menu.replaceChildren();
+ if(openMenuAnchor)openMenuAnchor.setAttribute('aria-expanded','false');
+ openMenuAnchor=null;
+}
+function showTreeMenu(anchor,items){
+ const menu=$('treeMenu');
+ if(openMenuAnchor===anchor&&!menu.classList.contains('hidden')){closeTreeMenu();return;}
+ closeTreeMenu();openMenuAnchor=anchor;
+ anchor.setAttribute('aria-expanded','true');
+ for(const [label,callback,danger] of items){
+  const b=doc('button',danger?'menu-danger':'',label);
+  b.type='button';b.setAttribute('role','menuitem');
+  b.addEventListener('click',()=>{
+   closeTreeMenu();callback();
+  });
+  menu.append(b);
+ }
+ menu.classList.remove('hidden');
+ const rect=anchor.getBoundingClientRect(),width=215,height=items.length*37+12;
+ menu.style.left=Math.max(8,Math.min(window.innerWidth-width-8,rect.right-width+14))+'px';
+ menu.style.top=Math.max(8,Math.min(window.innerHeight-height-8,rect.bottom+4))+'px';
+}
+function rootOptions(){return [
+ ['＋ 新建大标题',()=>openDocDialog('root')],
+ ['＋ 新建根目录文档',()=>{currentGroupId=null;openDocDialog('document');}]
+];}
+function groupOptions(g){
+ return [
+ ...(g.parentId?[]:[['＋ 在此创建小标题',()=>{currentGroupId=g.id;openDocDialog('sub');}]]),
+ ['＋ 在此创建文档',()=>{currentGroupId=g.id;openDocDialog('document');}],
+ ['重命名标题',()=>openDocDialog('rename-group',g.id,g.title)],
+ ['删除标题（保留文档）',()=>openDocDialog('rename-group',g.id,g.title),true]
+ ];
+}
+function documentOptions(ep){
+ const own=state.project.groups?.find(g=>g.id===ep.groupId);
+ return [
+ ['＋ 同级新建文档',()=>{currentGroupId=ep.groupId||null;openDocDialog('document');}],
+ ...(own&&!own.parentId?[['＋ 在所属标题下建小标题',()=>{currentGroupId=own.id;openDocDialog('sub');}]]:[]),
+ ['重命名文档',()=>openDocDialog('rename-document',ep.id,ep.title)],
+ ['移动到其他标题',()=>moveCurrentDocument(ep.id)],
+ ['展开／折叠分镜段落',()=>{if(expandedDocs.has(ep.id))expandedDocs.delete(ep.id);else expandedDocs.add(ep.id);drawSidebar();}]
+ ];
+}
+function clamp(n,min,max){return Math.min(max,Math.max(min,n));}
+function storedNumber(key,fallback){
+ try{const n=Number(localStorage.getItem(key));return Number.isFinite(n)&&n>0?n:fallback;}
+ catch{return fallback;}
+}
+function applySidebarWidth(width){
+ const n=clamp(Math.round(width),185,Math.min(520,Math.max(185,window.innerWidth-350)));
+ document.querySelector('.sidebar').style.flexBasis=n+'px';
+ $('sidebarResize').setAttribute('aria-valuenow',String(n));
+ try{localStorage.setItem('manju-sidebar-width',String(n));}catch{}
+ return n;
+}
+function resizeFromPointer(handle,axis,getStart,onMove){
+ handle.addEventListener('pointerdown',e=>{
+  if(e.button!==undefined&&e.button!==0)return;
+  e.preventDefault();closeTreeMenu();
+  const start=e[axis],init=getStart();
+  const move=event=>onMove(init+event[axis]-start);
+  const end=()=>{
+   window.removeEventListener('pointermove',move);
+   window.removeEventListener('pointerup',end);
+   window.removeEventListener('pointercancel',end);
+   document.body.classList.remove('dragging-split');
+  };
+  document.body.classList.add('dragging-split');
+  window.addEventListener('pointermove',move);
+  window.addEventListener('pointerup',end);
+  window.addEventListener('pointercancel',end);
+ });
+}
+function applyPromptRatio(area,percent){
+ const n=clamp(Math.round(percent),20,80);
+ area.dataset.promptRatio=String(n);
+ area.style.gridTemplateRows='minmax(0,'+n+'fr) 8px minmax(0,'+(100-n)+'fr)';
+ try{localStorage.setItem('manju-prompt-ratio',String(n));}catch{}
+ return n;
+}
+function setAllPanelHeight(height){
+ const n=clamp(Math.round(height),220,720);
+ for(const area of document.querySelectorAll('.segment-workarea'))area.style.height=n+'px';
+ try{localStorage.setItem('manju-pane-size',String(n));}catch{}
+ return n;
+}
+async function moveCurrentDocument(id=activeEpisodeId){
+ const ep=state.project.episodes.find(x=>x.id===id);if(!ep)return;
+ const groups=state.project.groups||[];
+ const names=['根目录',...groups.map(g=>(g.parentId?'　↳ ':'')+g.title)];
+ const response=prompt('输入目标目录的序号（原文不变）：\n'+names.map((name,i)=>i+'．'+name).join('\n'),'0');
+ if(response===null)return;
+ if(!/^\d+$/.test(response)||Number(response)>=names.length){toast('请输入有效目录序号');return;}
+ const groupId=Number(response)===0?null:groups[Number(response)-1].id;
+ const result=await update(api.moveDocument({id:ep.id,groupId}),'文档已移动');
+ if(result){currentGroupId=groupId;render();}
+}
+
 function toast(message){const el=$('toast');el.textContent=message;el.classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add('hidden'),5500);}
 function status(message,type='info'){$('status').textContent=message;$('status').className='status '+type;}
 function assetFor(code){const group=state.assetList.find(a=>a.code===code);if(!group)return null;const p=state.project.chosenPaths?.[code];return group.items.find(a=>a.path===p)||group.items[0]||null;}
