@@ -20,4 +20,5 @@ const api={
  onDragError:cb=>ipcRenderer.on('workspace:drag-error',(_e,msg)=>cb(msg))
 };
 api.showEdgeAccounts=()=>ipcRenderer.invoke('edge-lite:show');
+api.prepareEdgeSegment=v=>ipcRenderer.invoke('edge-lite:prepare-segment',v);
 contextBridge.exposeInMainWorld('manju',api);
