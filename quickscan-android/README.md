@@ -1,8 +1,11 @@
-# 快递快扫 v0.5 (Android)
+# 快递快扫 v0.6
 
-Offline barcode-only parcel logging app. Scans 1D barcodes only, excludes QR codes. CameraX and Google ML Kit.
-Features: batches, continuous scan, duplicate warning, photo when unscannable, manual entry, searches, CSV export, copy parcel codes.
+- 只识别一维快递条形码，不识别二维码
+- 中文播报：扫码成功读“成功”，重复时读“重复”，无效录入、拍照和相机失败时读“失败”
+- 支持关闭播报、震动、测试声音；TTS 不可用时回退为系统提示音
+- 新版蓝色界面、新快递包裹图标
+- 导出真正的 Excel .xlsx，保留长数字单号和前导零
+- Excel 可选“仅单号”或“完整明细（单号、时间、备注、照片状态）”
+- 离线保存、拍照留底、手动补单、末四位查询、重复提醒
 
-Build: use repository Actions > Build QuickScan Android APK > download artifact QuickScan-APK-v0.5 > extract app-debug.apk > install on Android.
-Data is locally stored; uninstall clears scans and photos. CSV export does not contain image binaries.
-This APK is a debug-signed test build; verify on real device before relying on it for irreplaceable records.
+注意：v0.5 的临时 debug 签名与新构建可能不同。请先从旧版导出数据，避免卸载后数据和照片丢失；Excel 只含照片状态，不含照片本体。
