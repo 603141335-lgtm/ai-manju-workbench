@@ -5,5 +5,10 @@ contextBridge.exposeInMainWorld('edgeLite',{
   launch:id=>ipcRenderer.invoke('edge-lite:launch',id),
   submit:v=>ipcRenderer.invoke('edge-lite:submit',v),
   undo:id=>ipcRenderer.invoke('edge-lite:undo',id),
-  reset:id=>ipcRenderer.invoke('edge-lite:reset',id)
+  reset:id=>ipcRenderer.invoke('edge-lite:reset',id),
+  chooseDownloads:()=>ipcRenderer.invoke('edge-lite:choose-downloads'),
+  chooseArchive:()=>ipcRenderer.invoke('edge-lite:choose-archive'),
+  armDownload:id=>ipcRenderer.invoke('edge-lite:arm-download',id),
+  cancelDownload:()=>ipcRenderer.invoke('edge-lite:cancel-download'),
+  openArchive:()=>ipcRenderer.invoke('edge-lite:open-archive')
 });
