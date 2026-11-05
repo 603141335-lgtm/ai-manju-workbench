@@ -27,6 +27,17 @@ label{display:block;font-size:12px;color:#b4c2d8;margin-bottom:5px}.grid{display
 <div class="row" style="margin-top:10px"><button class="primary" id="submit">已提交一次</button><button id="reset">本账号计数归零</button></div>
 <div class="muted small" style="margin-top:8px">达到2/2仅提醒，不会自动切走或禁止操作。</div>
 </section>
+<section class="panel">
+<b class="small">视频下载自动命名</b>
+<p class="muted small">先选择下方已登记的段落，点击“准备下载”，再到 Edge 使用原插件下载。仅在能够唯一确定文件归属时自动归档。</p>
+<div id="downloadPaths" class="muted small" style="overflow-wrap:anywhere"></div>
+<div class="row" style="margin-top:8px"><button id="chooseDownloads">设置下载目录</button><button id="chooseArchive">归档目录</button></div>
+<label for="downloadTask" style="margin-top:9px">选择本次视频对应的段落</label>
+<select id="downloadTask" style="width:100%;padding:8px;border-radius:8px;background:#19263c;color:#fff;border:1px solid #405371"></select>
+<div class="row" style="margin-top:8px"><button class="primary" id="armDownload">准备下载</button><button id="cancelDownload">取消等待</button></div>
+<div id="downloadState" class="muted small" style="margin-top:6px">未等待下载</div>
+<button id="openArchive" style="width:100%;margin-top:8px">打开视频归档文件夹</button>
+</section>
 <section class="panel"><b class="small">最近登记</b><div id="recent" class="list small"></div></section>
 <div id="message" role="status"></div>
 <script src="edge-window-renderer.js"></script></body></html>
