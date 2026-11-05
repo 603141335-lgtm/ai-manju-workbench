@@ -1,14 +1,56 @@
-# 快递快扫 v0.8 安卓测试版
+# 快递快扫 | 安卓快递扫码登记工具
 
-## 本次更新
-- 批次页新增照片管理：单选、多选、全选、取消选择和永久删除选中的照片
-- 删除只针对软件内部 `files/photos` 中的原始图片文件，数据库会清除对应照片关联；不会修改快递单号、扫描时间和备注，记录不减少
-- 提供二次确认和删除成功/失败数量提示；删除后不可从软件恢复。分享或另存的外部副本不会受影响
-- 扫码画面中间的“对准横向条形码”遮罩文字、扫码区域上方的“对准快递条形码”提示移除，让摄像头画面更简洁
-- 延续 v0.7：Excel 保存/分享/选择应用打开、照片全屏缩放/分享/另存到手机、中文语音、仅扫一维条形码
+**当前版本：v0.8（源码存档）**
+- 代码位置：`quickscan-android/`
+- 开发维护分支：`quickscan-app`
+- 编译方式：GitHub Actions → **快递快扫 | 构建安卓 APK**
+- 构建工程：Android / Kotlin / CameraX / Google ML Kit / SQLite
+- 仓库：`603141335-lgtm/ai-manju-workbench`
+- 原漫剧软件位于 `main` 分支；请勿把快递源码误当成漫剧应用。
 
-## 本机存储
-照片存储在应用沙盒 `files/photos`。普通手机相册无法直接读取；本软件支持对单张照片另存或分享。卸载软件将丢失软件内部记录和照片。
+## 已有功能（v0.8）
+1. 仅识别常见快递**一维条形码**，不扫 QR 二维码。
+2. 相机连续识别、重复提示、中文语音“成功 / 重复 / 失败”、震动反馈。
+3. 每日批次管理，扫码时间精确到秒，完整或末四位搜索。
+4. 模糊条形码拍照留底、之后补录；照片保存在本地应用私有目录 `files/photos/`。
+5. 照片全屏预览、双击/双指放大、分享和另存手机。
+6. 批次内照片管理：单选、全选、取消选择、永久删除选中的原始照片；**保留单号、时间和备注**。
+7. Excel `.xlsx`：完整明细 / 仅单号；单号作为文本避免科学计数法；可保存、分享或选应用打开。
+8. 蓝色图标和主题、扫码画面中央无遮罩提示字。
 
-## 数据安全说明
-本版 applicationId 为 `com.kuaidi.quickscan.v08`，与之前测试版并存，避免云端调试签名变更导致旧版本覆盖失败。不同版本的数据目前不自动迁移。请不要卸载仍有重要记录或照片的旧版。
+## 开发目录
+| 文件 | 用途 |
+| --- | --- |
+| `app/src/main/java/com/kuaidi/quickscan/MainActivity.kt` | 界面、CameraX 扫码、拍照、搜索、分享、删除 |
+| `app/src/main/java/com/kuaidi/quickscan/ScanDb.kt` | SQLite 本机批次和记录 |
+| `app/src/main/java/com/kuaidi/quickscan/ZoomPhotoView.kt` | 全屏照片缩放 |
+| `app/src/main/java/com/kuaidi/quickscan/XlsxWriter.kt` | 原生 xlsx 输出（不依赖付费服务） |
+| `app/src/main/res/drawable/` | 软件图标 |
+| `app/src/main/AndroidManifest.xml` | 权限与文件共享 Provider |
+| `app/build.gradle.kts` | 版本号、应用 ID、Android 编译依赖 |
+| `.github/workflows/quickscan-apk.yml` | GitHub 自动生成 APK |
+| `CHANGELOG.md` | 每次升级的变更记录 |
+| `UPGRADE_GUIDE.md` | 升级、签名和数据安全说明 |
+
+## 以后升级怎么做
+直接告诉 ChatGPT：**“继续升级我的 GitHub 快递快扫，仓库 603141335-lgtm/ai-manju-workbench，分支 quickscan-app，代码在 quickscan-android，按我的新需求改完并编译 APK。”**
+
+1. 从 `quickscan-app` 读取最新源码，避免用旧对话中的压缩包覆盖。
+2. 修改应用代码 → 递增 `versionCode` / `versionName` → 更新 `CHANGELOG.md`。
+3. 提交到 `quickscan-app`，GitHub Actions 自动构建；确认构建为绿色。
+4. 从 Actions 的最新成功任务中下载 APK Artifact；实际在手机测试。
+
+## 非常重要：APK 升级与数据
+当前 v0.8 属于实验阶段，使用 GitHub Actions **临时调试签名**，包名为 `com.kuaidi.quickscan.v08`。以后即使包名不变，不同构建的临时签名也可能导致覆盖安装失败。
+
+**源码能长期留在 GitHub，不代表 APK 可以不丢数据地覆盖升级。**
+
+要实现真正的“后续直接升级并保留扫码数据”：
+- 固定正式 `applicationId`（不每次变成 v09/v10）。
+- 在可信环境生成专用签名密钥，并妥善保存，CI 通过 GitHub Secrets 引入；签名密钥不可提交 Git 仓库。
+- 对版本升级增加数据库迁移与数据备份/恢复方案。
+- 在具备可靠备份前，**不要卸载**已经存储重要单号和照片的旧版软件。
+- 文件导出不包括照片二进制；照片需另存/分享才可以离开应用内部目录。
+- 旧调试版的原始数据不会自动同步到后续独立安装版。
+
+> 本目录是源代码存档，不是直接打开运行的网页。编译需要 GitHub Actions 或 Android SDK。

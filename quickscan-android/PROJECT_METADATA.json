@@ -1,0 +1,29 @@
+{
+  "project": "快递快扫",
+  "currentVersion": "0.8",
+  "lastArchived": "2026-11-05",
+  "githubRepo": "603141335-lgtm/ai-manju-workbench",
+  "activeBranch": "quickscan-app",
+  "codeDirectory": "quickscan-android",
+  "packageName": "com.kuaidi.quickscan.v08",
+  "buildSystem": "Gradle 8.9 / Android SDK 35 / Kotlin",
+  "buildWorkflow": ".github/workflows/quickscan-apk.yml",
+  "knownPreviousBuild": {
+    "workflowRun": 41968416953,
+    "success": true,
+    "apkName": "QuickScan-APK-v0.8",
+    "type": "debug-signed"
+  },
+  "upgradeNotes": "Keep permanent package/signing for data-preserving upgrade; current debug signing is not stable. Photos inside app private storage.",
+  "features": [
+    "1D barcode-only",
+    "continuous scan",
+    "batch records",
+    "TTS alerts",
+    "photo capture",
+    "photo zoom/save/share",
+    "batch multi-select photo deletion",
+    "xlsx export/share/open",
+    "local SQLite search"
+  ]
+}
