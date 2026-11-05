@@ -167,6 +167,9 @@
       <div class="imageitem" data-img="AG06"><div class="thumb">♟</div><span>AG06</span></div>
       <div class="imageitem" data-img="AG10"><div class="thumb">▤</div><span>AG10</span></div>
       <div class="imageitem" data-img="B02"><div class="thumb">▧</div><span>B02</span></div>
+      <div class="imageitem" data-img="C02"><div class="thumb">♧</div><span>C02</span></div>
+      <div class="imageitem" data-img="C16"><div class="thumb">▦</div><span>C16</span></div>
+      <div class="imageitem" data-img="C20"><div class="thumb">◇</div><span>C20</span></div>
      </div>
      <div class="imgfoot"><span id="dragLabel">☷ 拖动本段全部参考图（9张）</span><button class="btn" data-action="images">全选图片</button></div>
     </div>
@@ -210,7 +213,7 @@
    if(a==='fold'||a==='next'){fold(!folded);return;}
    if(a==='all'){fold(!folded);btn.textContent=folded?'全部展开':'全部收起';return;}
    if(a==='copy'){note('布局样机：这里是复制按钮的位置');return;}
-   if(a==='images'){document.querySelectorAll('.imageitem').forEach(function(x){x.classList.add('sel')});document.getElementById('selectedCount').textContent='已选9张 · 可多选拖拽';return;}
+   if(a==='images'){document.querySelectorAll('.imageitem').forEach(function(x){x.classList.add('sel')});document.getElementById('selectedCount').textContent='已选 '+document.querySelectorAll('.imageitem.sel').length+' 张 · 可多选拖拽';return;}
    note('布局样机：只演示操作位置，不修改正式工作台');return;
   }
   if(e.target.closest('#segmentTitle')){fold(!folded);return;}
