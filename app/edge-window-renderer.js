@@ -1,9 +1,15 @@
 'use strict';
 const api=window.edgeLite,$=id=>document.getElementById(id);
-let state={profiles:[],records:[]},selected=null;
+let state={profiles:[],records:[]},selected=null,lastPendingKey=null;
 const say=(msg,error=false)=>{const el=$('message');el.textContent=msg;el.className=error?'danger':''};
 const used=id=>state.records.filter(t=>t.profileId===id&&t.status==='submitted').length;
 function render(){
+ if(state.pendingSegment?.key&&state.pendingSegment.key!==lastPendingKey){
+   lastPendingKey=state.pendingSegment.key;
+   $('episode').value=state.pendingSegment.episode;
+   $('segment').value=state.pendingSegment.segment;
+   say('提示词文档已选中：第'+state.pendingSegment.episode+'集 第'+state.pendingSegment.segment+'段');
+ }
  const list=$('profiles');list.replaceChildren();
  if(!state.profiles.length){const p=document.createElement('p');p.className='muted small';p.textContent='未找到 Edge 用户资料。请先在 Edge 中添加用户。';list.append(p);}
  for(const p of state.profiles){
