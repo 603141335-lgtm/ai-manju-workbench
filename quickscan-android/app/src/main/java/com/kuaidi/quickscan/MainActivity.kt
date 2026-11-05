@@ -61,8 +61,10 @@ class MainActivity:ComponentActivity(){
   private val processing=AtomicBoolean(false)
   private var lastCode=""
   private var lastAt=0L
-  private var autoPhoto=false
-  private var duplicates=false
+  private val captureBusy=AtomicBoolean(false)
+  private var latestCodeView:TextView?=null
+  private var latestStatusView:TextView?=null
+  private var retryPhotoForRow:Long?=null
   private var flashlight=false
   private var voiceEnabled=true
   private var vibrationEnabled=true
@@ -233,7 +235,7 @@ class MainActivity:ComponentActivity(){
   }
   private fun toast(t:String)=Toast.makeText(this,t,Toast.LENGTH_SHORT).show()
   private fun formatTime(t:Long)=SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.CHINA).format(Date(t))
-  private fun today()=SimpleDateFormat("MMdd",Locale.CHINA).format(Date())
+  private fun today()=SimpleDateFormat("M.d",Locale.CHINA).format(Date())
   private fun csv(t:String)="\""+t.replace("\"","\"\"")+"\""
   private fun prompt(title:String,hint:String,default:String="",accept:(String)->Unit){
     val edit=input(hint,default);val holder=container().apply{setPadding(dp(17),dp(10),dp(17),0);addView(edit)}
@@ -242,21 +244,41 @@ class MainActivity:ComponentActivity(){
         accept(edit.text.toString().trim())
       }.show()
   }
+  private fun newBatchDialog(then:()->Unit){
+    val day=today()
+    prompt("新建扫码批次","例如 "+day,day){requested->
+      val name=requested.trim()
+      if(name.isBlank()){toast("批次名称不能为空");return@prompt}
+      val existing=db.batches().firstOrNull{it.name==name}
+      if(existing==null){
+        activeBatch=db.newBatch(name);batchName=name;then()
+      }else{
+        val existingNames=db.batches().map{it.name}.toSet()
+        var suffix=2
+        while(existingNames.contains(name+"-"+suffix))suffix++
+        val alternative=name+"-"+suffix
+        AlertDialog.Builder(this).setTitle("已存在批次 "+name)
+          .setMessage("可以打开今天已有的批次，也可以创建新的 "+alternative+"。")
+          .setPositiveButton("使用已有"){_,_->
+            activeBatch=existing.id;batchName=existing.name;then()
+          }
+          .setNeutralButton("新建 "+alternative){_,_->
+            activeBatch=db.newBatch(alternative);batchName=alternative;then()
+          }
+          .setNegativeButton("取消",null).show()
+      }
+    }
+  }
   private fun selectBatch(then:()->Unit){
     val batches=db.batches()
     if(batches.isEmpty()){
-      prompt("新建扫码批次","如："+today(),today()){name->
-        if(name.isNotBlank()){activeBatch=db.newBatch(name);batchName=name;then()}
-      }
+      newBatchDialog(then)
       return
     }
-    AlertDialog.Builder(this).setTitle("选择扫码批次").setItems(batches.map{it.name+" · "+it.count+" 件"}.toTypedArray()){_,which->
-      activeBatch=batches[which].id;batchName=batches[which].name;then()
-    }.setNeutralButton("新建"){_,_->
-      prompt("新建批次","批次名称",today()){name->
-        if(name.isNotBlank()){activeBatch=db.newBatch(name);batchName=name;then()}
-      }
-    }.show()
+    AlertDialog.Builder(this).setTitle("选择扫码批次")
+      .setItems(batches.map{it.name+" · "+it.count+" 件"}.toTypedArray()){_,which->
+        activeBatch=batches[which].id;batchName=batches[which].name;then()
+      }.setNeutralButton("新建"){_,_->newBatchDialog(then)}.show()
   }
   private fun showHome(){
     currentPage="home";stopCamera();shell("快递快扫","离线扫码 · 一键拍照 · 批次登记")
@@ -264,9 +286,7 @@ class MainActivity:ComponentActivity(){
     intro.addView(label("今日快递登记",20f,ink,true),margins(5))
     intro.addView(label("仅识别快递一维条形码 · 离线保存 · 语音播报",12f,muted),margins(14))
     pair(intro,button("＋ 新建批次",true){
-      prompt("新建批次","例如 "+today(),today()){name->
-        if(name.isNotEmpty()){activeBatch=db.newBatch(name);batchName=name;showBatch()}
-      }
+      newBatchDialog{showBatch()}
     },button("开始扫码"){selectBatch{showScan()}})
     val batches=db.batches()
     val stat=card()
@@ -427,14 +447,34 @@ class MainActivity:ComponentActivity(){
       }.show()
   }
   private fun refresh(){when(currentPage){"home"->showBatch();"search"->showSearch();"scan"->showScan()}}
+  private fun updateScanOutcome(code:String,status:String,color:Int){
+    if(currentPage!="scan")return
+    latestCodeView?.text=code
+    latestStatusView?.text=status
+    latestStatusView?.setTextColor(color)
+  }
+  private fun iconAction(resource:Int,description:String,action:()->Unit):LinearLayout{
+    val holder=container().apply{gravity=Gravity.CENTER}
+    val image=ImageButton(this).apply{
+      setImageResource(resource)
+      setColorFilter(primary)
+      scaleType=ImageView.ScaleType.CENTER_INSIDE
+      background=shape(Color.rgb(232,241,255),15)
+      setPadding(dp(13),dp(13),dp(13),dp(13))
+      contentDescription=description
+      setOnClickListener{action()}
+    }
+    holder.addView(image,LinearLayout.LayoutParams(dp(50),dp(50)))
+    holder.addView(label(description,11f,muted).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(5)})
+    return holder
+  }
   private fun showScan(){
     if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
       permissionRequest.launch(Manifest.permission.CAMERA);return
     }
     if(activeBatch==0L){selectBatch{showScan()};return}
-    currentPage="scan";stopCamera();shell("连续扫码 · "+batchName,"一维条形码专用 · 扫不上就拍照")
+    currentPage="scan";stopCamera();shell("扫码 · "+batchName,"单号自动登记并拍照留底")
     val box=card()
-    box.addView(label("成功读“成功” · 重复读“重复”",12f,muted),margins(11))
     val view=PreviewView(this).apply{
       scaleType=PreviewView.ScaleType.FILL_CENTER
       background=shape(Color.rgb(28,34,50),15)
@@ -442,26 +482,31 @@ class MainActivity:ComponentActivity(){
     previewView=view
     val frame=FrameLayout(this)
     frame.addView(view,FrameLayout.LayoutParams(-1,-1))
-    box.addView(frame,LinearLayout.LayoutParams(-1,dp(260)).apply{bottomMargin=dp(12)})
-    pair(box,button("📷 拍照留底",true){takePhoto()},button("🔦 手电筒"){
-      flashlight=!flashlight;camera?.cameraControl?.enableTorch(flashlight)
-    })
-    box.addView(label("识别不到也可以先拍照片，再从记录中补录单号",12f,muted),margins(10))
-    pair(box,button("手动录入"){
+    box.addView(frame,LinearLayout.LayoutParams(-1,dp(340)).apply{bottomMargin=dp(12)})
+
+    val toolbar=container(false).apply{gravity=Gravity.CENTER}
+    val photo=iconAction(R.drawable.ic_action_camera,"拍照"){takePhoto(retryPhotoForRow)}
+    val light=iconAction(R.drawable.ic_action_flash,"补光"){
+      flashlight=!flashlight
+      camera?.cameraControl?.enableTorch(flashlight)
+    }
+    val input=iconAction(R.drawable.ic_action_keyboard,"录入"){
       prompt("手动输入单号","快递条码下方数字"){addCode(it)}
-    },button("本批记录"){showBatch()})
-    val flags=card()
-    flags.addView(CheckBox(this).apply{
-      text="扫码成功自动拍照（连续扫码会略慢）";isChecked=autoPhoto
-      setOnCheckedChangeListener{_,v->autoPhoto=v}
-    })
-    flags.addView(CheckBox(this).apply{
-      text="允许相同快递单号重复登记";isChecked=duplicates
-      setOnCheckedChangeListener{_,v->duplicates=v}
-    })
+    }
+    val records=iconAction(R.drawable.ic_action_records,"记录"){showBatch()}
+    listOf(photo,light,input,records).forEach{
+      toolbar.addView(it,LinearLayout.LayoutParams(0,-2,1f))
+    }
+    box.addView(toolbar,margins(10))
     val latest=card()
-    latest.tag="recent"
-    showRecent(latest)
+    latest.addView(label("最新识别单号",12f,muted),margins(6))
+    latestCodeView=label("等待识别…",22f,ink,true).apply{setTextIsSelectable(true)}
+    latest.addView(latestCodeView,margins(5))
+    latestStatusView=label("每件成功扫码自动拍照，并绑定到当前单号",12f,muted)
+    latest.addView(latestStatusView)
+    val recent=card()
+    recent.tag="recent"
+    showRecent(recent)
     startCamera(view)
   }
   private fun showRecent(box:LinearLayout){
@@ -493,32 +538,58 @@ class MainActivity:ComponentActivity(){
   @androidx.camera.core.ExperimentalGetImage
   private fun analyze(proxy:ImageProxy){
     val media=proxy.image
-    if(media==null||!processing.compareAndSet(false,true)){proxy.close();return}
+    if(media==null||captureBusy.get()||!processing.compareAndSet(false,true)){
+      proxy.close();return
+    }
     val input=InputImage.fromMediaImage(media,proxy.imageInfo.rotationDegrees)
     barcodeScanner.process(input).addOnSuccessListener{items->
       val result=items.firstOrNull{it.rawValue!=null}?.rawValue?.trim().orEmpty()
-      if(valid(result)){
+      if(valid(result)&&!captureBusy.get()){
         val now=System.currentTimeMillis()
         if(result!=lastCode||now-lastAt>3000){
-          lastCode=result;lastAt=now;runOnUiThread{if(currentPage=="scan")addCode(result)}
+          lastCode=result;lastAt=now
+          runOnUiThread{if(currentPage=="scan"&&!captureBusy.get())addCode(result,true)}
         }
       }
     }.addOnCompleteListener{processing.set(false);proxy.close()}
   }
   private fun valid(v:String)=v.matches(Regex("[A-Za-z0-9_-]{6,80}"))
-  private fun addCode(raw:String){
+  private fun addCode(raw:String,fromCamera:Boolean=false){
     if(activeBatch==0L){toast("请先新建批次");announce("failure");return}
+    if(fromCamera&&captureBusy.get())return
     val code=raw.trim().replace(" ","")
-    if(!valid(code)){toast("请输入有效的快递单号");announce("failure");return}
-    if(!duplicates&&db.duplicate(activeBatch,code)){toast("⚠ 重复件："+code);announce("duplicate");return}
+    if(!valid(code)){
+      toast("请输入有效的快递单号");announce("failure")
+      if(fromCamera)updateScanOutcome(code,"输入无效 · 未登记",Color.rgb(198,57,57))
+      return
+    }
+    if(db.duplicate(activeBatch,code)){
+      if(fromCamera)updateScanOutcome(code,"重复单号 · 未重新拍照",Color.rgb(200,126,24))
+      toast("⚠ 重复件："+code);announce("duplicate")
+      return
+    }
     val saved=db.save(activeBatch,code)
-    announce("success")
-    toast("✓ 已登记："+code);updateRecent()
-    if(autoPhoto)takePhoto(saved)
+    if(fromCamera){
+      updateScanOutcome(code,"已识别 · 正在保存照片…",Color.rgb(50,107,196))
+      takePhoto(saved)
+    }else{
+      announce("success")
+      toast("✓ 手动登记："+code)
+    }
+    updateRecent()
   }
   private fun takePhoto(forRow:Long?=null){
+    if(!captureBusy.compareAndSet(false,true)){
+      toast("上一张照片保存中，请稍后")
+      return
+    }
     val capture=imageCapture
-    if(capture==null){toast("相机启动中，请稍后再拍");announce("failure");return}
+    if(capture==null){
+      captureBusy.set(false);toast("相机启动中，请稍后再拍");announce("failure")
+      if(forRow!=null)updateScanOutcome(lastCode,"照片失败 · 记录已保留",Color.rgb(198,57,57))
+      return
+    }
+    val batchAtCapture=activeBatch
     val dir=File(filesDir,"photos").apply{mkdirs()}
     val file=File(dir,"scan_"+System.currentTimeMillis()+"_"+(100..999).random()+".jpg")
     capture.takePicture(
@@ -526,11 +597,30 @@ class MainActivity:ComponentActivity(){
       ContextCompat.getMainExecutor(this),
       object:ImageCapture.OnImageSavedCallback{
         override fun onImageSaved(result:ImageCapture.OutputFileResults){
-          if(forRow!=null)db.attachPhoto(forRow,file.absolutePath)
-          else if(activeBatch!=0L)db.save(activeBatch,"",file.absolutePath)
-          toast("照片已保存，可随时补录");updateRecent()
+          try{
+            if(forRow!=null){
+              db.attachPhoto(forRow,file.absolutePath)
+              updateScanOutcome(lastCode,"✓ 单号及照片均已保存",Color.rgb(36,151,94))
+              announce("success")
+              toast("✓ 单号及照片已保存")
+            }else{
+              db.save(batchAtCapture,"",file.absolutePath)
+              toast("照片已保存，之后可补录单号")
+            }
+            if(retryPhotoForRow==forRow && forRow!=null)retryPhotoForRow=null
+            updateRecent()
+          }catch(e:Exception){
+            toast("照片关联失败："+e.message);announce("failure")
+            if(forRow!=null)updateScanOutcome(lastCode,"照片关联失败 · 单号已保留",Color.rgb(198,57,57))
+          }finally{captureBusy.set(false)}
         }
-        override fun onError(exception:ImageCaptureException){toast("拍照失败："+exception.message);announce("failure")}
+        override fun onError(exception:ImageCaptureException){
+          file.delete()
+          captureBusy.set(false)
+          toast("拍照失败，单号已保留："+exception.message)
+          if(forRow!=null)updateScanOutcome(lastCode,"照片保存失败 · 单号已保留，可补拍",Color.rgb(198,57,57))
+          announce("failure")
+        }
       }
     )
   }
@@ -664,7 +754,7 @@ class MainActivity:ComponentActivity(){
   private fun showSettings(){
     currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
     val info=card()
-    info.addView(label("快递快扫 v0.8",21f,ink,true),margins(8))
+    info.addView(label("快递快扫 v0.9",21f,ink,true),margins(8))
     info.addView(label("只扫常见一维快递条形码 · 不识别二维码 · 不限次数",13f,muted))
     val audio=card()
     audio.addView(label("扫码声音",18f,ink,true),margins(6))

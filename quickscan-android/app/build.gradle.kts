@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android {
     namespace = "com.kuaidi.quickscan"
     compileSdk = 35
-    defaultConfig { applicationId = "com.kuaidi.quickscan.v08"; minSdk = 26; targetSdk = 35; versionCode = 8; versionName = "0.8" }
+    defaultConfig { applicationId = "com.kuaidi.quickscan.v09"; minSdk = 26; targetSdk = 35; versionCode = 9; versionName = "0.9" }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }

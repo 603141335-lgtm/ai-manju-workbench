@@ -1,11 +1,11 @@
 {
   "project": "快递快扫",
-  "currentVersion": "0.8",
+  "currentVersion": "0.9",
   "lastArchived": "2026-11-05",
   "githubRepo": "603141335-lgtm/ai-manju-workbench",
   "activeBranch": "quickscan-app",
   "codeDirectory": "quickscan-android",
-  "packageName": "com.kuaidi.quickscan.v08",
+  "packageName": "com.kuaidi.quickscan.v09",
   "buildSystem": "Gradle 8.9 / Android SDK 35 / Kotlin",
   "buildWorkflow": ".github/workflows/quickscan-apk.yml",
   "knownPreviousBuild": {
@@ -24,6 +24,9 @@
     "photo zoom/save/share",
     "batch multi-select photo deletion",
     "xlsx export/share/open",
-    "local SQLite search"
+    "local SQLite search",
+    "auto photo after every successfully scanned nonduplicate barcode",
+    "default M.d batch naming",
+    "export-only settlement note"
   ]
 }

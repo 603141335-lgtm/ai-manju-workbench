@@ -39,7 +39,9 @@ object XlsxWriter {
       out.append(cell("A",index,r.code))
       if(detail){
         out.append(cell("B",index,fmt.format(Date(r.time))))
-        out.append(cell("C",index,r.note))
+        val note=r.note.trim()
+        val exportNote=if(note.isEmpty())"已结算" else if(note.endsWith("已结算"))note else note+"；已结算"
+        out.append(cell("C",index,exportNote))
         out.append(cell("D",index,if(r.photo.isBlank())"无" else "有"))
       }
       out.append("</row>")

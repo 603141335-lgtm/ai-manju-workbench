@@ -5,7 +5,7 @@
 - 长期开发分支：**quickscan-app**
 - 代码根目录：**quickscan-android**
 - 自动编译工作流：`.github/workflows/quickscan-apk.yml`
-- 已知成功版本：v0.8（于 2026-11-05 云端编译，未承诺真机全部功能通过）
+- 已知成功版本：v0.9（于 2026-11-05 云端编译，未承诺真机全部功能通过）
 
 ## 给下一次 AI 的标准任务
 > 从 GitHub `603141335-lgtm/ai-manju-workbench` 仓库的 `quickscan-app` 分支读取 `quickscan-android/` 全部最新源码，继续升级快递快扫。保留原有条码、拍照、照片管理、Excel 导出/分享、声音、批次和查询功能。按我这次提出的需求只做增量修改，记录 CHANGELOG.md，跑 GitHub Actions 生成并验证 APK，给我可下载文件。不要影响 main 分支的 AI 漫剧项目。
@@ -13,7 +13,7 @@
 ## 版本与包名（必须注意）
 - `versionCode` 必须每次递增，`versionName` 体现新版本。
 - 正式连续升级**必须固定包名和签名密钥**，否则不能在原地更新且保留记录。
-- 目前 v0.8 的 `applicationId=com.kuaidi.quickscan.v08`、临时 Debug 签名只适于试用。
+- 目前 v0.8 的 `applicationId=com.kuaidi.quickscan.v09`、临时 Debug 签名只适于试用。
 - 不得把个人正式签名私钥放进公开源码/Git 提交；建议保存在 GitHub Actions Secrets 并留离线备份。
 - 不要为解决签名冲突直接让用户卸载含数据的旧版；优先安排数据导出/迁移。
 
