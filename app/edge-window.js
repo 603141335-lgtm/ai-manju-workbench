@@ -1,6 +1,7 @@
 'use strict';
 const {BrowserWindow,ipcMain,app,dialog,shell,screen,clipboard}=require('electron');
 const {createWatcher}=require('./edge-downloads');
+const {createLinkStore,createRelay}=require('./edge-relay');
 const path=require('path');
 const edge=require('./edge-profiles');
 const ledger=require('./edge-ledger');
@@ -12,6 +13,10 @@ function setupEdgeWindow(parent){
   let closingFromParent=false;
   let tasks=ledger.loadLedger(dataFile);
   let pendingSegment=null;
+  const linkStore=createLinkStore(path.join(app.getPath('userData'),'edge-lite-connection.json'),
+    id=>edge.discoverProfiles().some(p=>p.id===id));
+  const relay=createRelay({store:linkStore});
+  relay.start().catch(e=>{console.error('Edge连接器本地服务不可用：',e.message);});
   const save=()=>ledger.saveLedger(dataFile,tasks);
   const dlConfig=path.join(app.getPath('userData'),'edge-lite-download-config.json');
   let config={source:app.getPath('downloads'),root:path.join(app.getPath('videos'),'AI漫剧成片')};
@@ -26,7 +31,9 @@ function setupEdgeWindow(parent){
     watcher.start();
   }
   monitor();
-  const summary=()=>({profiles:edge.discoverProfiles(),records:tasks,pendingSegment,downloads:{...config,...watcher.get(),notices}});
+  const summary=()=>({profiles:edge.discoverProfiles(),records:tasks,pendingSegment,
+    connection:{...linkStore.status(),server:relay.state()},
+    downloads:{...config,...watcher.get(),notices}});
   ipcMain.handle('edge-lite:get',()=>summary());
   ipcMain.handle('edge-lite:prepare-segment',(_,data)=>{
     const episode=Number(data?.episode),segment=Number(data?.segment);
@@ -41,7 +48,27 @@ function setupEdgeWindow(parent){
       profileId:null,
       key:Date.now()+'-'+Math.random().toString(36).slice(2)
     };
-    if(accountWindow&&!accountWindow.isDestroyed()){accountWindow.show();accountWindow.focus();}
+    const assigned=linkStore.status().selectedProfile;
+    if(assigned&&edge.discoverProfiles().some(p=>p.id===assigned)){
+      linkStore.enqueue(assigned,pendingSegment);
+      pendingSegment.profileId=assigned;
+    }else if(accountWindow&&!accountWindow.isDestroyed()){
+      accountWindow.show();accountWindow.focus();
+    }
+    return summary();
+  });
+  ipcMain.handle('edge-lite:select-profile',(_,id)=>{
+    linkStore.selectProfile(id);return summary();
+  });
+  ipcMain.handle('edge-lite:copy-pair-token',(_,id)=>{
+    const token=linkStore.tokenFor(id);
+    clipboard.writeText(token);return summary();
+  });
+  ipcMain.handle('edge-lite:send-prompt',async(_,id)=>{
+    if(!pendingSegment)throw Error('请在提示词工作台选择段落');
+    linkStore.selectProfile(id);
+    linkStore.enqueue(id,pendingSegment);
+    pendingSegment.profileId=id;
     return summary();
   });
   ipcMain.handle('edge-lite:show',()=>{if(accountWindow&&!accountWindow.isDestroyed()){accountWindow.show();accountWindow.focus();}return true;});
@@ -54,7 +81,10 @@ function setupEdgeWindow(parent){
     if(!pendingSegment)throw Error('请先在提示词文档选择段落');
     const known=edge.discoverProfiles().find(x=>x.id===id);
     if(!known)throw Error('所选 Edge 用户不存在，请刷新账号列表');
+    // Kept for manual clipboard fallback; the extension bridge is the preferred route.
     clipboard.writeText(pendingSegment.prompt);
+    linkStore.selectProfile(id);
+    linkStore.enqueue(id,pendingSegment);
     await edge.launchProfile(id);
     pendingSegment.profileId=id;
     return summary();
@@ -135,7 +165,7 @@ function setupEdgeWindow(parent){
     closingFromParent=true;
     if(accountWindow&&!accountWindow.isDestroyed())accountWindow.destroy();
   });
-  accountWindow.on('closed',()=>{watcher.stop();accountWindow=null;});
+  accountWindow.on('closed',()=>{watcher.stop();relay.stop().catch(()=>{});accountWindow=null;});
   return accountWindow;
 }
 module.exports={setupEdgeWindow};
