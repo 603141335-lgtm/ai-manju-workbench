@@ -24,7 +24,7 @@ import org.json.*;
 
 /** A native offline Android companion with a bundled HTML UI and a narrow SAF/MediaStore bridge. */
 public class StudioActivity extends Activity {
-    static final int PROMPT=11, FOLDER=12, VIDEO=13, BACKUP_IN=14, BACKUP_OUT=15;
+    static final int PROMPT=11, FOLDER=12, VIDEO=13, BACKUP_IN=14, BACKUP_OUT=15, DESKTOP_WORKSPACE=16;
     static final String PREF="manju_v2", ALBUM="Pictures/AI漫剧待上传/";
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final ArrayList<Asset> assets=new ArrayList<>();
@@ -72,6 +72,7 @@ public class StudioActivity extends Activity {
         return m.group(1)+base+(sub==null?"":"-"+sub);
     }
     private File promptsFile(){return new File(getFilesDir(),"manju_v2_prompts.txt");}
+    private File desktopWorkspaceFile(){return new File(getFilesDir(),"doubao_v03_workspace.json");}
     private String readAll(InputStream in,int limit)throws IOException{
         if(in==null)throw new IOException("没有读取权限");
         ByteArrayOutputStream dst=new ByteArrayOutputStream();byte[] buf=new byte[32768];int count;
@@ -205,6 +206,8 @@ public class StudioActivity extends Activity {
             catch(Exception ignored){return "";}
         }
         @JavascriptInterface public String getAssets(){return filesJSON().toString();}
+        @JavascriptInterface public String getDesktopWorkspace(){try(InputStream in=new FileInputStream(desktopWorkspaceFile())){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
+        @JavascriptInterface public void chooseDesktopWorkspace(){runOnUiThread(()->{Intent in=new Intent(Intent.ACTION_OPEN_DOCUMENT);in.addCategory(Intent.CATEGORY_OPENABLE);in.setType("*/*");startActivityForResult(in,DESKTOP_WORKSPACE);});}
         @JavascriptInterface public String getFolder(){
             return getSharedPreferences(PREF,0).getString("treeName","未选择参考图文件夹");
         }
@@ -297,9 +300,27 @@ public class StudioActivity extends Activity {
             worker.execute(()->{
                 try(InputStream in=getContentResolver().openInputStream(uri)){
                     String raw=readAll(in,25*1024*1024);
+                    if(desktopWorkspaceFile().exists())desktopWorkspaceFile().delete();
                     try(OutputStream out=new FileOutputStream(promptsFile())){out.write(raw.getBytes(StandardCharsets.UTF_8));}
                     JSONObject j=new JSONObject();j.put("type","prompts");j.put("text",raw);j.put("filename",fileName(uri));send(j);
                 }catch(Exception e){emit("error","提示词导入失败："+e.getMessage());}
+            });
+        }else if(req==DESKTOP_WORKSPACE){
+            worker.execute(()->{
+                try(InputStream in=getContentResolver().openInputStream(uri)){
+                    String raw=readAll(in,40*1024*1024);
+                    JSONObject original=new JSONObject(raw);
+                    JSONObject data=original.optJSONObject("workspace")!=null?original.getJSONObject("workspace"):original;
+                    if(!data.has("episodes")||data.optJSONArray("episodes")==null||!data.has("version"))
+                        throw new IOException("这不是豆包创作舱 v0.3 的项目备份 JSON");
+                    if(data.optInt("version")<2||data.optInt("version")>3)
+                        throw new IOException("仅支持豆包创作舱 v0.2/v0.3 的 workspace.json");
+                    try(OutputStream out=new FileOutputStream(desktopWorkspaceFile())){
+                        out.write(data.toString().getBytes(StandardCharsets.UTF_8));
+                    }
+                    JSONObject event=new JSONObject();event.put("type","desktopWorkspace");event.put("workspace",data);
+                    send(event);
+                }catch(Exception e){emit("error","导入电脑项目失败："+e.getMessage());}
             });
         }else if(req==VIDEO){
             try{
