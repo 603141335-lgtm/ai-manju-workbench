@@ -1,0 +1,44 @@
+name: Build Android APK (two-button mobile)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/mobile-two-buttons-apk
+    paths:
+      - 'mobile-android/**'
+      - '.github/workflows/mobile-two-buttons-apk.yml'
+  pull_request:
+    paths:
+      - 'mobile-android/**'
+      - '.github/workflows/mobile-two-buttons-apk.yml'
+permissions:
+  contents: write
+jobs:
+  build-apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build installable debug APK
+        run: gradle -p mobile-android :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manju-mobile-apk-install
+          path: mobile-android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish directly downloadable APK (preview release)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/mobile-two-buttons-apk'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp mobile-android/app/build/outputs/apk/debug/app-debug.apk AI-Manju-Mobile-v1.0-debug.apk
+          gh release view mobile-two-buttons-v1.0 >/dev/null 2>&1 &&             gh release upload mobile-two-buttons-v1.0 AI-Manju-Mobile-v1.0-debug.apk --clobber ||             gh release create mobile-two-buttons-v1.0 AI-Manju-Mobile-v1.0-debug.apk --target "$GITHUB_SHA" --title "AI漫剧手机制作台 v1.0 测试版" --notes "安卓10及以上：一键保存本段全部参考图到相册、一键复制完整提示词。使用前导入TXT/MD提示词并选择参考图文件夹。尚未真机验证，属于测试版。" --prerelease
