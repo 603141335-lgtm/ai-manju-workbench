@@ -31,7 +31,7 @@ public class StudioActivity extends Activity {
     private final Object assetLock=new Object();
     private WebView web;
     private String pendingVideoKey="", backupJSON="";
-    private static final Pattern CODE=Pattern.compile("(?<![A-Z0-9])(AG|BL|[ABCDE])\s*[-_ ]?\s*(\d{1,4})(?:\s*[-_－]\s*(\d{1,3}))?(?![A-Z0-9])");
+    private static final Pattern CODE=Pattern.compile("(?<![A-Z0-9])(AG|BL|[ABCDE])\\s*[-_ ]?\\s*(\\d{1,4})(?:\\s*[-_－]\\s*(\\d{1,3}))?(?![A-Z0-9])");
     static class Asset {
         final String code,name,type;
         final Uri uri;
@@ -199,6 +199,7 @@ public class StudioActivity extends Activity {
     }
     public class Bridge {
         @JavascriptInterface public String version(){return "2.0.0";}
+        @JavascriptInterface public void restorePrompts(String source){worker.execute(()->{try(OutputStream out=new FileOutputStream(promptsFile())){out.write(source.getBytes(StandardCharsets.UTF_8));}catch(Exception e){emit("error","恢复原始提示词失败："+e.getMessage());}});}
         @JavascriptInterface public String getPrompts(){
             try(InputStream in=new FileInputStream(promptsFile())){return readAll(in,25*1024*1024);}
             catch(Exception ignored){return "";}
