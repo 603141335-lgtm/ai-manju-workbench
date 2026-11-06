@@ -310,15 +310,15 @@ public class StudioActivity extends Activity {
                 try(InputStream in=getContentResolver().openInputStream(uri)){
                     String raw=readAll(in,40*1024*1024);
                     JSONObject original=new JSONObject(raw);
-                    JSONObject data=original.optJSONObject("workspace")!=null?original.getJSONObject("workspace"):original;
-                    if(!data.has("episodes")||data.optJSONArray("episodes")==null||!data.has("version"))
+                    JSONObject projectData=original.optJSONObject("workspace")!=null?original.getJSONObject("workspace"):original;
+                    if(!projectData.has("episodes")||projectData.optJSONArray("episodes")==null||!projectData.has("version"))
                         throw new IOException("这不是豆包创作舱 v0.3 的项目备份 JSON");
-                    if(data.optInt("version")<2||data.optInt("version")>3)
+                    if(projectData.optInt("version")<2||projectData.optInt("version")>3)
                         throw new IOException("仅支持豆包创作舱 v0.2/v0.3 的 workspace.json");
                     try(OutputStream out=new FileOutputStream(desktopWorkspaceFile())){
-                        out.write(data.toString().getBytes(StandardCharsets.UTF_8));
+                        out.write(projectData.toString().getBytes(StandardCharsets.UTF_8));
                     }
-                    JSONObject event=new JSONObject();event.put("type","desktopWorkspace");event.put("workspace",data);
+                    JSONObject event=new JSONObject();event.put("type","desktopWorkspace");event.put("workspace",projectData);
                     send(event);
                 }catch(Exception e){emit("error","导入电脑项目失败："+e.getMessage());}
             });
