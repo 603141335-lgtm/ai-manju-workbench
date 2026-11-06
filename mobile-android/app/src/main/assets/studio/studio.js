@@ -101,3 +101,171 @@ function studio(){
  h+='<div class="section-title">批量准备素材</div><div class="grid-2"><button class="btn" data-act="batch" data-count="3">准备后3段</button><button class="btn" data-act="batch" data-count="5">准备后5段</button><button class="btn" data-act="episode-batch">保存本集全部图片</button><button class="btn" data-act="episodes">查看剧集目录</button></div>';
  return h;
 }
+
+function library(){
+ let h='<div class="title">参考图素材库</div><div class="subtitle">图片编号、预览和多版本选择都在这里管理。</div>';
+ h+='<div class="card flat wide-gap"><div class="row"><strong>'+files.length+' 张参考图</strong><button class="btn slim secondary" data-act="rescan">重新扫描</button></div><div class="subtitle">来源：'+esc(N.getFolder())+'</div><button class="btn slim wide-gap" data-act="folder">更换图片文件夹</button></div>';
+ h+='<input id="assetSearch" class="input" placeholder="搜索编号或文件名，例如 A15" value="'+esc(ui.assetSearch)+'"><div class="chip-list wide-gap">'+['全部','A','AG','B','BL','C','D','E'].map(x=>'<button class="chip '+(ui.assetFilter===x?'active':'')+'" data-act="filter" data-value="'+x+'">'+x+'</button>').join('')+'</div>';
+ const q=ui.assetSearch.trim().toUpperCase();
+ let list=files.filter(f=>{let k=ui.assetFilter;return (k==='全部'||(k==='A'?/^A(?!G)/.test(f.code):k==='B'?/^B(?!L)/.test(f.code):f.code.startsWith(k)))&&(!q||f.code.includes(q)||f.name.toUpperCase().includes(q))});
+ let visible=list.slice(0,48*(1+ui.assetPage));h+='<div class="tip" style="margin:12px 0">匹配 '+list.length+' 张，显示 '+visible.length+' 张。点击图片可放大。</div><div class="list-grid">';
+ for(const f of visible)h+='<button class="asset-tile" data-act="preview" data-id="'+f.id+'"><img class="lazy-img" data-image="'+f.id+'" alt="'+esc(f.code)+'"><div class="asset-name">'+esc(f.name)+'</div><div class="asset-code">'+esc(f.code)+'</div></button>';
+ h+='</div>';
+ if(list.length>visible.length)h+='<button class="btn full wide-gap" data-act="more">显示更多</button>';
+ if(!list.length)h+='<div class="empty">'+(files.length?'没有匹配的图片':'请先选择手机参考图文件夹')+'</div>';
+ return h;
+}
+function settings(){
+ let h='<div class="title">工作台设置</div><div class="subtitle">本地项目、制作偏好和数据备份。</div>';
+ h+='<div class="card wide-gap"><div class="section-title" style="margin:0 0 12px">项目管理</div><div class="setting-row"><span class="label">项目名称</span><button class="btn slim" data-act="project-name">修改</button></div><div class="subtitle">'+esc(ui.projectName)+'</div><div class="divider"></div><div class="setting-row"><span class="label">导入剧本 TXT / MD</span><button class="btn slim secondary" data-act="import">导入</button></div><div class="setting-row"><span class="label">选择参考图文件夹</span><button class="btn slim secondary" data-act="folder">选择</button></div><div class="setting-row"><span class="label">重新扫描图片编号</span><button class="btn slim" data-act="rescan">扫描</button></div></div>';
+ h+='<div class="card"><div class="section-title" style="margin:0 0 12px">制作偏好</div><div class="setting-row"><span class="label">参考图数量上限</span><select class="select" id="limit" style="max-width:105px">'+[4,7,9,12].map(n=>'<option value="'+n+'" '+(Number(ui.limit)===n?'selected':'')+'>'+n+'张</option>').join('')+'</select></div><div class="tip">用于本地检测；实际豆包上传数量以官方APP界面为准。</div><div class="divider"></div><div class="setting-row"><span class="label">深色模式</span><button class="btn slim '+(ui.dark?'primary':'secondary')+'" data-act="dark">'+(ui.dark?'已开启':'开启')+'</button></div></div>';
+ h+='<div class="card"><div class="section-title" style="margin:0 0 10px">本地备份与换手机</div><div class="subtitle">备份保存剧本原文、修改稿、备注、段落状态和视频记录。不包含图片或视频本体。</div><div class="grid-2 wide-gap"><button class="btn secondary" data-act="backup-out">导出项目备份</button><button class="btn" data-act="backup-in">恢复项目备份</button></div><div class="divider"></div><div class="tip">云端自动同步尚需服务器和账户授权。本版仅做离线数据管理与手动备份迁移。</div></div>';
+ h+='<div class="card"><div class="row"><strong>关于</strong><span class="badge blue">v'+esc(N.version())+'</span></div><div class="subtitle">真正安装在手机的离线安卓APP；图片从手机授权文件夹读取并复制到系统相册；豆包视频仍由豆包APP生成。</div></div>';
+ return h;
+}
+function lazy(){
+ const imgs=document.querySelectorAll('img.lazy-img');
+ for(const img of imgs){
+   if(img.dataset.done)continue;
+   img.dataset.done='yes';
+   if(window.IntersectionObserver){
+     if(!window.imageObserver)window.imageObserver=new IntersectionObserver(entries=>{
+       for(const e of entries)if(e.isIntersecting){const x=e.target;window.imageObserver.unobserve(x);if(document.contains(x))try{x.src=N.thumb(Number(x.dataset.image),280)||''}catch(err){}}
+     },{rootMargin:'200px'});
+     window.imageObserver.observe(img);
+   }else try{img.src=N.thumb(Number(img.dataset.image),280)||''}catch(err){}
+ }
+}
+function render(){
+ document.querySelector('.app').dataset.theme=ui.dark?'dark':'light';
+ document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===ui.tab));
+ $('page').innerHTML=ui.tab==='home'?home():ui.tab==='episodes'?listEpisodes():ui.tab==='assets'?library():ui.tab==='settings'?settings():studio();
+ lazy();
+}
+function modal(html){$('modalPanel').innerHTML=html;$('modal').classList.remove('hidden');$('modal').setAttribute('aria-hidden','false')}
+function close(){ $('modal').classList.add('hidden');$('modal').setAttribute('aria-hidden','true');$('modalPanel').innerHTML=''}
+function preview(id){
+ const f=files.find(a=>a.id===id);if(!f)return;
+ let src='';try{src=N.thumb(id,1350)||''}catch(e){}
+ modal('<div class="modal-title">'+esc(f.code)+'</div>'+(src?'<img class="modal-image" src="'+src+'">':'<div class="empty">无法预览此图片</div>')+'<div class="subtitle">'+esc(f.name)+'</div><button class="btn full wide-gap" data-act="close">关闭</button>');
+}
+function versions(code){
+ const list=fileOptions(code);if(!list.length)return notify(code+'未匹配到任何参考图');
+ const chosen=selectedAsset(code);
+ let h='<div class="modal-title">'+esc(code)+' · 选择参考图版本</div><div class="subtitle">同编号存在多张图片。设置后本项目其他段落将使用这个版本。</div>';
+ for(const f of list)h+='<button class="choice '+(chosen&&f.id===chosen.id?'active':'')+'" data-act="choose-version" data-id="'+f.id+'" data-code="'+esc(code)+'">'+(chosen&&f.id===chosen.id?'✓ ':'')+esc(f.name)+'</button>';
+ modal(h+'<button class="btn full wide-gap" data-act="close">取消</button>');
+}
+function directory(){
+ const s=current();if(!s)return;const ep=episodes.find(e=>e.num===s.ep);
+ let h='<div class="modal-title">第'+s.ep+'集 · 选择段落</div>';
+ for(const t of ep.items)h+='<button class="choice '+(t.index===s.index?'active':'')+'" data-act="jump" data-index="'+t.index+'">'+esc(t.title)+'<span class="badge" style="float:right">'+esc(curStatus(t))+'</span></button>';
+ modal(h);
+}
+function edit(kind){
+ const s=current();if(!s)return;
+ const title=kind==='prompt'?'编辑完整提示词':kind==='note'?'制作备注':'项目名称';
+ const value=kind==='prompt'?textOf(s):kind==='note'?(ui.notes[s.key]||''):ui.projectName;
+ let field=kind==='project'?'<input class="input" id="modalInput" value="'+esc(value)+'">':'<textarea class="textarea" id="modalInput" style="height:'+(kind==='prompt'?'44':'27')+'svh">'+esc(value)+'</textarea>';
+ modal('<div class="modal-title">'+title+'</div><div class="tip">提示词修改仅影响当前段，原始版本可恢复。</div><div class="wide-gap">'+field+'</div><div class="grid-2 wide-gap"><button class="btn" data-act="close">取消</button><button class="btn primary" data-act="apply-edit" data-kind="'+kind+'">保存</button></div>');
+}
+function quality(){
+ const s=current();if(!s)return;const t=textOf(s),list=codesOf(s).codes;
+ let checks=[['参考图匹配完整',list.length>0&&list.every(c=>selectedAsset(c))],['参考图数量符合设置上限',list.length<=ui.limit],['明确场景与人物站位',/场景|站位/.test(t)],['包含运镜或分镜时间',/运镜|镜头|分镜|\d+\s*[-—]\s*\d+\s*秒/.test(t)],['有人物台词或口型说明',/台词|对白|口型|说：|说:/.test(t)],['包含禁止背景音乐和字幕',/禁止.{0,4}背景音乐/.test(t)&&/禁止.{0,4}字幕/.test(t)]];
+ let h='<div class="modal-title">提示词质量检查</div><div class="tip">规则检查只提示疑点，不自动改写任何剧情。</div>';
+ for(const c of checks)h+='<div class="quality-item"><span style="color:var(--'+(c[1]?'green':'orange')+')">'+(c[1]?'✓':'!')+'</span>　'+c[0]+'</div>';
+ modal(h+'<button class="btn full wide-gap" data-act="close">完成</button>');
+}
+function tasks(items){
+ const output=[],warnings=[];
+ for(const s of items){
+   let list=codesOf(s).codes,miss=list.filter(c=>!selectedAsset(c));
+   if(miss.length){warnings.push('第'+s.ep+'集 第'+s.number+'段缺少 '+miss.join('、'));continue}
+   if(list.length>ui.limit){warnings.push('第'+s.ep+'集 第'+s.number+'段超过'+ui.limit+'张上限');continue}
+   if(list.length)output.push({episode:String(s.ep),segment:String(s.number),ids:list.map(c=>selectedAsset(c).id)});
+ }return {output,warnings}
+}
+function saveTasks(list){close();if(!list.length)return notify('没有可保存的图片');busy=true;render();notify('正在准备 '+list.length+' 段图片…');N.saveImages(JSON.stringify({tasks:list}))}
+function startSave(items){
+ if(busy)return;let t=tasks(items);
+ if(t.warnings.length){
+   pending=t.output;
+   modal('<div class="modal-title">发现参考图问题</div><div class="tip">以下段落未加入保存任务：</div><div class="text-panel expanded wide-gap">'+esc(t.warnings.join('\n'))+'</div><div class="grid-2 wide-gap"><button class="btn" data-act="close">取消</button><button class="btn primary" data-act="save-partial" '+(!pending.length?'disabled':'')+'>保存可用部分</button></div>');
+ }else saveTasks(t.output);
+}
+function receive(m){
+ if(!m||!m.type)return;
+ if(m.type==='assets'){files=json(N.getAssets(),[]);render();notify(m.message)}
+ else if(m.type==='prompts'){ui.projectName=(m.filename||'AI漫剧项目').replace(/\.(txt|md)$/i,'').slice(0,100);setPrompts(m.text,true);notify('导入成功：'+segments.length+'段')}
+ else if(m.type==='saved'){busy=false;render();notify('保存'+m.copied+'张，跳过重复'+m.skipped+'张，失败'+m.failed+'张')}
+ else if(m.type==='copied')notify(m.message)
+ else if(m.type==='video'){ui.videos[m.key]={uri:m.uri,name:m.filename};saveState();render();notify('视频已关联到当前段')}
+ else if(m.type==='backup'){
+   try{
+     let o=m.payload;
+     if(o.format!=='manju-mobile-v2')throw Error('格式不匹配');
+     ui=Object.assign(defaults(),o.state||{});
+     for(const k of ['status','notes','edits','videos','chosen','expanded','episodeOpen'])if(!ui[k])ui[k]={};
+     if(typeof o.raw==='string'){N.restorePrompts(o.raw);setPrompts(o.raw,false)}
+     saveState();render();notify('已恢复本地制作记录');
+   }catch(e){notify('备份恢复失败：'+e.message)}
+ }else notify(m.message||'操作已完成')
+}
+window.receiveNative=receive;
+function action(ev){
+ const b=ev.target.closest('[data-act]');if(!b)return;
+ const a=b.dataset.act,s=current();
+ if(a==='close'){close();return}
+ if(a==='import'){N.choosePrompts();return}if(a==='folder'){close();N.chooseFolder();return}if(a==='rescan'){N.refreshAssets();return}
+ if(a==='continue'){page('make');return}if(a==='episodes'){close();page('episodes');return}if(a==='settings'){page('settings');return}
+ if(a==='jump'){let i=Number(b.dataset.index);close();jump(i);return}
+ if(a==='episode-toggle'){let k=b.dataset.num;ui.episodeOpen[k]=!ui.episodeOpen[k];saveState();render();return}
+ if(a==='prev-ep'){stepEpisode(-1);return}if(a==='next-ep'){stepEpisode(1);return}
+ if(a==='prev'||a==='next'){if(s){let ep=episodes.find(x=>x.num===s.ep),i=ep.items.findIndex(x=>x.index===s.index),j=i+(a==='prev'?-1:1);if(j>=0&&j<ep.items.length)jump(ep.items[j].index)}return}
+ if(a==='directory'){directory();return}
+ if(a==='expand'){ui.expanded[s.key]=!ui.expanded[s.key];saveState();render();return}
+ if(a==='preview'){preview(Number(b.dataset.id));return}
+ if(a==='versions'){versions(b.dataset.code);return}
+ if(a==='choose-version'){let f=files.find(f=>f.id===Number(b.dataset.id));if(f)ui.chosen[b.dataset.code]=f.name;saveState();close();render();return}
+ if(a==='missing'){notify('缺少参考图 '+b.dataset.code+'，请检查素材文件夹');return}
+ if(a==='copy'){N.copyText(textOf(s));return}
+ if(a==='save'){startSave([s]);return}
+ if(a==='batch'){let ep=episodes.find(x=>x.num===s.ep),p=ep.items.findIndex(x=>x.index===s.index);startSave(ep.items.slice(p,p+Number(b.dataset.count)));return}
+ if(a==='episode-batch'){startSave(episodes.find(x=>x.num===s.ep).items);return}
+ if(a==='save-partial'){saveTasks(pending);return}
+ if(a==='doubao'){N.openDoubao();return}
+ if(a==='status'){ui.status[s.key]=b.dataset.value;saveState();render();notify('已设为 '+b.dataset.value);return}
+ if(a==='note'){edit('note');return}if(a==='edit'){edit('prompt');return}if(a==='project-name'){edit('project');return}
+ if(a==='apply-edit'){
+   let value=$('modalInput').value,kind=b.dataset.kind;
+   if(kind==='note')ui.notes[s.key]=value;
+   if(kind==='prompt')ui.edits[s.key]=value;
+   if(kind==='project')ui.projectName=value.trim()||'我的AI漫剧项目';
+   saveState();close();render();notify('修改已保存');return
+ }
+ if(a==='restore'){delete ui.edits[s.key];saveState();render();notify('已恢复原版提示词');return}
+ if(a==='quality'){quality();return}
+ if(a==='video'){N.pickVideo(s.key);return}
+ if(a==='play'){if(ui.videos[s.key])N.playVideo(ui.videos[s.key].uri);return}
+ if(a==='filter'){ui.assetFilter=b.dataset.value;ui.assetPage=0;saveState();render();return}
+ if(a==='more'){ui.assetPage++;saveState();render();return}
+ if(a==='dark'){ui.dark=!ui.dark;saveState();render();return}
+ if(a==='backup-out'){N.exportBackup(JSON.stringify({format:'manju-mobile-v2',raw:raw,state:ui,exportedAt:new Date().toISOString()}));return}
+ if(a==='backup-in'){N.importBackup();return}
+}
+$('page').addEventListener('click',action);
+$('modal').addEventListener('click',action);
+$('page').addEventListener('input',ev=>{
+ let id=ev.target.id;if(id!=='assetSearch'&&id!=='episodeSearch')return;
+ let pos=ev.target.selectionStart,key=id==='assetSearch'?'assetSearch':'search';
+ ui[key]=ev.target.value;if(key==='assetSearch')ui.assetPage=0;
+ saveState();render();let el=$(id);if(el){el.focus();el.setSelectionRange(pos,pos)}
+});
+$('page').addEventListener('change',ev=>{if(ev.target.id==='limit'){ui.limit=Number(ev.target.value);saveState();notify('图片上限设为'+ui.limit+'张')}});
+$('bottomNav').addEventListener('click',ev=>{const b=ev.target.closest('[data-tab]');if(b)page(b.dataset.tab)});
+$('settingsBtn').addEventListener('click',()=>page('settings'));
+window.backFromAndroid=function(){if(!$('modal').classList.contains('hidden'))close();else if(ui.tab!=='make')page('make');else notify('当前已在制作中心')};
+try{raw=N.getPrompts()||'';files=json(N.getAssets(),[])}catch(e){console.warn(e)}
+setPrompts(raw,false);
+window.__manjuTest={norm,extract,refInfo,parse};
+})();
