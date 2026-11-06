@@ -14,6 +14,8 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.speech.tts.TextToSpeech
 import android.os.Vibrator
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.net.Uri
 import android.app.Dialog
@@ -65,6 +67,15 @@ class MainActivity:ComponentActivity(){
   private var scanCount:TextView?=null
   private var duplicateAnnounced=""
   private var duplicateTime=0L
+  private var scanOverlay:BarcodeHighlightOverlay?=null
+  private var feedbackCard:LinearLayout?=null
+  private var feedbackIcon:TextView?=null
+  private var feedbackTitle:TextView?=null
+  private var feedbackCode:TextView?=null
+  private val uiHandler=Handler(Looper.getMainLooper())
+  private var feedbackSequence=0L
+  private var scanMode="fast"
+  private var voiceProfile="light"
 
   private val processing=AtomicBoolean(false)
   private var lastCode=""
@@ -133,6 +144,9 @@ class MainActivity:ComponentActivity(){
     db=ScanDb(this)
     voiceEnabled=getPreferences(MODE_PRIVATE).getBoolean("voiceEnabled",true)
     vibrationEnabled=getPreferences(MODE_PRIVATE).getBoolean("vibrationEnabled",true)
+    scanMode=getPreferences(MODE_PRIVATE).getString("scanMode","fast") ?: "fast"
+    voiceProfile=getPreferences(MODE_PRIVATE).getString("voiceProfile","light") ?: "light"
+    strictGate.setMode(scanMode)
     voice=TextToSpeech(this){status->
       if(status==TextToSpeech.SUCCESS){
         val result=voice?.setLanguage(Locale.SIMPLIFIED_CHINESE)
@@ -146,6 +160,7 @@ class MainActivity:ComponentActivity(){
   }
   override fun onDestroy(){
     stopCamera()
+    uiHandler.removeCallbacksAndMessages(null)
     if(executor.isShutdown.not())executor.shutdown()
     if(barcodeScanner!=null)barcodeScanner.close()
     voice?.stop()
@@ -217,15 +232,23 @@ class MainActivity:ComponentActivity(){
     root.addView(navigation)
   }
   private fun announce(kind:String){
-    val phrase=when(kind){"success"->"成功";"duplicate"->"重复";else->"失败"}
     if(vibrationEnabled){
       try{(getSystemService(VIBRATOR_SERVICE) as Vibrator)
-        .vibrate(VibrationEffect.createOneShot(if(kind=="success")65L else 160L,85))}
+        .vibrate(VibrationEffect.createOneShot(if(kind=="success")60L else 140L,85))}
       catch(_:Exception){}
     }
     if(!voiceEnabled)return
-    if(speechReady){
+    val phrase=when(voiceProfile){
+      "light"->when(kind){"success"->"扫好啦";"duplicate"->"这件扫过啦";else->"再试一下"}
+      "calm"->when(kind){"success"->"登记成功";"duplicate"->"单号重复";else->"识别失败"}
+      else->when(kind){"success"->"成功";"duplicate"->"重复";else->"失败"}
+    }
+    if(voiceProfile!="beep" && speechReady){
       try{
+        val pitch=when(voiceProfile){"light"->1.13f;"calm"->0.93f;else->1.0f}
+        val rate=when(voiceProfile){"light"->1.16f;"calm"->1.04f;else->1.20f}
+        voice?.setPitch(pitch)
+        voice?.setSpeechRate(rate)
         voice?.speak(phrase,TextToSpeech.QUEUE_FLUSH,null,"scan_"+System.currentTimeMillis())
         return
       }catch(_:Exception){}
@@ -237,8 +260,8 @@ class MainActivity:ComponentActivity(){
         "duplicate"->ToneGenerator.TONE_PROP_NACK
         else->ToneGenerator.TONE_SUP_ERROR
       }
-      tone.startTone(which,if(kind=="success")160 else 300)
-      android.os.Handler(mainLooper).postDelayed({tone.release()},400)
+      tone.startTone(which,if(kind=="success")130 else 250)
+      uiHandler.postDelayed({tone.release()},360)
     }catch(_:Exception){}
   }
   private fun toast(t:String)=Toast.makeText(this,t,Toast.LENGTH_SHORT).show()
@@ -490,9 +513,21 @@ class MainActivity:ComponentActivity(){
   private fun refresh(){when(currentPage){"home"->showBatch();"search"->showSearch();"scan"->showScan()}}
   private fun updateScanOutcome(code:String,status:String,color:Int){
     if(currentPage!="scan")return
-    latestCodeView?.text=code
-    latestStatusView?.text=status
-    latestStatusView?.setTextColor(color)
+    val card=feedbackCard ?:return
+    feedbackTitle?.text=status
+    feedbackTitle?.setTextColor(color)
+    feedbackCode?.text=code.ifBlank{"请检查条码"}
+    feedbackIcon?.text=if(status.contains("重复")||status.contains("失败"))"!" else "✓"
+    feedbackIcon?.background=GradientDrawable().apply{
+      shape=GradientDrawable.OVAL
+      setColor(color)
+    }
+    card.visibility=View.VISIBLE
+    feedbackSequence++
+    val current=feedbackSequence
+    uiHandler.postDelayed({
+      if(feedbackSequence==current && currentPage=="scan")card.visibility=View.GONE
+    },if(status.contains("失败"))2300L else 1450L)
   }
   private fun onStableCandidate(code:String){
     if(currentPage!="scan"||captureBusy.get())return
@@ -695,7 +730,7 @@ class MainActivity:ComponentActivity(){
       toast("登记失败："+e.message);announce("failure");return
     }
     if(saved<0L){
-      updateScanOutcome(code,"重复单号 · 不再登记",Color.rgb(185,119,37))
+      updateScanOutcome(code,"重复单号 · 已自动拦截",Color.rgb(245,76,81))
       val now=System.currentTimeMillis()
       if(duplicateAnnounced!=code||now-duplicateTime>1700L){
         duplicateAnnounced=code;duplicateTime=now
