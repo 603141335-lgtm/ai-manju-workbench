@@ -1,9 +1,9 @@
-name: Build Android Manju Studio v2 APK
+name: Build Android Manju v2.0.1 v0.3 Compatible APK
 on:
   workflow_dispatch:
   push:
     branches:
-      - feature/mobile-v2-light
+      - feature/mobile-doubao-v03-compat
     paths:
       - 'mobile-android/**'
       - '.github/workflows/mobile-two-buttons-apk.yml'
@@ -33,16 +33,20 @@ jobs:
         run: node --check mobile-android/app/src/main/assets/studio/studio.js
       - name: Test mobile parser and exact prompt retention
         run: node mobile-android/tests/ui-parser.test.cjs
+      - name: Verify Windows v0.3 workspace compatibility
+        run: |
+          node --check mobile-android/app/src/main/assets/studio/studio-compat.js
+          node mobile-android/tests/desktop-compat.test.cjs
       - name: Build installable debug APK
         run: gradle -p mobile-android :app:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: manju-mobile-v2-apk
+          name: manju-mobile-v2.0.1-desktop-compatible-apk
           path: mobile-android/app/build/outputs/apk/debug/app-debug.apk
       - name: Publish directly downloadable APK (preview release)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/mobile-v2-light'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/mobile-doubao-v03-compat'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp mobile-android/app/build/outputs/apk/debug/app-debug.apk AI-Manju-Studio-v2.0-debug.apk
-          gh release view mobile-studio-v2.0-preview >/dev/null 2>&1 &&             gh release upload mobile-studio-v2.0-preview AI-Manju-Studio-v2.0-debug.apk --clobber ||             gh release create mobile-studio-v2.0-preview AI-Manju-Studio-v2.0-debug.apk --target "$GITHUB_SHA" --title "AI漫剧随身工作台 v2.0 测试版" --notes "专业浅色四栏APP：剧集、制作、素材与项目备份，保留一键保存本段全部参考图与一键复制原文。仅编译验证，等待手机实测。" --prerelease
+          cp mobile-android/app/build/outputs/apk/debug/app-debug.apk AI-Manju-Studio-v2.0.1-Doubao-compat.apk
+          gh release view mobile-studio-v2.0.1-doubao-compat >/dev/null 2>&1 &&             gh release upload mobile-studio-v2.0.1-doubao-compat AI-Manju-Studio-v2.0.1-Doubao-compat.apk --clobber ||             gh release create mobile-studio-v2.0.1-doubao-compat AI-Manju-Studio-v2.0.1-Doubao-compat.apk --target "$GITHUB_SHA" --title "AI漫剧随身工作台 v2.0.1 豆包创作舱兼容测试版" --notes "支持离线导入豆包创作舱 v0.3 的 workspace.json，保留原始文本、集段ID与状态。参考图需另行复制到手机文件夹，尚未实现 CloudBase 自动同步，也未经真机实测。" --prerelease
