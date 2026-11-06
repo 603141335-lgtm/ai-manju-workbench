@@ -45,9 +45,27 @@ function setPrompts(t,imported){
  segments.forEach((s,i)=>{s.index=i;s.key='E'+s.ep+'N'+s.number+'I'+s.sourceIndex;if(!map.has(s.ep)){let x={num:s.ep,title:s.epTitle,items:[]};map.set(s.ep,x);episodes.push(x)}map.get(s.ep).items.push(s)});
  ui.selected=Math.max(0,Math.min(segments.length-1,Number(ui.selected)||0));saveState();render();
 }
+let desktopProject=null;
+function setDesktopProject(project,imported){
+ const converted=window.ManjuCompat.convert(project);
+ const hash=signature(JSON.stringify(converted.original.episodes.map(e=>[e.id,e.number,e.segments.map(x=>[x.id,x.n,x.text,x.codes,x.status])])));
+ if(imported&&ui.lastProject!==hash){
+  ui.status={};ui.notes={};ui.edits={};ui.videos={};ui.chosen={};ui.expanded={};ui.selected=0;
+ }
+ ui.lastProject=hash;desktopProject=converted.original;
+ ui.projectName=converted.title;
+ segments=converted.segments;episodes=converted.episodes;raw='';
+ ui.status={...converted.statuses,...ui.status};
+ ui.chosen={...converted.versions,...ui.chosen};
+ ui.selected=imported?converted.activeIndex:Math.min(ui.selected,segments.length-1);
+ saveState();render();
+}
 const current=()=>segments[ui.selected];
 const textOf=s=>ui.edits[s.key]===undefined?s.original:ui.edits[s.key];
-const codesOf=s=>refInfo(textOf(s));
+const codesOf=s=>{
+ if(Array.isArray(s.desktopCodes)&&(s.manual||ui.edits[s.key]===undefined))return {codes:s.desktopCodes,fallback:false};
+ return refInfo(textOf(s));
+};
 const fileOptions=c=>files.filter(f=>f.code===c);
 function selectedAsset(c){let list=fileOptions(c);return list.find(f=>f.name===ui.chosen[c])||list[0]||null}
 const curStatus=s=>ui.status[s.key]||'待制作';
