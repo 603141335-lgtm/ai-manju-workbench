@@ -213,7 +213,8 @@ function startSave(items){
 }
 function receive(m){
  if(!m||!m.type)return;
- if(m.type==='assets'){files=json(N.getAssets(),[]);render();notify(m.message)}
+ if(m.type==='desktopWorkspace'){try{setDesktopProject(m.workspace,true);notify('已导入电脑版项目：'+episodes.length+'集 '+segments.length+'段')}catch(e){notify(e.message)}}
+ else if(m.type==='assets'){files=json(N.getAssets(),[]);render();notify(m.message)}
  else if(m.type==='prompts'){ui.projectName=(m.filename||'AI漫剧项目').replace(/\.(txt|md)$/i,'').slice(0,100);setPrompts(m.text,true);notify('导入成功：'+segments.length+'段')}
  else if(m.type==='saved'){busy=false;render();notify('保存'+m.copied+'张，跳过重复'+m.skipped+'张，失败'+m.failed+'张')}
  else if(m.type==='copied')notify(m.message)
@@ -224,7 +225,7 @@ function receive(m){
      if(o.format!=='manju-mobile-v2')throw Error('格式不匹配');
      ui=Object.assign(defaults(),o.state||{});
      for(const k of ['status','notes','edits','videos','chosen','expanded','episodeOpen'])if(!ui[k])ui[k]={};
-     if(typeof o.raw==='string'){N.restorePrompts(o.raw);setPrompts(o.raw,false)}
+     if(o.desktopWorkspace){setDesktopProject(o.desktopWorkspace,false)}else if(typeof o.raw==='string'){N.restorePrompts(o.raw);setPrompts(o.raw,false)}
      saveState();render();notify('已恢复本地制作记录');
    }catch(e){notify('备份恢复失败：'+e.message)}
  }else notify(m.message||'操作已完成')
@@ -234,7 +235,7 @@ function action(ev){
  const b=ev.target.closest('[data-act]');if(!b)return;
  const a=b.dataset.act,s=current();
  if(a==='close'){close();return}
- if(a==='import'){N.choosePrompts();return}if(a==='folder'){close();N.chooseFolder();return}if(a==='rescan'){N.refreshAssets();return}
+ if(a==='import'){N.choosePrompts();return}if(a==='import-desktop'){N.chooseDesktopWorkspace();return}if(a==='folder'){close();N.chooseFolder();return}if(a==='rescan'){N.refreshAssets();return}
  if(a==='continue'){page('make');return}if(a==='episodes'){close();page('episodes');return}if(a==='settings'){page('settings');return}
  if(a==='jump'){let i=Number(b.dataset.index);close();jump(i);return}
  if(a==='episode-toggle'){let k=b.dataset.num;ui.episodeOpen[k]=!ui.episodeOpen[k];saveState();render();return}
@@ -252,23 +253,24 @@ function action(ev){
  if(a==='episode-batch'){startSave(episodes.find(x=>x.num===s.ep).items);return}
  if(a==='save-partial'){saveTasks(pending);return}
  if(a==='doubao'){N.openDoubao();return}
- if(a==='status'){ui.status[s.key]=b.dataset.value;saveState();render();notify('已设为 '+b.dataset.value);return}
- if(a==='note'){edit('note');return}if(a==='edit'){edit('prompt');return}if(a==='project-name'){edit('project');return}
+ if(a==='status'){if(s.locked)return notify('电脑版已锁定此段，无法修改状态');ui.status[s.key]=b.dataset.value;saveState();render();notify('已设为 '+b.dataset.value);return}
+ if(a==='note'){edit('note');return}if(a==='edit'){if(s.locked)return notify('此段已锁定，暂不能编辑');edit('prompt');return}if(a==='project-name'){edit('project');return}
  if(a==='apply-edit'){
+   if(s&&s.locked&&b.dataset.kind==='prompt')return notify('此段已锁定，不能编辑');
    let value=$('modalInput').value,kind=b.dataset.kind;
    if(kind==='note')ui.notes[s.key]=value;
    if(kind==='prompt')ui.edits[s.key]=value;
    if(kind==='project')ui.projectName=value.trim()||'我的AI漫剧项目';
    saveState();close();render();notify('修改已保存');return
  }
- if(a==='restore'){delete ui.edits[s.key];saveState();render();notify('已恢复原版提示词');return}
+ if(a==='restore'){if(s.locked)return notify('此段已锁定，暂不能恢复原稿');delete ui.edits[s.key];saveState();render();notify('已恢复原版提示词');return}
  if(a==='quality'){quality();return}
  if(a==='video'){N.pickVideo(s.key);return}
  if(a==='play'){if(ui.videos[s.key])N.playVideo(ui.videos[s.key].uri);return}
  if(a==='filter'){ui.assetFilter=b.dataset.value;ui.assetPage=0;saveState();render();return}
  if(a==='more'){ui.assetPage++;saveState();render();return}
  if(a==='dark'){ui.dark=!ui.dark;saveState();render();return}
- if(a==='backup-out'){N.exportBackup(JSON.stringify({format:'manju-mobile-v2',raw:raw,state:ui,exportedAt:new Date().toISOString()}));return}
+ if(a==='backup-out'){N.exportBackup(JSON.stringify({format:'manju-mobile-v2',raw:raw,desktopWorkspace:desktopProject,state:ui,exportedAt:new Date().toISOString()}));return}
  if(a==='backup-in'){N.importBackup();return}
 }
 $('page').addEventListener('click',action);
@@ -284,6 +286,7 @@ $('bottomNav').addEventListener('click',ev=>{const b=ev.target.closest('[data-ta
 $('settingsBtn').addEventListener('click',()=>page('settings'));
 window.backFromAndroid=function(){if(!$('modal').classList.contains('hidden'))close();else if(ui.tab!=='make')page('make');else notify('当前已在制作中心')};
 try{raw=N.getPrompts()||'';files=json(N.getAssets(),[])}catch(e){console.warn(e)}
-setPrompts(raw,false);
-window.__manjuTest={norm,extract,refInfo,parse};
+let desktopSource='';try{if(N.getDesktopWorkspace)desktopSource=N.getDesktopWorkspace()||''}catch(e){console.warn(e)}
+if(desktopSource){try{setDesktopProject(json(desktopSource,null),false)}catch(e){console.warn(e);setPrompts(raw,false)}}else setPrompts(raw,false);
+window.__manjuTest={norm,extract,refInfo,parse,setDesktopProject,getSegments:()=>segments,getEpisodes:()=>episodes,getStatus:()=>ui.status};
 })();
