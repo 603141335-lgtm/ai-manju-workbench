@@ -4,79 +4,128 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import kotlin.math.abs
 
 /**
- * Fast barcode gate: 2 consistent CODE128 frames, 3 ITF frames.
- * Requires same valid format, value, aspect, center and approximate location.
- * A held physical label locks recognition until it leaves camera view.
- *
- * ML Kit decodes CODE128 with its checksum. ITF is less constrained, so
- * it requires an extra observation and all-even numeric payload.
- * Not a mathematical guarantee against misreads.
+ * Multi-frame express-waybill recognizer.
+ * Fast: CODE128 2 frames / ITF 3 frames. Other modes trade speed for confidence.
+ * A new physical barcode may immediately replace a previously locked barcode;
+ * holding the same barcode stays locked until it leaves the frame.
+ * Database uniqueness remains the final same-code duplicate guard.
  */
 class StrictBarcodeGate {
-  private var candidate=""
-  private var candidateFormat=-1
-  private var consecutive=0
-  private var firstSeenAt=0L
-  private var lastSeenAt=0L
-  private var anchorX=0
-  private var anchorY=0
-  private var locked=false
-  private var blanks=0
+  private var scanMode = "fast"
+  private var candidate = ""
+  private var candidateFormat = -1
+  private var consecutive = 0
+  private var firstSeenAt = 0L
+  private var lastSeenAt = 0L
+  private var anchorX = 0
+  private var anchorY = 0
+  private var lockedCode = ""
+  private var lockedFormat = -1
+  private var blanks = 0
 
-  @Synchronized fun reset(){
-    candidate="";candidateFormat=-1;consecutive=0;firstSeenAt=0L
-    lastSeenAt=0L;locked=false;blanks=0
+  @Synchronized fun setMode(mode:String) {
+    scanMode = if(mode in listOf("fast", "balanced", "strict")) mode else "fast"
+    reset()
+  }
+
+  @Synchronized fun reset() {
+    resetCandidate()
+    lockedCode = ""
+    lockedFormat = -1
+    blanks = 0
+  }
+
+  private fun resetCandidate() {
+    candidate = ""
+    candidateFormat = -1
+    consecutive = 0
+    firstSeenAt = 0L
+    lastSeenAt = 0L
+    anchorX = 0
+    anchorY = 0
+  }
+
+  /** The exact barcode chosen here is also the one highlighted by the camera UI. */
+  @Synchronized fun select(items:List<Barcode>, width:Int, height:Int):Barcode? {
+    if(width <= 0 || height <= 0) return null
+    val minWidth = when(scanMode) {"strict" -> 0.22f; "balanced" -> 0.19f; else -> 0.16f}
+    val valid = items.filter { item ->
+      val value = item.rawValue?.trim().orEmpty()
+      val syntax = value.matches(Regex("[A-Za-z0-9-]{10,40}"))
+      val format = item.format == Barcode.FORMAT_CODE_128 || item.format == Barcode.FORMAT_ITF
+      val itf = item.format != Barcode.FORMAT_ITF ||
+        (value.all { it.isDigit() } && value.length >= 12 && value.length % 2 == 0)
+      val rect = item.boundingBox
+      val geometry = rect != null &&
+        rect.width() > width * minWidth && rect.height() > 10 &&
+        rect.width() > rect.height() * 1.4f &&
+        rect.centerX() in (width * 0.08f).toInt()..(width * 0.92f).toInt() &&
+        rect.centerY() in (height * 0.08f).toInt()..(height * 0.92f).toInt()
+      syntax && format && itf && geometry
+    }
+    // If multiple courier labels are in view, target whichever is nearest center.
+    return valid.minByOrNull {
+      val r = it.boundingBox!!
+      val dx = (r.centerX() - width * 0.5f) / width
+      val dy = (r.centerY() - height * 0.5f) / height
+      dx * dx + dy * dy
+    }
   }
 
   @Synchronized fun observe(items:List<Barcode>,width:Int,height:Int,now:Long):String? {
-    if(width<=0||height<=0)return null
-    val plausible=items.filter{item->
-      val value=item.rawValue?.trim().orEmpty()
-      val syntax=value.matches(Regex("[A-Za-z0-9-]{10,40}"))
-      val kind=item.format==Barcode.FORMAT_CODE_128 || item.format==Barcode.FORMAT_ITF
-      val itfValid=item.format!=Barcode.FORMAT_ITF ||
-        (value.all{it.isDigit()} && value.length>=12 && value.length%2==0)
-      val rect=item.boundingBox
-      val geometry=rect!=null &&
-        rect.width()>width*0.22f && rect.height()>10 &&
-        rect.width()>rect.height()*1.4f &&
-        rect.centerX() in (width*0.12f).toInt()..(width*0.88f).toInt() &&
-        rect.centerY() in (height*0.09f).toInt()..(height*0.91f).toInt()
-      syntax&&kind&&itfValid&&geometry
-    }
-    if(plausible.size!=1){
+    return observeSelected(select(items,width,height), width, height, now)
+  }
+
+  @Synchronized fun observeSelected(item:Barcode?,width:Int,height:Int,now:Long):String? {
+    if(item == null || width <= 0 || height <= 0) {
       blanks++
-      if(blanks>=2){
-        locked=false
-        candidate="";candidateFormat=-1;consecutive=0;firstSeenAt=0L
+      if(blanks >= 2) {
+        lockedCode = ""
+        lockedFormat = -1
+        resetCandidate()
       }
       return null
     }
-    blanks=0
-    if(locked)return null
-    val item=plausible.first()
-    val code=item.rawValue!!.trim()
-    val rect=item.boundingBox!!
-    val samePosition=abs(rect.centerX()-anchorX)<width*0.15f &&
-      abs(rect.centerY()-anchorY)<height*0.15f
-    if(code!=candidate || item.format!=candidateFormat ||
-       !samePosition || now-lastSeenAt>450L){
-      candidate=code
-      candidateFormat=item.format
-      consecutive=1
-      firstSeenAt=now
-      anchorX=rect.centerX()
-      anchorY=rect.centerY()
-      lastSeenAt=now
+    blanks = 0
+    val code = item.rawValue!!.trim()
+    val rect = item.boundingBox!!
+    if(lockedCode.isNotEmpty()) {
+      if(code == lockedCode && item.format == lockedFormat) return null
+      // Changed label: begin validating at once, no need to wait for blank frames.
+      lockedCode = ""
+      lockedFormat = -1
+      resetCandidate()
+    }
+    val allowedDisplacement = if(scanMode == "fast") 0.19f else 0.15f
+    val samePosition = abs(rect.centerX() - anchorX) < width * allowedDisplacement &&
+      abs(rect.centerY() - anchorY) < height * allowedDisplacement
+    if(code != candidate || item.format != candidateFormat ||
+       !samePosition || now-lastSeenAt > 500L) {
+      candidate = code
+      candidateFormat = item.format
+      consecutive = 1
+      firstSeenAt = now
+      anchorX = rect.centerX()
+      anchorY = rect.centerY()
+      lastSeenAt = now
       return null
     }
     consecutive++
-    lastSeenAt=now
-    val requiredFrames=if(item.format==Barcode.FORMAT_ITF)3 else 2
-    val requiredMs=if(item.format==Barcode.FORMAT_ITF)90L else 35L
-    if(consecutive<requiredFrames || now-firstSeenAt<requiredMs)return null
-    locked=true
-    candidate="";candidateFormat=-1;consecutive=0
+    lastSeenAt = now
+    val requiredFrames = when(scanMode) {
+      "strict" -> if(item.format == Barcode.FORMAT_ITF) 5 else 4
+      "balanced" -> if(item.format == Barcode.FORMAT_ITF) 4 else 3
+      else -> if(item.format == Barcode.FORMAT_ITF) 3 else 2
+    }
+    val requiredMs = when(scanMode) {
+      "strict" -> if(item.format == Barcode.FORMAT_ITF) 180L else 90L
+      "balanced" -> if(item.format == Barcode.FORMAT_ITF) 120L else 60L
+      else -> if(item.format == Barcode.FORMAT_ITF) 90L else 35L
+    }
+    if(consecutive < requiredFrames || now - firstSeenAt < requiredMs) return null
+    lockedCode = code
+    lockedFormat = item.format
+    resetCandidate()
     return code
   }
 }
