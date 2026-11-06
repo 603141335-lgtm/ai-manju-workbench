@@ -39,6 +39,7 @@ function parse(t){
 }
 function signature(t){let h=2166136261,s=String(t).slice(0,15000)+String(t).length;for(let i=0;i<s.length;i++)h=Math.imul(h^s.charCodeAt(i),16777619);return ''+(h>>>0)}
 function setPrompts(t,imported){
+ desktopProject=null;
  raw=String(t||'');const hash=signature(raw);
  if(imported&&ui.lastProject&&ui.lastProject!==hash){ui.status={};ui.notes={};ui.edits={};ui.videos={};ui.chosen={};ui.expanded={};ui.selected=0}
  ui.lastProject=hash;segments=parse(raw);episodes=[];const map=new Map();
