@@ -557,8 +557,10 @@ class MainActivity:ComponentActivity(){
     currentPage="scan"
     stopCamera()
     strictGate.reset()
+    val windowRoot=FrameLayout(this).apply{setBackgroundColor(Color.WHITE)}
     val root=container().apply{setBackgroundColor(Color.WHITE)}
-    setContentView(root)
+    windowRoot.addView(root,FrameLayout.LayoutParams(-1,-1))
+    setContentView(windowRoot)
 
     val top=container(false).apply{
       gravity=Gravity.CENTER_VERTICAL
@@ -576,6 +578,11 @@ class MainActivity:ComponentActivity(){
     top.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
     top.addView(button("切换批次"){selectBatch{showScan()}},
       LinearLayout.LayoutParams(dp(92),-2))
+    top.addView(label("⚙",27f,ink,true).apply{
+      gravity=Gravity.CENTER
+      contentDescription="扫码速度和语音设置"
+      setOnClickListener{showScanSettingsDialog()}
+    },LinearLayout.LayoutParams(dp(48),dp(44)).apply{leftMargin=dp(4)})
     root.addView(top)
     val cameraView=PreviewView(this).apply{
       scaleType=PreviewView.ScaleType.FILL_CENTER
@@ -585,6 +592,8 @@ class MainActivity:ComponentActivity(){
     val cameraFrame=FrameLayout(this).apply{setBackgroundColor(Color.rgb(28,34,40))}
     cameraFrame.addView(cameraView,FrameLayout.LayoutParams(-1,-1))
     cameraFrame.addView(ScanGuideOverlay(this),FrameLayout.LayoutParams(-1,-1))
+    scanOverlay=BarcodeHighlightOverlay(this)
+    cameraFrame.addView(scanOverlay,FrameLayout.LayoutParams(-1,-1))
     val screenHeight=(resources.displayMetrics.heightPixels/resources.displayMetrics.density).toInt()
     root.addView(cameraFrame,LinearLayout.LayoutParams(-1,dp((screenHeight*0.37f).toInt().coerceIn(220,335))))
     val controls=container(false).apply{
@@ -605,22 +614,8 @@ class MainActivity:ComponentActivity(){
     ).forEach{controls.addView(it,LinearLayout.LayoutParams(0,-2,1f))}
     root.addView(controls)
 
-    val line=View(this).apply{setBackgroundColor(Color.rgb(227,233,241))}
-    root.addView(line,LinearLayout.LayoutParams(-1,dp(1)))
-    val latest=container().apply{
-      setPadding(dp(15),dp(10),dp(15),dp(11))
-      setBackgroundColor(Color.WHITE)
-    }
-    latest.addView(label("最新单号",12f,muted),margins(4))
-    latestCodeView=label("等待识别…",21f,ink,true).apply{
-      setTextIsSelectable(true);maxLines=1
-    }
-    latest.addView(latestCodeView,margins(4))
-    latestStatusView=label("自动识别 · 自动记录 · 自动留照片",12f,muted)
-    latest.addView(latestStatusView)
-    root.addView(latest)
-    root.addView(View(this).apply{setBackgroundColor(Color.rgb(231,236,244))},
-      LinearLayout.LayoutParams(-1,dp(6)))
+    root.addView(View(this).apply{setBackgroundColor(Color.rgb(227,233,241))},
+      LinearLayout.LayoutParams(-1,dp(1)))
 
     val bottom=container().apply{
       setPadding(dp(14),dp(12),dp(14),dp(8))
@@ -640,6 +635,32 @@ class MainActivity:ComponentActivity(){
     }
     scroll.addView(bottom)
     root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+    val popup=container(false).apply{
+      gravity=Gravity.CENTER_VERTICAL
+      setPadding(dp(17),dp(17),dp(17),dp(17))
+      background=shape(Color.rgb(42,44,48),22)
+      elevation=dp(13).toFloat()
+      visibility=View.GONE
+      isClickable=false
+    }
+    feedbackCard=popup
+    feedbackIcon=label("✓",28f,Color.WHITE,true).apply{
+      gravity=Gravity.CENTER
+      background=GradientDrawable().apply{
+        shape=GradientDrawable.OVAL
+        setColor(Color.rgb(23,188,116))
+      }
+    }
+    popup.addView(feedbackIcon,LinearLayout.LayoutParams(dp(58),dp(58)).apply{rightMargin=dp(16)})
+    val messages=container()
+    feedbackTitle=label("扫码成功",16f,Color.rgb(28,214,138),true)
+    feedbackCode=label("",23f,Color.WHITE,true).apply{setTextIsSelectable(true);maxLines=1}
+    messages.addView(feedbackTitle,margins(6))
+    messages.addView(feedbackCode)
+    popup.addView(messages,LinearLayout.LayoutParams(0,-2,1f))
+    windowRoot.addView(popup,FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM).apply{
+      setMargins(dp(14),0,dp(14),dp(74))
+    })
     scanSearch?.addTextChangedListener(object:TextWatcher{
       override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
       override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){updateRecent()}
@@ -708,7 +729,9 @@ class MainActivity:ComponentActivity(){
     val h=if(rotated)media.width else media.height
     barcodeScanner.process(image).addOnSuccessListener{codes->
       if(currentPage=="scan" && !captureBusy.get()){
-        val result=strictGate.observe(codes,w,h,System.currentTimeMillis())
+        val selected=strictGate.select(codes,w,h)
+        scanOverlay?.updateTarget(selected,w,h)
+        val result=strictGate.observeSelected(selected,w,h,System.currentTimeMillis())
         if(result!=null)runOnUiThread{
           if(currentPage=="scan"&&!captureBusy.get())onStableCandidate(result)
         }
@@ -961,6 +984,10 @@ class MainActivity:ComponentActivity(){
   }
   private fun stopCamera(){
     strictGate.reset()
+    scanOverlay?.clearTarget()
+    scanOverlay=null
+    feedbackSequence++
+    feedbackCard=null;feedbackIcon=null;feedbackTitle=null;feedbackCode=null
     scanRowsBox=null
     scanSearch=null
     scanCount=null
