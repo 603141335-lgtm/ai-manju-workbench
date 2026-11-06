@@ -21,6 +21,7 @@ class StrictBarcodeGate {
   private var anchorY = 0
   private var lockedCode = ""
   private var lockedFormat = -1
+  private var lockedLastSeenAt = 0L
   private var blanks = 0
 
   @Synchronized fun setMode(mode:String) {
@@ -32,6 +33,7 @@ class StrictBarcodeGate {
     resetCandidate()
     lockedCode = ""
     lockedFormat = -1
+    lockedLastSeenAt = 0L
     blanks = 0
   }
 
@@ -79,9 +81,12 @@ class StrictBarcodeGate {
   @Synchronized fun observeSelected(item:Barcode?,width:Int,height:Int,now:Long):String? {
     if(item == null || width <= 0 || height <= 0) {
       blanks++
-      if(blanks >= 2) {
+      // ML Kit may miss a frame on a blurred or moving label. Avoid repeatedly
+      // unlocking the same physical waybill due to two transient empty frames.
+      if(blanks >= 3 && (lockedCode.isEmpty() || now - lockedLastSeenAt >= 350L)) {
         lockedCode = ""
         lockedFormat = -1
+        lockedLastSeenAt = 0L
         resetCandidate()
       }
       return null
@@ -90,10 +95,14 @@ class StrictBarcodeGate {
     val code = item.rawValue!!.trim()
     val rect = item.boundingBox!!
     if(lockedCode.isNotEmpty()) {
-      if(code == lockedCode && item.format == lockedFormat) return null
+      if(code == lockedCode && item.format == lockedFormat) {
+        lockedLastSeenAt = now
+        return null
+      }
       // Changed label: begin validating at once, no need to wait for blank frames.
       lockedCode = ""
       lockedFormat = -1
+      lockedLastSeenAt = 0L
       resetCandidate()
     }
     val allowedDisplacement = if(scanMode == "fast") 0.19f else 0.15f
@@ -125,6 +134,7 @@ class StrictBarcodeGate {
     if(consecutive < requiredFrames || now - firstSeenAt < requiredMs) return null
     lockedCode = code
     lockedFormat = item.format
+    lockedLastSeenAt = now
     resetCandidate()
     return code
   }
