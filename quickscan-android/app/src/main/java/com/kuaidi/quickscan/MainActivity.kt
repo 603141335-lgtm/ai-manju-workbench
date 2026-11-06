@@ -155,6 +155,10 @@ class MainActivity:ComponentActivity(){
       if(status==TextToSpeech.SUCCESS){
         val result=voice?.setLanguage(Locale.SIMPLIFIED_CHINESE)
         speechReady=result!=null && result!=TextToSpeech.LANG_MISSING_DATA && result!=TextToSpeech.LANG_NOT_SUPPORTED
+        if(speechReady){
+          val savedVoice=getPreferences(MODE_PRIVATE).getString("ttsVoiceName",null)
+          voice?.voices?.firstOrNull{it.name==savedVoice}?.let{voice?.setVoice(it)}
+        }
       }
     }
     val first=db.batches().firstOrNull()
@@ -653,7 +657,17 @@ class MainActivity:ComponentActivity(){
       setPadding(dp(12),dp(9),dp(12),dp(9))
     }
     listOf(
-      iconAction(R.drawable.ic_action_camera,"拍照"){takePhoto(retryPhotoForRow,retryPhotoCode)},
+      iconAction(R.drawable.ic_action_camera,"拍照"){
+        val retryId=retryPhotoForRow
+        if(retryId==null)takePhoto()
+        else AlertDialog.Builder(this)
+          .setTitle("为上次失败的单号补拍？")
+          .setMessage((retryPhotoCode?:"待补录单号")+"\n请确认镜头里仍是这张快递面单。")
+          .setPositiveButton("确认补拍"){_,_->takePhoto(retryId,retryPhotoCode)}
+          .setNeutralButton("另拍一张"){_,_->takePhoto()}
+          .setNegativeButton("取消",null)
+          .show()
+      },
       iconAction(R.drawable.ic_action_flash,"补光"){
         flashlight=!flashlight
         camera?.cameraControl?.enableTorch(flashlight)
@@ -1015,7 +1029,8 @@ class MainActivity:ComponentActivity(){
         "扫码速度："+modeLabel(),
         "播报风格："+voiceLabel(),
         if(vibrationEnabled)"关闭震动反馈" else "开启震动反馈",
-        "测试当前播报"
+        "测试当前播报",
+        "系统中文音色："+ttsVoiceLabel()
       )){_,which->
         when(which){
           0->showScanModeDialog()
@@ -1026,8 +1041,40 @@ class MainActivity:ComponentActivity(){
             toast(if(vibrationEnabled)"已开启震动" else "已关闭震动")
           }
           3->announce("success")
+          4->showTtsVoiceDialog()
         }
       }.setNegativeButton("关闭",null).show()
+  }
+  private fun ttsVoiceLabel():String {
+    val chosen=voice?.voice?.name.orEmpty()
+    return if(chosen.isBlank())"系统默认" else chosen.substringAfterLast(".").take(28)
+  }
+  private fun showTtsVoiceDialog(){
+    val options=voice?.voices.orEmpty().filter{it.locale.language=="zh"}
+      .sortedWith(compareBy<android.speech.tts.Voice>{it.isNetworkConnectionRequired}
+        .thenByDescending{it.quality})
+    if(options.isEmpty()){
+      AlertDialog.Builder(this).setTitle("未找到中文语音")
+        .setMessage("请先在手机系统的「文字转语音」设置里安装中文语音包。应用不会联网下载第三方音色。")
+        .setPositiveButton("知道了",null).show()
+      return
+    }
+    val names=options.map {
+      it.name+" · "+(if(it.isNetworkConnectionRequired)"需联网" else "可离线")
+    }.toTypedArray()
+    val current=options.indexOfFirst{it.name==voice?.voice?.name}
+    AlertDialog.Builder(this).setTitle("选择系统中文音色")
+      .setSingleChoiceItems(names,current){dialog,which->
+        val selected=options[which]
+        if(voice?.setVoice(selected)==TextToSpeech.SUCCESS){
+          getPreferences(MODE_PRIVATE).edit().putString("ttsVoiceName",selected.name).apply()
+          voiceEnabled=true
+          getPreferences(MODE_PRIVATE).edit().putBoolean("voiceEnabled",true).apply()
+          dialog.dismiss()
+          announce("success")
+        }else toast("该音色暂时无法使用，请安装对应语音包")
+      }
+      .setNegativeButton("取消",null).show()
   }
   private fun modeLabel():String=when(scanMode){
     "balanced"->"标准";"strict"->"严谨";else->"极速"
@@ -1083,8 +1130,9 @@ class MainActivity:ComponentActivity(){
     audio.addView(label("扫码声音",18f,ink,true),margins(6))
     audio.addView(label("轻快/沉稳/简短语音及纯提示音，使用手机系统 TTS；音色自然程度由手机已安装的中文语音引擎决定。",12f,muted),margins(8))
     audio.addView(button("当前："+voiceLabel()+" · 点击选择"){showVoiceModeDialog()},margins(6))
+    audio.addView(button("系统中文音色："+ttsVoiceLabel()){showTtsVoiceDialog()},margins(6))
     audio.addView(CheckBox(this).apply{
-      text="中文语音播报";isChecked=voiceEnabled
+      text="声音提示（中文语音或提示音）";isChecked=voiceEnabled
       setOnCheckedChangeListener{_,enabled->
         voiceEnabled=enabled;getPreferences(MODE_PRIVATE).edit().putBoolean("voiceEnabled",enabled).apply()
       }
