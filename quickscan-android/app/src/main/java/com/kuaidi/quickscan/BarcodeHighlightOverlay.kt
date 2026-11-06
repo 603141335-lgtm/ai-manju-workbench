@@ -22,6 +22,7 @@ class BarcodeHighlightOverlay(context:Context):View(context) {
     color=Color.WHITE; textSize=13f*resources.displayMetrics.scaledDensity
     isFakeBoldText=true
   }
+  private val shown=RectF()
   private var rawRect:Rect? = null
   private var rawWidth = 0
   private var rawHeight = 0
@@ -51,13 +52,11 @@ class BarcodeHighlightOverlay(context:Context):View(context) {
     val scale=max(width.toFloat()/rawWidth,height.toFloat()/rawHeight)
     val offsetX=(width-rawWidth*scale)*0.5f
     val offsetY=(height-rawHeight*scale)*0.5f
-    val frame=RectF(
-      r.left*scale+offsetX,r.top*scale+offsetY,
-      r.right*scale+offsetX,r.bottom*scale+offsetY
-    )
-    val shown=RectF(
-      frame.left.coerceIn(0f,width.toFloat()),frame.top.coerceIn(0f,height.toFloat()),
-      frame.right.coerceIn(0f,width.toFloat()),frame.bottom.coerceIn(0f,height.toFloat())
+    shown.set(
+      (r.left*scale+offsetX).coerceIn(0f,width.toFloat()),
+      (r.top*scale+offsetY).coerceIn(0f,height.toFloat()),
+      (r.right*scale+offsetX).coerceIn(0f,width.toFloat()),
+      (r.bottom*scale+offsetY).coerceIn(0f,height.toFloat())
     )
     if(shown.width()<16f || shown.height()<7f)return
     val radius=9f*resources.displayMetrics.density
@@ -72,7 +71,7 @@ class BarcodeHighlightOverlay(context:Context):View(context) {
       val y=(shown.bottom+6f*resources.displayMetrics.density)
         .coerceAtMost(height-labelHeight-3f)
       if(labelWidth>0) {
-        canvas.drawRoundRect(RectF(x,y,x+labelWidth,y+labelHeight),radius,radius,tagBackground)
+        canvas.drawRoundRect(x,y,x+labelWidth,y+labelHeight,radius,radius,tagBackground)
         canvas.drawText(displayCode,x+8f*resources.displayMetrics.density,
           y+18f*resources.displayMetrics.density,tagText)
       }

@@ -12,6 +12,8 @@ import java.io.File
 import kotlin.math.min
 
 /** Photo detail viewer with pinch zoom, drag and double-tap to reset/zoom. */
+// This view uses the platform theme and only draws its own photo.
+@android.annotation.SuppressLint("AppCompatCustomView")
 class ZoomPhotoView(context:Context): ImageView(context) {
   private val transform=Matrix()
   private var baseScale=1f

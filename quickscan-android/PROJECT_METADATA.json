@@ -1,11 +1,11 @@
 {
   "project": "快递快扫",
-  "currentVersion": "0.13",
+  "currentVersion": "0.14.1",
   "lastArchived": "2026-11-06",
   "githubRepo": "603141335-lgtm/ai-manju-workbench",
-  "activeBranch": "quickscan-app",
+  "activeBranch": "quickscan-v0141-repair",
   "codeDirectory": "quickscan-android",
-  "packageName": "com.kuaidi.quickscan.v013",
+  "packageName": "com.kuaidi.quickscan.v0141",
   "buildSystem": "Gradle 8.9 / Android SDK 35 / Kotlin",
   "buildWorkflow": ".github/workflows/quickscan-apk.yml",
   "knownPreviousBuild": {
@@ -14,7 +14,7 @@
     "apkName": "QuickScan-APK-v0.8",
     "type": "debug-signed"
   },
-  "upgradeNotes": "v0.13: selectable CODE128/ITF frame validation profiles; immediate handoff for changed labels; MLKit barcode-position visual highlight, floating result cards, light/calm/short/beep audio. Debug standalone package does not migrate older records/photos. Camera mapping and scan speed require real-device verification.",
+  "upgradeNotes": "v0.14.1: targeted photo repair pauses scanning, protects camera callbacks across pages, and adds tap-to-focus and quick resume. Standalone debug package coexists with v0.13. Records and photos stay in their original app.",
   "features": [
     "1D barcode-only",
     "continuous scan",

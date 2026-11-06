@@ -1,12 +1,17 @@
 # 快递快扫 | 安卓快递扫码登记工具
 
-**当前版本：v0.13（高速识别＋动态高亮＋悬浮提示测试版）**
-- 代码位置：`quickscan-android/`
-- 开发维护分支：`quickscan-app`
-- 编译方式：GitHub Actions → **快递快扫 | 构建安卓 APK**
-- 构建工程：Android / Kotlin / CameraX / Google ML Kit / SQLite
-- 仓库：`603141335-lgtm/ai-manju-workbench`
-- 原漫剧软件位于 `main` 分支；请勿把快递源码误当成漫剧应用。
+**当前版本 v0.14.1（稳扫补拍测试版）**
+- 代码位置 `quickscan-android/`
+- v0.14.1 开发分支 `quickscan-v0141-repair`，原 v0.13 维护分支 `quickscan-app`
+- 构建环境 JDK 17 或 21、Gradle 8.9、Android SDK 35
+- 在工程目录运行 `gradle :app:assembleDebug`，生成 `app/build/outputs/apk/debug/app-debug.apk`
+
+## v0.14.1 使用方式
+
+1. Android 8.0 及以上安装 APK，打开桌面上的「快递快扫 0.14.1」并允许相机权限。
+2. 新建或选择批次，对准面单的一维码。看到正在拍照提示时保持面单，等保存成功再换下一件。
+3. 对焦困难时点一下取景画面，或打开补光。照片失败时可在记录详情里进入专用补拍页面。
+4. 旧版仍可使用。0.14.1 使用独立应用 ID 和调试签名，新旧版记录与照片分别保存在各自应用里。保留装有数据的旧版，需要留存单号可在旧版导出 Excel。
 
 ## v0.13 新增
 - 扫码页右上角设置：极速/标准/严谨三档扫码速度；可随时切换并记忆。

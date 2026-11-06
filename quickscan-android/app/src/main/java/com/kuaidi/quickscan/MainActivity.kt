@@ -16,6 +16,7 @@ import android.speech.tts.TextToSpeech
 import android.os.Vibrator
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.net.Uri
 import android.app.Dialog
@@ -24,16 +25,21 @@ import androidx.core.content.FileProvider
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.*
 import android.text.Editable
 import android.text.TextWatcher
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -42,6 +48,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -55,13 +62,17 @@ class MainActivity:ComponentActivity(){
   private var activeBatch=0L
   private var batchName=""
   private var currentPage="home"
+  private val backToHome=object:OnBackPressedCallback(false){
+    override fun handleOnBackPressed(){
+      if(repairTarget!=null)showScan() else showHome()
+    }
+  }
   private var provider:ProcessCameraProvider?=null
   private var camera:androidx.camera.core.Camera?=null
   private var imageCapture:ImageCapture?=null
   private var previewView:PreviewView?=null
   private val executor=Executors.newSingleThreadExecutor()
   private val strictGate=StrictBarcodeGate()
-  private var latestAcceptedCode=""
   private var scanRowsBox:LinearLayout?=null
   private var scanSearch:EditText?=null
   private var scanCount:TextView?=null
@@ -78,13 +89,9 @@ class MainActivity:ComponentActivity(){
   private var voiceProfile="light"
 
   private val processing=AtomicBoolean(false)
-  private var lastCode=""
-  private var lastAt=0L
   private val captureBusy=AtomicBoolean(false)
-  private var latestCodeView:TextView?=null
-  private var latestStatusView:TextView?=null
-  private var retryPhotoForRow:Long?=null
-  private var retryPhotoCode:String?=null
+  private var repairTarget:ScanRow?=null
+  private var pendingRepair:ScanRow?=null
   private var flashlight=false
   private var voiceEnabled=true
   private var vibrationEnabled=true
@@ -92,11 +99,13 @@ class MainActivity:ComponentActivity(){
   private var speechReady=false
   private var exportDetail=true
   private var pendingPhotoSave:String?=null
-  private val barcodeScanner by lazy { BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(
+  private val barcodeScanner = lazy { BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(
     Barcode.FORMAT_CODE_128,Barcode.FORMAT_ITF
   ).build()) }
   private val permissionRequest=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->
-    if(granted)showScan() else {toast("请允许相机权限才能扫码拍照");announce("failure")}
+    val repair=pendingRepair
+    pendingRepair=null
+    if(granted)showScan(repair) else {toast("请允许相机权限才能扫码拍照");announce("failure")}
   }
   private val exportRequest=registerForActivityResult(ActivityResultContracts.CreateDocument(
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")){uri->
@@ -141,6 +150,10 @@ class MainActivity:ComponentActivity(){
   }
   override fun onCreate(savedInstanceState:Bundle?){
     super.onCreate(savedInstanceState)
+    onBackPressedDispatcher.addCallback(this,backToHome)
+    WindowCompat.setDecorFitsSystemWindows(window,false)
+    WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightStatusBars=true
+    WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightNavigationBars=true
     db=ScanDb(this)
     voiceEnabled=getPreferences(MODE_PRIVATE).getBoolean("voiceEnabled",true)
     vibrationEnabled=getPreferences(MODE_PRIVATE).getBoolean("vibrationEnabled",true)
@@ -153,16 +166,27 @@ class MainActivity:ComponentActivity(){
         speechReady=result!=null && result!=TextToSpeech.LANG_MISSING_DATA && result!=TextToSpeech.LANG_NOT_SUPPORTED
       }
     }
-    val first=db.batches().firstOrNull()
+    val batches=db.batches()
+    val savedBatch=getPreferences(MODE_PRIVATE).getLong("lastScanBatch",0L)
+    val restoreRepair=savedInstanceState?.getLong("repairRow",0L)?.takeIf{it>0L}?.let{db.find(it)}
+    val first=batches.firstOrNull{it.id==(restoreRepair?.batchId ?: savedBatch)} ?: batches.firstOrNull()
     activeBatch=first?.id?:0L
     batchName=first?.name?:""
     showHome()
+    if(restoreRepair!=null){
+      if(checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)showScan(restoreRepair)
+      else pendingRepair=restoreRepair
+    }
+  }
+  override fun onSaveInstanceState(outState:Bundle){
+    (repairTarget ?: pendingRepair)?.let{outState.putLong("repairRow",it.id)}
+    super.onSaveInstanceState(outState)
   }
   override fun onDestroy(){
     stopCamera()
     uiHandler.removeCallbacksAndMessages(null)
     if(executor.isShutdown.not())executor.shutdown()
-    if(barcodeScanner!=null)barcodeScanner.close()
+    if(barcodeScanner.isInitialized())barcodeScanner.value.close()
     voice?.stop()
     voice?.shutdown()
     db.close()
@@ -197,9 +221,27 @@ class MainActivity:ComponentActivity(){
     setHint(hint);setHintTextColor(muted);background=shape(canvasColor,12)
     setPadding(dp(12),dp(11),dp(12),dp(11))
   }
+  private fun setPageContent(root:View){
+    ViewCompat.setOnApplyWindowInsetsListener(root){view, insets->
+      val safe=insets.getInsets(
+        WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime()
+      )
+      view.setPadding(safe.left,safe.top,safe.right,safe.bottom)
+      insets
+    }
+    backToHome.isEnabled=currentPage!="home"
+    setContentView(root)
+  }
+  override fun onWindowFocusChanged(hasFocus:Boolean){
+    super.onWindowFocusChanged(hasFocus)
+    if(!hasFocus){
+      strictGate.reset()
+      scanOverlay?.clearTarget()
+    }
+  }
   private fun shell(title:String,sub:String){
     val root=container().apply{setBackgroundColor(canvasColor)}
-    setContentView(root)
+    setPageContent(root)
     val header=container().apply{
       background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(22,49,106),Color.rgb(44,102,210)))
       setPadding(dp(19),dp(20),dp(19),dp(21))
@@ -221,7 +263,7 @@ class MainActivity:ComponentActivity(){
       setBackgroundColor(Color.WHITE);setPadding(dp(8),dp(7),dp(8),dp(9))
     }
     listOf("▦ 批次" to "home","▥ 扫码" to "scan","⚙ 设置" to "settings").forEach{(title,tag)->
-      val active=currentPage==tag
+      val active=currentPage==tag || (currentPage=="batch" && tag=="home")
       val view=label(title,13f,if(active)primary else muted,active).apply{
         gravity=Gravity.CENTER;setPadding(dp(1),dp(12),dp(1),dp(12))
         if(active)background=shape(Color.rgb(234,242,255),14)
@@ -316,8 +358,17 @@ class MainActivity:ComponentActivity(){
     val intro=card()
     intro.addView(label("今天："+today(),21f,ink,true),margins(5))
     intro.addView(label("只扫快递一维码 · 快速自动登记",12f,muted),margins(14))
-    pair(intro,button("＋ 新建批次",true){newBatchDialog{showScan()}},button("开始扫码"){selectBatch{showScan()}})
+    pair(intro,button("＋ 新建批次",true){newBatchDialog{showScan()}},button("选批扫码"){selectBatch{showScan()}})
     val batches=db.batches()
+    val lastBatchId=getPreferences(MODE_PRIVATE).getLong("lastScanBatch",0L)
+    val lastBatch=batches.firstOrNull{it.id==lastBatchId}
+    if(lastBatch!=null){
+      intro.addView(button("继续扫码 · "+lastBatch.name){
+        activeBatch=lastBatch.id
+        batchName=lastBatch.name
+        showScan()
+      })
+    }
     val stats=card()
     stats.addView(label("累计 "+batches.sumOf{it.count}+" 件 · "+batches.size+" 个批次",17f,primary,true))
     val find=card()
@@ -331,7 +382,7 @@ class MainActivity:ComponentActivity(){
       if(q.isBlank()){
         foundList.addView(label("所有批次均可查询，无须单独打开窗口",12f,muted))
       }else{
-        val matches=db.all(null,q).take(80)
+        val matches=db.all(null,q,80)
         if(matches.isEmpty())foundList.addView(label("没有找到匹配记录",13f,muted))
         else matches.forEach{addRow(foundList,it)}
       }
@@ -358,7 +409,7 @@ class MainActivity:ComponentActivity(){
   }
 
   private fun showBatch(){
-    currentPage="home";stopCamera();shell("批次 "+batchName,"查看记录 · 导出表格")
+    currentPage="batch";stopCamera();shell("批次 "+batchName,"查看记录 · 导出表格")
     val records=db.all(activeBatch)
     val photoRecords=records.filter{it.photo.isNotBlank()}
     val selected=mutableSetOf<Long>()
@@ -483,13 +534,10 @@ class MainActivity:ComponentActivity(){
     if(r.photo.isBlank()||!File(r.photo).exists()){
       layout.addView(button("📷 给这条记录补拍照片"){
         detailDialog?.dismiss()
-        retryPhotoForRow=r.id
-        retryPhotoCode=r.code
-        val matching=db.batches().firstOrNull{it.id==r.batchId}
-        activeBatch=r.batchId
-        if(matching!=null)batchName=matching.name
-        showScan()
-        toast("对准面单，点击拍照图标为此记录补拍")
+        val matching=db.batches().firstOrNull{it.id==r.batchId} ?: return@button
+        activeBatch=matching.id
+        batchName=matching.name
+        showScan(r)
       },margins(8))
     }
     val code=input("补录条码下方的数字",r.code)
@@ -505,19 +553,24 @@ class MainActivity:ComponentActivity(){
       }.setPositiveButton("保存"){_,_->
         val v=code.text.toString().trim().replace(" ","")
         if(v.isNotBlank()&&!valid(v)){toast("单号只支持字母数字和横线");return@setPositiveButton}
-        if(v.isNotEmpty()&&db.all(r.batchId).any{it.id!=r.id&&it.code==v}){
+        if(!db.update(r.id,v,note.text.toString())){
           toast("⚠ 该批次已有相同单号")
-        }else{db.update(r.id,v,note.text.toString());refresh()}
+        }else{refresh()}
       }.show()
   }
-  private fun refresh(){when(currentPage){"home"->showBatch();"search"->showSearch();"scan"->showScan()}}
+  private fun refresh(){when(currentPage){"home"->showHome();"batch"->showBatch();"search"->showSearch();"scan"->showScan()}}
   private fun updateScanOutcome(code:String,status:String,color:Int){
     if(currentPage!="scan")return
     val card=feedbackCard ?:return
     feedbackTitle?.text=status
     feedbackTitle?.setTextColor(color)
-    feedbackCode?.text=code.ifBlank{"请检查条码"}
-    feedbackIcon?.text=if(status.contains("重复")||status.contains("失败"))"!" else "✓"
+    feedbackCode?.text=code
+    feedbackCode?.visibility=if(code.isBlank())View.GONE else View.VISIBLE
+    feedbackIcon?.text=when{
+      status.contains("正在拍照")->"…"
+      status.contains("重复")||status.contains("失败")||status.contains("无效")->"!"
+      else->"✓"
+    }
     feedbackIcon?.background=GradientDrawable().apply{
       shape=GradientDrawable.OVAL
       setColor(color)
@@ -525,12 +578,13 @@ class MainActivity:ComponentActivity(){
     card.visibility=View.VISIBLE
     feedbackSequence++
     val current=feedbackSequence
+    if(status.contains("正在拍照"))return
     uiHandler.postDelayed({
       if(feedbackSequence==current && currentPage=="scan")card.visibility=View.GONE
-    },if(status.contains("失败"))2300L else 1450L)
+    },if(status.contains("失败"))3200L else 1450L)
   }
   private fun onStableCandidate(code:String){
-    if(currentPage!="scan"||captureBusy.get())return
+    if(currentPage!="scan"||captureBusy.get()||repairTarget!=null)return
     // The transactional DB insert is the single source of truth for duplicates.
     // Avoid two separate SELECT queries on every barcode scan.
     addCode(code,true)
@@ -549,18 +603,20 @@ class MainActivity:ComponentActivity(){
     holder.addView(label(description,11f,muted).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(4)})
     return holder
   }
-  private fun showScan(){
+  private fun showScan(repair:ScanRow?=null){
     if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
+      pendingRepair=repair
       permissionRequest.launch(Manifest.permission.CAMERA);return
     }
     if(activeBatch==0L){selectBatch{showScan()};return}
     currentPage="scan"
     stopCamera()
-    strictGate.reset()
+    repairTarget=repair
+    getPreferences(MODE_PRIVATE).edit().putLong("lastScanBatch",activeBatch).apply()
     val windowRoot=FrameLayout(this).apply{setBackgroundColor(Color.WHITE)}
     val root=container().apply{setBackgroundColor(Color.WHITE)}
     windowRoot.addView(root,FrameLayout.LayoutParams(-1,-1))
-    setContentView(windowRoot)
+    setPageContent(windowRoot)
 
     val top=container(false).apply{
       gravity=Gravity.CENTER_VERTICAL
@@ -569,15 +625,18 @@ class MainActivity:ComponentActivity(){
     }
     val back=label("‹",29f,ink,true).apply{
       gravity=Gravity.CENTER
-      contentDescription="返回首页"
-      setOnClickListener{showHome()}
+      contentDescription=if(repair==null)"返回首页" else "取消补拍"
+      setOnClickListener{if(repair==null)showHome() else showScan()}
     }
     top.addView(back,LinearLayout.LayoutParams(dp(38),dp(40)))
     val heading=container().apply{gravity=Gravity.CENTER_VERTICAL}
-    heading.addView(label(batchName,19f,ink,true))
+    heading.addView(label(if(repair==null)batchName else "补拍面单",19f,ink,true))
     top.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
-    top.addView(button("切换批次"){selectBatch{showScan()}},
-      LinearLayout.LayoutParams(dp(92),-2))
+    if(repair==null){
+      top.addView(button("切换批次"){selectBatch{showScan()}},LinearLayout.LayoutParams(dp(92),-2))
+    }else{
+      top.addView(button("取消补拍"){showScan()},LinearLayout.LayoutParams(dp(92),-2))
+    }
     top.addView(label("⚙",27f,ink,true).apply{
       gravity=Gravity.CENTER
       contentDescription="扫码速度和语音设置"
@@ -588,6 +647,20 @@ class MainActivity:ComponentActivity(){
       scaleType=PreviewView.ScaleType.FILL_CENTER
       setBackgroundColor(Color.rgb(28,34,40))
     }
+    var tapX:Float?=null
+    var tapY:Float?=null
+    cameraView.setOnClickListener{
+      focusCamera(cameraView,tapX ?: cameraView.width/2f,tapY ?: cameraView.height/2f)
+      tapX=null;tapY=null
+    }
+    cameraView.setOnTouchListener{view,event->
+      if(event.action==MotionEvent.ACTION_UP){
+        tapX=event.x;tapY=event.y
+        view.performClick()
+      }
+      true
+    }
+    cameraView.contentDescription="相机取景，点击对焦"
     previewView=cameraView
     val cameraFrame=FrameLayout(this).apply{setBackgroundColor(Color.rgb(28,34,40))}
     cameraFrame.addView(cameraView,FrameLayout.LayoutParams(-1,-1))
@@ -601,18 +674,33 @@ class MainActivity:ComponentActivity(){
       setBackgroundColor(Color.WHITE)
       setPadding(dp(12),dp(9),dp(12),dp(9))
     }
-    listOf(
-      iconAction(R.drawable.ic_action_camera,"拍照"){takePhoto(retryPhotoForRow,retryPhotoCode)},
+    val cameraActions=mutableListOf(
+      iconAction(R.drawable.ic_action_camera,if(repair==null)"拍照" else "为本单补拍"){
+        takePhoto(repair?.id,repair?.code)
+      },
       iconAction(R.drawable.ic_action_flash,"补光"){
-        flashlight=!flashlight
-        camera?.cameraControl?.enableTorch(flashlight)
-      },
-      iconAction(R.drawable.ic_action_keyboard,"录入"){
+        val currentCamera=camera
+        if(currentCamera==null || !currentCamera.cameraInfo.hasFlashUnit()){
+          toast("当前相机无法补光")
+        }else{
+          flashlight=!flashlight
+          currentCamera.cameraControl.enableTorch(flashlight)
+        }
+      }
+    )
+    if(repair==null){
+      cameraActions.add(iconAction(R.drawable.ic_action_keyboard,"录入"){
         prompt("手动输入单号","请核对条码下方单号"){addCode(it)}
-      },
-      iconAction(R.drawable.ic_action_records,"批次记录"){showBatch()}
-    ).forEach{controls.addView(it,LinearLayout.LayoutParams(0,-2,1f))}
+      })
+      cameraActions.add(iconAction(R.drawable.ic_action_records,"批次记录"){showBatch()})
+    }
+    cameraActions.forEach{controls.addView(it,LinearLayout.LayoutParams(0,-2,1f))}
     root.addView(controls)
+    if(repair!=null){
+      root.addView(label("当前补拍 · "+repair.code.ifBlank{"待补录单号"}+"\n自动扫码已暂停，请对准对应面单再拍照",14f,primary,true).apply{
+        setPadding(dp(14),dp(8),dp(14),dp(8))
+      })
+    }
 
     root.addView(View(this).apply{setBackgroundColor(Color.rgb(227,233,241))},
       LinearLayout.LayoutParams(-1,dp(1)))
@@ -636,6 +724,7 @@ class MainActivity:ComponentActivity(){
     scroll.addView(bottom)
     root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
     val popup=container(false).apply{
+      accessibilityLiveRegion=View.ACCESSIBILITY_LIVE_REGION_POLITE
       gravity=Gravity.CENTER_VERTICAL
       setPadding(dp(17),dp(17),dp(17),dp(17))
       background=shape(Color.rgb(42,44,48),22)
@@ -654,7 +743,7 @@ class MainActivity:ComponentActivity(){
     popup.addView(feedbackIcon,LinearLayout.LayoutParams(dp(58),dp(58)).apply{rightMargin=dp(16)})
     val messages=container()
     feedbackTitle=label("扫码成功",16f,Color.rgb(28,214,138),true)
-    feedbackCode=label("",23f,Color.WHITE,true).apply{setTextIsSelectable(true);maxLines=1}
+    feedbackCode=label("",20f,Color.WHITE,true).apply{maxLines=2}
     messages.addView(feedbackTitle,margins(6))
     messages.addView(feedbackCode)
     popup.addView(messages,LinearLayout.LayoutParams(0,-2,1f))
@@ -711,32 +800,53 @@ class MainActivity:ComponentActivity(){
           .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
           .setJpegQuality(82)
           .build()
-        val analyzer=ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
-        analyzer.setAnalyzer(executor){proxy->analyze(proxy)}
-        camera=p.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,imageCapture,analyzer)
+        if(repairTarget==null){
+          val analyzer=ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
+          analyzer.setAnalyzer(executor){proxy->analyze(proxy,view)}
+          camera=p.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,imageCapture,analyzer)
+        }else{
+          camera=p.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,imageCapture)
+        }
       }catch(e:Exception){toast("相机启动失败："+e.message);announce("failure")}
     },ContextCompat.getMainExecutor(this))
   }
-  @androidx.camera.core.ExperimentalGetImage
-  private fun analyze(proxy:ImageProxy){
+  private fun focusCamera(view:PreviewView,x:Float,y:Float){
+    val currentCamera=camera ?: return
+    val point=view.meteringPointFactory.createPoint(x,y)
+    val action=FocusMeteringAction.Builder(point,FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
+      .setAutoCancelDuration(3,TimeUnit.SECONDS)
+      .build()
+    currentCamera.cameraControl.startFocusAndMetering(action)
+  }
+  @androidx.annotation.OptIn(markerClass=[androidx.camera.core.ExperimentalGetImage::class])
+  private fun analyze(proxy:ImageProxy,view:PreviewView){
     val media=proxy.image
     if(media==null||captureBusy.get()||!processing.compareAndSet(false,true)){
       proxy.close();return
     }
-    val image=InputImage.fromMediaImage(media,proxy.imageInfo.rotationDegrees)
+    val now=SystemClock.elapsedRealtime()
     val rotated=proxy.imageInfo.rotationDegrees%180!=0
     val w=if(rotated)media.height else media.width
     val h=if(rotated)media.width else media.height
-    barcodeScanner.process(image).addOnSuccessListener{codes->
-      if(currentPage=="scan" && !captureBusy.get()){
+    val task=try{
+      val image=InputImage.fromMediaImage(media,proxy.imageInfo.rotationDegrees)
+      barcodeScanner.value.process(image)
+    }catch(e:RuntimeException){
+      proxy.close()
+      processing.set(false)
+      return
+    }
+    task.addOnSuccessListener{codes->
+      if(previewView===view && hasWindowFocus() && !captureBusy.get()){
         val selected=strictGate.select(codes,w,h)
         scanOverlay?.updateTarget(selected,w,h)
-        val result=strictGate.observeSelected(selected,w,h,System.currentTimeMillis())
-        if(result!=null)runOnUiThread{
-          if(currentPage=="scan"&&!captureBusy.get())onStableCandidate(result)
-        }
+        val result=strictGate.observeSelected(selected,w,h,now)
+        if(result!=null)onStableCandidate(result)
       }
-    }.addOnCompleteListener{processing.set(false);proxy.close()}
+    }.addOnCompleteListener{
+      proxy.close()
+      processing.set(false)
+    }
   }
   private fun valid(v:String)=v.matches(Regex("[A-Za-z0-9-]{10,40}"))
   private fun addCode(raw:String,fromCamera:Boolean=false){
@@ -750,20 +860,22 @@ class MainActivity:ComponentActivity(){
       return
     }
     val saved=try{db.saveIfNew(activeBatch,code)}catch(e:Exception){
-      toast("登记失败："+e.message);announce("failure");return
+      if(fromCamera)updateScanOutcome(code,"登记失败 · 请重试",Color.rgb(198,57,57))
+      toast("登记失败："+e.message)
+      announce("failure")
+      return
     }
     if(saved<0L){
       updateScanOutcome(code,"重复单号 · 已自动拦截",Color.rgb(245,76,81))
-      val now=System.currentTimeMillis()
+      val now=SystemClock.elapsedRealtime()
       if(duplicateAnnounced!=code||now-duplicateTime>1700L){
         duplicateAnnounced=code;duplicateTime=now
         announce("duplicate")
       }
       return
     }
-    latestAcceptedCode=code
     if(fromCamera){
-      updateScanOutcome(code,"✓ 已登记 · 照片保存中",Color.rgb(36,151,94))
+      updateScanOutcome(code,"已登记 · 请保持面单，正在拍照",Color.rgb(216,154,49))
       // Keep the parcel in the frame until photo callback confirms it is saved.
       takePhoto(saved,code)
     }else{
@@ -778,45 +890,67 @@ class MainActivity:ComponentActivity(){
       return
     }
     val capture=imageCapture
-    if(capture==null){
-      captureBusy.set(false);toast("相机启动中，请稍后再拍");announce("failure")
-      if(forRow!=null)updateScanOutcome(displayCode?:lastCode,"照片失败 · 记录已保留",Color.rgb(198,57,57))
+    val viewAtCapture=previewView
+    val batchAtCapture=activeBatch
+    val repairAtCapture=repairTarget
+    val code=displayCode.orEmpty()
+    val file=File(File(filesDir,"photos"),"scan_"+java.util.UUID.randomUUID()+".jpg")
+    fun reportFailure(message:String){
+      file.delete()
+      captureBusy.set(false)
+      if(isDestroyed || previewView!==viewAtCapture)return
+      toast(message)
+      if(forRow!=null)updateScanOutcome(code,"照片保存失败 · 单号已保留，可补拍",Color.rgb(198,57,57))
+      announce("failure")
+      updateRecent()
+    }
+    if(capture==null || viewAtCapture==null){
+      reportFailure("相机启动中，请稍后再拍")
       return
     }
-    val batchAtCapture=activeBatch
-    val dir=File(filesDir,"photos").apply{mkdirs()}
-    val file=File(dir,"scan_"+System.currentTimeMillis()+"_"+(100..999).random()+".jpg")
-    capture.takePicture(
-      ImageCapture.OutputFileOptions.Builder(file).build(),
-      ContextCompat.getMainExecutor(this),
-      object:ImageCapture.OnImageSavedCallback{
-        override fun onImageSaved(result:ImageCapture.OutputFileResults){
-          try{
+    try{
+      val directory=file.parentFile!!
+      check(directory.isDirectory || directory.mkdirs()){"无法创建照片目录"}
+      capture.takePicture(
+        ImageCapture.OutputFileOptions.Builder(file).build(),
+        ContextCompat.getMainExecutor(this),
+        object:ImageCapture.OnImageSavedCallback{
+          override fun onImageSaved(result:ImageCapture.OutputFileResults){
+            if(isDestroyed){
+              file.delete()
+              captureBusy.set(false)
+              return
+            }
+            try{
+              check(file.isFile && file.length()>0L){"照片文件为空"}
+              if(forRow!=null){
+                check(db.attachPhoto(forRow,file.absolutePath)){"原记录已删除"}
+              }else{
+                db.save(batchAtCapture,"",file.absolutePath)
+              }
+            }catch(e:Exception){
+              reportFailure("照片保存失败："+e.message)
+              return
+            }
+            captureBusy.set(false)
+            if(previewView!==viewAtCapture)return
             if(forRow!=null){
-              db.attachPhoto(forRow,file.absolutePath)
-              updateScanOutcome(displayCode?:lastCode,"✓ 单号及照片均已保存",Color.rgb(36,151,94))
+              if(repairAtCapture!=null)showScan()
+              updateScanOutcome(code,if(repairAtCapture==null)"✓ 单号及照片均已保存" else "✓ 补拍照片已保存",Color.rgb(36,151,94))
               announce("success")
             }else{
-              db.save(batchAtCapture,"",file.absolutePath)
               toast("照片已保存，之后可补录单号")
             }
-            if(retryPhotoForRow==forRow && forRow!=null){retryPhotoForRow=null;retryPhotoCode=null}
             updateRecent()
-          }catch(e:Exception){
-            toast("照片关联失败："+e.message);announce("failure")
-            if(forRow!=null)updateScanOutcome(displayCode?:lastCode,"照片关联失败 · 单号已保留",Color.rgb(198,57,57))
-          }finally{captureBusy.set(false)}
+          }
+          override fun onError(exception:ImageCaptureException){
+            reportFailure(if(forRow==null)"拍照失败，请重试" else "照片保存失败，单号已保留")
+          }
         }
-        override fun onError(exception:ImageCaptureException){
-          file.delete()
-          captureBusy.set(false)
-          toast("拍照失败，单号已保留："+exception.message)
-          if(forRow!=null)updateScanOutcome(displayCode?:lastCode,"照片保存失败 · 单号已保留，可补拍",Color.rgb(198,57,57))
-          announce("failure")
-          updateRecent()
-        }
-      }
-    )
+      )
+    }catch(e:RuntimeException){
+      reportFailure("无法拍照："+e.message)
+    }
   }
   private fun showSearch(){
     currentPage="search";stopCamera();shell("单号查询","完整单号、末四位及备注都可以搜")
@@ -826,7 +960,7 @@ class MainActivity:ComponentActivity(){
     val results=container();box.addView(results)
     fun display(q:String){
       results.removeAllViews()
-      val found=if(q.isBlank())emptyList() else db.all(null,q).take(100)
+      val found=if(q.isBlank())emptyList() else db.all(null,q,100)
       if(q.isBlank())results.addView(label("请输入要查询的单号",13f,muted))
       else if(found.isEmpty())results.addView(label("未找到匹配的快递记录",13f,muted))
       else found.forEach{addRow(results,it)}
@@ -1008,7 +1142,7 @@ class MainActivity:ComponentActivity(){
   private fun showSettings(){
     currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
     val info=card()
-    info.addView(label("快递快扫 v0.13",21f,ink,true),margins(8))
+    info.addView(label("快递快扫 v0.14.1",21f,ink,true),margins(8))
     info.addView(label("三档识别速度：极速2/3帧、标准3/4帧、严谨4/5帧。支持新条码快速切换，动态绿色定位框，成功/重复悬浮提示。照片保存后才提示成功，注意保持面单不离开取景框。",13f,muted))
     val speed=card()
     speed.addView(label("识别速度",18f,ink,true),margins(8))
@@ -1042,7 +1176,7 @@ class MainActivity:ComponentActivity(){
     pair(actions,button("复制单号",true){copyCodes()},button("导出/分享 Excel"){exportBatch()})
     val help=card()
     help.addView(label("模糊条码怎么办？",17f,ink,true),margins(7))
-    help.addView(label("调整距离、角度或打开手电筒；扫不出来就拍照留底，稍后打开记录补录单号。",14f,muted),margins(10))
+    help.addView(label("点击取景画面可对焦，也可以调整距离、角度或打开补光。扫不出来就拍照留底，稍后打开记录补录单号。",14f,muted),margins(10))
     help.addView(label("照片保存在手机本地的应用专用 files/photos 目录，普通相册不会自动显示。点记录里的照片可全屏放大、分享或另存到手机。卸载软件会删除本机记录和照片。Excel不嵌入照片。",13f,muted),margins(10))
     help.addView(button("打开系统应用设置"){
       startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+packageName)))
@@ -1057,13 +1191,8 @@ class MainActivity:ComponentActivity(){
     scanRowsBox=null
     scanSearch=null
     scanCount=null
-    latestCodeView=null
-    latestStatusView=null
+    repairTarget=null
     provider?.unbindAll()
     provider=null;camera=null;imageCapture=null;previewView=null;flashlight=false
-  }
-  @Deprecated("Deprecated in Java")
-  override fun onBackPressed(){
-    when(currentPage){"scan"->showHome();"home"->showHome();else->showHome()}
   }
 }

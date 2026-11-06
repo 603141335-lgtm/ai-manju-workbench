@@ -45,17 +45,23 @@ class ScanDb(context:Context):SQLiteOpenHelper(context,"quickscan_offline.db",nu
       while(c.moveToNext())add(BatchRow(c.getLong(0),c.getString(1),c.getLong(2),c.getInt(3)))
     }
   }
-  fun all(batch:Long?=null,query:String=""):List<ScanRow> = buildList {
+  fun all(batch:Long?=null,query:String="",limit:Int=20000):List<ScanRow> = buildList {
     val clauses=mutableListOf<String>();val args=mutableListOf<String>()
     if(batch!=null){clauses.add("batch_id=?");args.add(batch.toString())}
     if(query.isNotEmpty()){clauses.add("(code LIKE ? OR note LIKE ?)");args.add("%"+query+"%");args.add("%"+query+"%")}
     val where=if(clauses.isEmpty())"" else " WHERE "+clauses.joinToString(" AND ")
     readableDatabase.rawQuery(
       "SELECT id,batch_id,code,time,photo,note FROM scans"+where+
-        " ORDER BY time DESC,id DESC LIMIT 20000",args.toTypedArray()
+        " ORDER BY time DESC,id DESC LIMIT "+limit.coerceIn(1,20000),args.toTypedArray()
     ).use{c->
       while(c.moveToNext())add(ScanRow(c.getLong(0),c.getLong(1),c.getString(2),c.getLong(3),c.getString(4),c.getString(5)))
     }
+  }
+
+  fun find(id:Long):ScanRow?=readableDatabase.rawQuery(
+    "SELECT id,batch_id,code,time,photo,note FROM scans WHERE id=?",arrayOf(id.toString())
+  ).use{c->
+    if(c.moveToFirst())ScanRow(c.getLong(0),c.getLong(1),c.getString(2),c.getLong(3),c.getString(4),c.getString(5)) else null
   }
 
   fun count(batch:Long):Int=readableDatabase.rawQuery(
@@ -96,10 +102,10 @@ class ScanDb(context:Context):SQLiteOpenHelper(context,"quickscan_offline.db",nu
         arrayOf(batch.toString(),code)
       ).use{it.moveToFirst()}
       if(exists)return -1L
-      val id=database.insertWithOnConflict("scans",null,ContentValues().apply{
+      val id=database.insertOrThrow("scans",null,ContentValues().apply{
         put("batch_id",batch);put("code",code);put("photo","")
         put("time",System.currentTimeMillis())
-      },SQLiteDatabase.CONFLICT_IGNORE)
+      })
       database.setTransactionSuccessful()
       return id
     }finally{database.endTransaction()}
@@ -113,9 +119,8 @@ class ScanDb(context:Context):SQLiteOpenHelper(context,"quickscan_offline.db",nu
     })
   }
 
-  fun attachPhoto(id:Long,path:String){
-    writableDatabase.update("scans",ContentValues().apply{put("photo",path)},"id=?",arrayOf(id.toString()))
-  }
+  fun attachPhoto(id:Long,path:String):Boolean =
+    writableDatabase.update("scans",ContentValues().apply{put("photo",path)},"id=?",arrayOf(id.toString()))>0
   fun update(id:Long,code:String,note:String):Boolean {
     val database=writableDatabase
     database.beginTransaction()

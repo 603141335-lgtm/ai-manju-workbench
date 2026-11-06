@@ -11,6 +11,7 @@ import kotlin.math.abs
  * Database uniqueness remains the final same-code duplicate guard.
  */
 class StrictBarcodeGate {
+  private val waybillPattern = Regex("[A-Za-z0-9-]{10,40}")
   private var scanMode = "fast"
   private var candidate = ""
   private var candidateFormat = -1
@@ -49,9 +50,9 @@ class StrictBarcodeGate {
   @Synchronized fun select(items:List<Barcode>, width:Int, height:Int):Barcode? {
     if(width <= 0 || height <= 0) return null
     val minWidth = when(scanMode) {"strict" -> 0.22f; "balanced" -> 0.19f; else -> 0.16f}
-    val valid = items.filter { item ->
+    val valid = items.asSequence().filter { item ->
       val value = item.rawValue?.trim().orEmpty()
-      val syntax = value.matches(Regex("[A-Za-z0-9-]{10,40}"))
+      val syntax = waybillPattern.matches(value)
       val format = item.format == Barcode.FORMAT_CODE_128 || item.format == Barcode.FORMAT_ITF
       val itf = item.format != Barcode.FORMAT_ITF ||
         (value.all { it.isDigit() } && value.length >= 12 && value.length % 2 == 0)
@@ -78,11 +79,11 @@ class StrictBarcodeGate {
 
   @Synchronized fun observeSelected(item:Barcode?,width:Int,height:Int,now:Long):String? {
     if(item == null || width <= 0 || height <= 0) {
+      resetCandidate()
       blanks++
       if(blanks >= 2) {
         lockedCode = ""
         lockedFormat = -1
-        resetCandidate()
       }
       return null
     }
