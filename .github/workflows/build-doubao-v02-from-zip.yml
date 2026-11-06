@@ -1,0 +1,50 @@
+name: Build Doubao v0.2 Windows EXE from source ZIP
+on:
+  push:
+    branches: [doubao-creative-hub-v0.2]
+    paths:
+      - Doubao_Creative_Hub_v0.2_Full_Source.zip
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout v0.2 branch
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Extract v0.2 source archive
+        shell: pwsh
+        run: |
+          $zip = "Doubao_Creative_Hub_v0.2_Full_Source.zip"
+          if (!(Test-Path $zip)) { throw "Please upload $zip to the branch root first." }
+          New-Item -Type Directory -Path build-src -Force | Out-Null
+          Expand-Archive -LiteralPath $zip -DestinationPath build-src -Force
+          if (!(Test-Path build-src/package.json)) { throw "Archive must contain package.json in its root." }
+      - name: Install dependencies
+        working-directory: build-src
+        run: npm install --no-audit --no-fund
+      - name: Check Electron executable
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'build-src/node_modules/electron/dist/electron.exe')) {
+            throw "Electron executable was not installed; inspect network/install-script logs."
+          }
+      - name: Run unit and static checks
+        working-directory: build-src
+        run: npm run check
+      - name: Package portable EXE
+        working-directory: build-src
+        run: npm run dist:win
+      - name: Publish EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DoubaoCreativeHub-v0.2-Windows-x64
+          path: build-src/release/*.exe
+          if-no-files-found: error
+          retention-days: 30
