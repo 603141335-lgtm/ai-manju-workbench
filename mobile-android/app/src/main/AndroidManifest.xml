@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <application android:label="AI漫剧手机制作台" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true">
-    <activity android:name=".MainActivity" android:exported="true">
+  <queries><package android:name="com.larus.nova"/></queries>
+  <application android:label="漫剧随身工作台" android:icon="@drawable/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true">
+    <activity android:name=".StudioActivity" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
