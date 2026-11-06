@@ -945,14 +945,80 @@ class MainActivity:ComponentActivity(){
     dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT)
     dialog.show()
   }
+  private fun showScanSettingsDialog(){
+    AlertDialog.Builder(this).setTitle("扫码设置")
+      .setItems(arrayOf(
+        "扫码速度："+modeLabel(),
+        "播报风格："+voiceLabel(),
+        if(vibrationEnabled)"关闭震动反馈" else "开启震动反馈",
+        "测试当前播报"
+      )){_,which->
+        when(which){
+          0->showScanModeDialog()
+          1->showVoiceModeDialog()
+          2->{
+            vibrationEnabled=!vibrationEnabled
+            getPreferences(MODE_PRIVATE).edit().putBoolean("vibrationEnabled",vibrationEnabled).apply()
+            toast(if(vibrationEnabled)"已开启震动" else "已关闭震动")
+          }
+          3->announce("success")
+        }
+      }.setNegativeButton("关闭",null).show()
+  }
+  private fun modeLabel():String=when(scanMode){
+    "balanced"->"标准";"strict"->"严谨";else->"极速"
+  }
+  private fun voiceLabel():String=when(voiceProfile){
+    "calm"->"沉稳";"short"->"简短";"beep"->"纯提示音";else->"轻快"
+  }
+  private fun showScanModeDialog(){
+    val modes=arrayOf("fast","balanced","strict")
+    val names=arrayOf(
+      "极速模式 · CODE128 2帧 / ITF 3帧",
+      "标准模式 · CODE128 3帧 / ITF 4帧",
+      "严谨模式 · CODE128 4帧 / ITF 5帧"
+    )
+    AlertDialog.Builder(this).setTitle("扫码速度（推荐极速模式）")
+      .setSingleChoiceItems(names,modes.indexOf(scanMode).coerceAtLeast(0)){dialog,which->
+        scanMode=modes[which]
+        strictGate.setMode(scanMode)
+        getPreferences(MODE_PRIVATE).edit().putString("scanMode",scanMode).apply()
+        toast("已切换："+modeLabel()+"模式")
+        dialog.dismiss()
+      }.setNegativeButton("取消",null).show()
+  }
+  private fun showVoiceModeDialog(){
+    val profiles=arrayOf("light","calm","short","beep")
+    val names=arrayOf(
+      "轻快播报 · 扫好啦 / 这件扫过啦",
+      "沉稳播报 · 登记成功 / 单号重复",
+      "简短播报 · 成功 / 重复",
+      "纯提示音 · 无机器人语音"
+    )
+    AlertDialog.Builder(this).setTitle("播报声音")
+      .setSingleChoiceItems(names,profiles.indexOf(voiceProfile).coerceAtLeast(0)){dialog,which->
+        voiceProfile=profiles[which]
+        getPreferences(MODE_PRIVATE).edit().putString("voiceProfile",voiceProfile).apply()
+        voiceEnabled=true
+        getPreferences(MODE_PRIVATE).edit().putBoolean("voiceEnabled",true).apply()
+        dialog.dismiss()
+        announce("success")
+      }.setNegativeButton("取消",null).show()
+  }
   private fun showSettings(){
     currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
     val info=card()
-    info.addView(label("快递快扫 v0.12",21f,ink,true),margins(8))
-    info.addView(label("极速识别：CODE128 连续2帧、ITF 连续3帧同码校验，自动登记并拍照；数据库事务和唯一索引防止同一批次单号重复。拍照完成才提示成功，请保持面单在镜头内。",13f,muted))
+    info.addView(label("快递快扫 v0.13",21f,ink,true),margins(8))
+    info.addView(label("三档识别速度：极速2/3帧、标准3/4帧、严谨4/5帧。支持新条码快速切换，动态绿色定位框，成功/重复悬浮提示。照片保存后才提示成功，注意保持面单不离开取景框。",13f,muted))
+    val speed=card()
+    speed.addView(label("识别速度",18f,ink,true),margins(8))
+    speed.addView(button("当前："+modeLabel()+"模式 · 点击选择"){showScanModeDialog()},margins(5))
+    speed.addView(label("默认极速。帧数减少并不保证不误识别；模糊件可切标准或严谨，或拍照后人工补单号。",12f,muted))
+
     val audio=card()
     audio.addView(label("扫码声音",18f,ink,true),margins(6))
-    audio.addView(label("成功读“成功”，重复读“重复”，输入或拍照错误读“失败”",12f,muted),margins(8))
+    audio.addView(label("轻快/沉稳/简短语音及纯提示音，使用手机系统 TTS；音色自然程度由手机已安装的中文语音引擎决定。",12f,muted),margins(8))
+    audio.addView(button("当前："+voiceLabel()+" · 点击选择"){showVoiceModeDialog()},margins(6))
     audio.addView(CheckBox(this).apply{
       text="中文语音播报";isChecked=voiceEnabled
       setOnCheckedChangeListener{_,enabled->
