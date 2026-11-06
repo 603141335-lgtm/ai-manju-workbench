@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#F7F9FD">
+<title>AI漫剧随身工作台</title>
+<link rel="stylesheet" href="style.css">
+</head><body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo"><span>剧</span></div>
+      <div><div class="brand-name">漫剧随身工作台</div><div class="brand-sub">MANJU STUDIO · MOBILE</div></div>
+    </div>
+    <button id="settingsBtn" class="round-icon" aria-label="设置" title="设置">⚙</button>
+  </header>
+  <main id="page" class="page" aria-live="polite"></main>
+  <nav id="bottomNav" class="bottom-nav" aria-label="主导航">
+    <button data-tab="home" class="nav-btn"><span class="nav-symbol">⌂</span><span>首页</span></button>
+    <button data-tab="episodes" class="nav-btn"><span class="nav-symbol">☷</span><span>剧集</span></button>
+    <button data-tab="make" class="nav-btn active"><span class="nav-symbol">▶</span><span>制作</span></button>
+    <button data-tab="assets" class="nav-btn"><span class="nav-symbol">▣</span><span>素材</span></button>
+  </nav>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="modal" class="modal hidden" aria-hidden="true"><div class="modal-shade" data-act="close-modal"></div><div id="modalPanel" class="modal-panel"></div></div>
+</div>
+<script src="studio.js" defer></script>
+</body></html>
