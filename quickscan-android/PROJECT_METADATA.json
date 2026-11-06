@@ -1,11 +1,11 @@
 {
   "project": "快递快扫",
-  "currentVersion": "0.12",
-  "lastArchived": "2026-11-05",
+  "currentVersion": "0.13",
+  "lastArchived": "2026-11-06",
   "githubRepo": "603141335-lgtm/ai-manju-workbench",
   "activeBranch": "quickscan-app",
   "codeDirectory": "quickscan-android",
-  "packageName": "com.kuaidi.quickscan.v012",
+  "packageName": "com.kuaidi.quickscan.v013",
   "buildSystem": "Gradle 8.9 / Android SDK 35 / Kotlin",
   "buildWorkflow": ".github/workflows/quickscan-apk.yml",
   "knownPreviousBuild": {
@@ -14,7 +14,7 @@
     "apkName": "QuickScan-APK-v0.8",
     "type": "debug-signed"
   },
-  "upgradeNotes": "v0.12 2/3-frame validation for CODE128/ITF; atomic saveIfNew and unique partial index on batch/code, JPEG quality 82 and rendering only recent 14 records. Same exact code unique per batch, but misdecoded variants cannot be ruled out. Separate debug package, no data migration.",
+  "upgradeNotes": "v0.13: selectable CODE128/ITF frame validation profiles; immediate handoff for changed labels; MLKit barcode-position visual highlight, floating result cards, light/calm/short/beep audio. Debug standalone package does not migrate older records/photos. Camera mapping and scan speed require real-device verification.",
   "features": [
     "1D barcode-only",
     "continuous scan",
@@ -38,6 +38,11 @@
     "2/3-frame fast consensus with format/geometry checks",
     "transactional atomic unique batch code deduplication",
     "recent 14-row rendering optimization",
-    "JPEG 82 minimum-latency capture"
+    "JPEG 82 minimum-latency capture",
+    "three configurable speed profiles",
+    "immediate transition to different physical barcode",
+    "highlight selected barcode rectangle and value",
+    "floating success/duplicate cards",
+    "adjustable TTS pitch and rate, light/calm/short/beep options"
   ]
 }
