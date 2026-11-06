@@ -199,7 +199,7 @@ public class StudioActivity extends Activity {
         return new int[]{copied,skipped,failed};
     }
     public class Bridge {
-        @JavascriptInterface public String version(){return "2.0.0";}
+        @JavascriptInterface public String version(){return "2.0.1";}
         @JavascriptInterface public void restorePrompts(String source){worker.execute(()->{try(OutputStream out=new FileOutputStream(promptsFile())){out.write(source.getBytes(StandardCharsets.UTF_8));}catch(Exception e){emit("error","恢复原始提示词失败："+e.getMessage());}});}
         @JavascriptInterface public String getPrompts(){
             try(InputStream in=new FileInputStream(promptsFile())){return readAll(in,25*1024*1024);}
