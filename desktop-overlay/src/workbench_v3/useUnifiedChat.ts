@@ -8,6 +8,7 @@ import { providerResponseError } from '../workflow/providerResponse';
 import { runWorkflow } from '../workflow';
 import { workflowGraphs, preflightGraph } from '../workflow/graph';
 import { abortWorkflow } from '../workflow/cancel';
+import { initialPlan,snapshotSteps,stepPrompt,validatePlan,type WorkflowPlan } from './plan';
 import { API_PROVIDER_IDS,buildRelayPrompt,selectTargets,validateCheckpoint,
   type Member,type WorkspaceState,type Message,type ChatMode,type RelayCheckpoint,type StoredRun,type StepOutput } from './logic';
 
@@ -26,6 +27,7 @@ export function useUnifiedChat(){
  const [selected,setSelected]=useState<string|null>(null);
  const [messages,setMessages]=useState<Message[]>([]);
  const [run,setRun]=useState<StoredRun|null>(null);
+ const [plan,setPlan]=useState<WorkflowPlan|null>(null);
  const [draft,setDraft]=useState('');
  const [manualText,setManualText]=useState('');
  const [busy,setBusy]=useState(false);
@@ -33,6 +35,7 @@ export function useUnifiedChat(){
  const [live,setLive]=useState<string|null>(null);
  const [keys,setKeys]=useState<Record<string,string>>({});
  const stop=useRef(false);
+ const selectedRef=useRef<string|null>(null);selectedRef.current=selected;
  const chosen=useMemo(()=>data.conversations.find(x=>x.id===selected),[data,selected]);
  const assignments=useMemo(()=>data.assignments.filter(a=>a.conversationId===selected),[data,selected]);
  const inRoom=useMemo(()=>assignments.map(a=>data.members.find(m=>m.id===a.memberId)).filter((m):m is Member=>!!m),[assignments,data.members]);
@@ -43,7 +46,7 @@ export function useUnifiedChat(){
    setData(v);
    setSelected(old=>old&&v.conversations.some(c=>c.id===old)?old:v.conversations[0]?.id??null);
  },[]);
- const refreshMessages=useCallback(async(cid:string)=>setMessages(await host.workbench.messages(cid)),[]);
+ const refreshMessages=useCallback(async(cid:string)=>{const result=await host.workbench.messages(cid);if(selectedRef.current===cid)setMessages(result);},[]);
  useEffect(()=>{
    let liveHook=true;
    void refresh().catch(fail);
@@ -55,10 +58,18 @@ export function useUnifiedChat(){
  },[refresh]);
  useEffect(()=>{
    let active=true;
-   if(!selected){setMessages([]);setRun(null);return;}
-   void Promise.all([host.workbench.messages(selected),host.workbench.recentRun(selected)])
-    .then(([m,last])=>{if(active){setMessages(m);setRun(last&&validateCheckpoint(last.state)?last:null);setManualText('');}})
-    .catch(fail);
+   if(!selected){setMessages([]);setRun(null);setPlan(null);return;}
+   void Promise.all([host.workbench.messages(selected),host.workbench.recentRun(selected),host.workbench.plan(selected)])
+    .then(async ([m,last,currentPlan])=>{
+      if(!active)return;
+      setMessages(m);setPlan(currentPlan);
+      if(last&&validateCheckpoint(last.state)&&last.status==='running'){
+        const uncertain={...last.state,status:'unknown_completion' as const};
+        await host.workbench.saveRun({id:last.id,conversationId:selected,status:'unknown_completion',state:uncertain});
+        if(active)setRun({...last,status:'unknown_completion',state:uncertain});
+      }else if(active)setRun(last&&validateCheckpoint(last.state)?last:null);
+      if(active)setManualText('');
+    }).catch(fail);
    return()=>{active=false;};
  },[selected]);
 
@@ -68,7 +79,7 @@ export function useUnifiedChat(){
  }
  async function persist(id:string,cid:string,state:RelayCheckpoint){
    await host.workbench.saveRun({id,conversationId:cid,status:state.status,state});
-   if(selected===cid)setRun({id,status:state.status,state,updatedAt:Date.now()});
+   if(selectedRef.current===cid)setRun({id,status:state.status,state,updatedAt:Date.now()});
  }
 
  async function checkReady(members:readonly Member[]):Promise<string|null>{
@@ -116,7 +127,10 @@ export function useUnifiedChat(){
        if(stop.current){await persist(id,cid,{...state,status:'paused'});setNotice('已暂停，当前任务结果保留');return;}
        const member=data.members.find(m=>m.id===state.memberIds[state.nextIndex]);
        if(!member)throw Error('执行成员不存在');
-       const text=state.memberIds.length===1 ? state.task : buildRelayPrompt(state.task,member,role(member.id),state.outputs);
+       const step=state.steps?.[state.nextIndex];
+       const effectiveRole=step?.role||role(member.id);
+       const text=step ? stepPrompt(state.task,step,state.outputs) :
+         state.memberIds.length===1 ? state.task : buildRelayPrompt(state.task,member,effectiveRole,state.outputs);
        const supported=(member.kind==='api'&&API_PROVIDER_IDS.has(member.provider)&&!!member.modelId&&!!keys[member.provider])
          ||(member.kind==='web_native'&&isOriginalWebProvider(member.provider));
        if(!supported){
@@ -124,7 +138,7 @@ export function useUnifiedChat(){
          setNotice('当前网页暂无自动连接器：需要 '+member.name+' 官网真实回复，可人工确认交接');
          return;
        }
-       await persist(id,cid,{...state,status:'running',pendingPrompt:undefined});
+       await persist(id,cid,{...state,status:'running',pendingPrompt:text});
        let result:WebResponse|null;
        try{result=await invokeReal(member,text);}
        catch(e){
@@ -134,8 +148,8 @@ export function useUnifiedChat(){
        }
        if(!result)throw Error(member.name+' 尚未建立网页连接器');
        await saveMessage(cid,'ai',result.body,result.source,member.id,id);
-       const output:StepOutput={memberId:member.id,provider:member.provider,role:role(member.id),body:result.body,source:result.source};
-       state={...state,nextIndex:state.nextIndex+1,outputs:[...state.outputs,output],status:'running'};
+       const output:StepOutput={memberId:member.id,provider:member.provider,role:effectiveRole,body:result.body,source:result.source};
+       state={...state,nextIndex:state.nextIndex+1,outputs:[...state.outputs,output],pendingPrompt:undefined,status:'running'};
        await persist(id,cid,state);
      }
      await persist(id,cid,{...state,status:'completed'});
@@ -203,6 +217,13 @@ export function useUnifiedChat(){
    const members=selectTargets(task,inRoom,mode);
    if(!members.length){setNotice('请先加入群成员');return;}
    if(task.length>150000){setNotice('文本超限：请分段处理，不会静默截断');return;}
+   if(run&&['running','paused','waiting_manual','unknown_completion'].includes(run.status)){
+     setNotice('已有未结束的任务，请先完成、核对或终止当前任务。');return;
+   }
+   if(mode==='relay'&&plan){
+     const issues=validatePlan(plan,inRoom);
+     if(issues.length){setNotice('当前流程步骤配置无效：'+issues.join('；'));return;}
+   }
    if(mode==='debate'||mode==='consult'||mode==='coding'||mode==='roundtable'||mode==='brainstorm'){
      const originalMembers=members.filter(m=>m.kind==='web_native'&&isOriginalWebProvider(m.provider));
      if(originalMembers.length<4){setNotice('该模式需要四位已登录的原版网页成员，当前可用 '+originalMembers.length+' 位');return;}
@@ -223,6 +244,8 @@ export function useUnifiedChat(){
        duplicate.add(m.provider);
      }
    }
+   const charged=members.filter(m=>m.kind==='api'&&API_PROVIDER_IDS.has(m.provider)).length;
+   if(charged>0&&!window.confirm('可能使用 '+charged+' 次或更多次付费 API 请求。确定执行？'))return;
    setDraft('');
    try{
      await saveMessage(cid,'user',task,'user');
@@ -247,19 +270,25 @@ export function useUnifiedChat(){
        setNotice('收到 '+outputs.length+' 条真实回复，异常步骤不会自动重复发送');
        setBusy(false);setLive(null);return;
      }
-     const initial:RelayCheckpoint={task,memberIds:members.map(m=>m.id),nextIndex:0,outputs:[],status:'running'};
+     const available=mode==='relay'&&plan&&validatePlan(plan,inRoom).length===0?plan:null;
+     const selectedSteps=available?
+       available.steps.filter(step=>members.some(m=>m.id===step.memberId)):snapshotSteps(members,null,role);
+     if(!selectedSteps.length)throw Error('当前消息没有对应的接力步骤');
+     const initial:RelayCheckpoint={task,memberIds:selectedSteps.map(s=>s.memberId),steps:selectedSteps,
+       nextIndex:0,outputs:[],status:'running'};
      await persist(id,cid,initial);await execute(id,cid,initial);
    }catch(e){fail(e);setBusy(false);setLive(null);}
  }
  async function confirmManual(){
-   if(!chosen||!run||run.status!=='waiting_manual')return;
+   if(!chosen||!run||!['waiting_manual','unknown_completion'].includes(run.status))return;
    const member=data.members.find(m=>m.id===run.state.memberIds[run.state.nextIndex]);
    if(!member||!manualText.trim()){setNotice('必须粘贴官网真实生成的完整回复');return;}
    if(manualText.length>500000){setNotice('人工回复过长，请分段，不会截断');return;}
    if(!window.confirm('确认此文本来自 '+member.name+' 官网，且是完整真实回复？'))return;
    try{
      await saveMessage(chosen.id,'ai',manualText,'user_imported_web',member.id,run.id);
-     const output:StepOutput={memberId:member.id,provider:member.provider,role:role(member.id),body:manualText,source:'user_imported_web'};
+     const output:StepOutput={memberId:member.id,provider:member.provider,
+       role:run.state.steps?.[run.state.nextIndex]?.role||role(member.id),body:manualText,source:'user_imported_web'};
      const next:RelayCheckpoint={...run.state,outputs:[...run.state.outputs,output],nextIndex:run.state.nextIndex+1,pendingPrompt:undefined,status:'running'};
      setManualText('');await persist(run.id,chosen.id,next);await execute(run.id,chosen.id,next);
    }catch(e){fail(e);}
@@ -278,11 +307,27 @@ export function useUnifiedChat(){
    await host.workbench.setMembers(chosen.id,members);await refresh();
  }
  async function updateMember(m:Member){await host.workbench.setMember(m);await refresh();}
+ async function savePlan(value:WorkflowPlan){
+   if(!chosen)throw Error('请先选择会话');
+   const errors=validatePlan(value,inRoom);
+   if(errors.length)throw Error(errors.join('；'));
+   await host.workbench.setPlan(chosen.id,value);
+   setPlan(structuredClone(value));
+   setNotice('已保存当前群的专属接力流程');
+ }
+ async function cancelRun(){
+   if(!chosen||!run||['completed','cancelled','failed'].includes(run.status))return;
+   if(busy){stop.current=true;abortWorkflow();setNotice('停止请求已收到；当前网页请求可能已发送，不会自动重复执行');return;}
+   if(!window.confirm('确定终止当前任务？已完成的真实回复将保留。'))return;
+   await persist(run.id,chosen.id,{...run.state,status:'cancelled'});
+   setManualText('');setNotice('当前任务已经终止');
+ }
  const resume=async()=>{
    if(chosen&&run?.status==='paused')await execute(run.id,chosen.id,run.state);
  };
  const backup=async()=>setNotice('数据备份位置：'+await host.workbench.backup());
  return {data,chosen,selected,setSelected,inRoom,assignments,messages,run,draft,setDraft,manualText,setManualText,
    busy,notice,setNotice,live,keys,setKeys,refresh,send,confirmManual,create,setConversation,setGroup,updateMember,execute,resume,backup,
+   plan,savePlan,initialPlan,cancelRun,
    stop:()=>{stop.current=true;abortWorkflow();setNotice('已请求停止：当前网页请求可能已经发送；不会自动重复执行');},role};
 }
