@@ -52,7 +52,7 @@
      id:e.id,number:e.episode_number,title:e.title||'第'+e.episode_number+'集',original:e.original_text||'',locked:false,hidden:false,
      segments:segmentRows.filter(s=>s.episode_id===e.id).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)).map(s=>({
        id:s.id,n:s.segment_number,title:s.title||'第'+s.segment_number+'段',text:s.prompt_text||'',
-       codes:Array.isArray(s.reference_codes)?s.reference_codes:[],manual:true,locked:false,hidden:false,
+       codes:Array.isArray(s.reference_codes)?s.reference_codes:[],manual:true,locked:!!s.video_metadata?.locked,hidden:!!s.video_metadata?.hidden,
        status:s.status==='已完成'?'done':s.status==='需重做'?'redo':'pending'
      }))
    }));
