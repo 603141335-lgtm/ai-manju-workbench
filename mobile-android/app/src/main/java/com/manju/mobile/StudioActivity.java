@@ -48,15 +48,26 @@ public class StudioActivity extends Activity {
         web=new WebView(this);web.setBackgroundColor(Color.rgb(247,249,253));
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
-        web.getSettings().setAllowFileAccess(true);
+        web.getSettings().setAllowFileAccess(false);
         web.getSettings().setAllowContentAccess(false);
         web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient(){
-            @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return true;}
+            @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){
+                return !"appassets.androidplatform.net".equals(r.getUrl().getHost());
+            }
+            @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest req){
+                Uri uri=req.getUrl();String p=uri.getPath();
+                if(!"https".equals(uri.getScheme())||!"appassets.androidplatform.net".equals(uri.getHost())||p==null||!p.startsWith("/assets/studio/"))return null;
+                if(p.contains(".."))return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
+                String file="studio/"+p.substring("/assets/studio/".length());
+                String mime=file.endsWith(".css")?"text/css":file.endsWith(".js")?"application/javascript":"text/html";
+                try{return new WebResourceResponse(mime,"UTF-8",getAssets().open(file));}
+                catch(Exception ex){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}
+            }
         });
         web.addJavascriptInterface(new Bridge(),"Native");
-        setContentView(web);web.loadUrl("file:///android_asset/studio/index.html");
+        setContentView(web);web.loadUrl("https://appassets.androidplatform.net/assets/studio/index.html");
         String saved=getSharedPreferences(PREF,0).getString("tree","");
         if(!saved.isEmpty())rescan(Uri.parse(saved));
     }
