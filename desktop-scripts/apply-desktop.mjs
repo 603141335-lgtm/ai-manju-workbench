@@ -8,7 +8,7 @@ const overlay=path.resolve(process.argv[3]||'desktop-overlay');
 const file=(rel)=>path.join(root,rel);
 const modifications=new Map();
 function once(fileName,from,to){
-  const text=modifications.get(fileName)??fs.readFileSync(file(fileName),'utf8');
+  const text=(modifications.get(fileName)??fs.readFileSync(file(fileName),'utf8')).replace(/\r\n/g,'\n');
   const index=text.indexOf(from);
   if(index<0)throw Error('上游源码已变更，请停止构建：'+fileName+' :: '+from.slice(0,90));
   modifications.set(fileName,text.split(from).join(to));
