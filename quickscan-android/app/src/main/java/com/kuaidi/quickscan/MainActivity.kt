@@ -76,6 +76,7 @@ class MainActivity:ComponentActivity(){
   private var scanRowsBox:LinearLayout?=null
   private var scanSearch:EditText?=null
   private var scanCount:TextView?=null
+  private var pendingQueueButton:TextView?=null
   private var duplicateAnnounced=""
   private var duplicateTime=0L
   private var scanOverlay:BarcodeHighlightOverlay?=null
@@ -262,12 +263,12 @@ class MainActivity:ComponentActivity(){
     val navigation=container(false).apply{
       setBackgroundColor(Color.WHITE);setPadding(dp(8),dp(7),dp(8),dp(9))
     }
-    listOf("▦ 批次" to "home","▥ 扫码" to "scan","⚙ 设置" to "settings").forEach{(title,tag)->
+    listOf("▦ 批次" to "home","▥ 扫码" to "scan","📷 失败件" to "pending","⚙ 设置" to "settings").forEach{(title,tag)->
       val active=currentPage==tag || (currentPage=="batch" && tag=="home")
       val view=label(title,13f,if(active)primary else muted,active).apply{
         gravity=Gravity.CENTER;setPadding(dp(1),dp(12),dp(1),dp(12))
         if(active)background=shape(Color.rgb(234,242,255),14)
-        setOnClickListener{when(tag){"home"->showHome();"scan"->showScan();else->showSettings()}}
+        setOnClickListener{when(tag){"home"->showHome();"scan"->showScan();"pending"->showPendingPhotos();else->showSettings()}}
       }
       navigation.addView(view,LinearLayout.LayoutParams(0,-2,1f).apply{leftMargin=dp(3);rightMargin=dp(3)})
     }
@@ -371,6 +372,7 @@ class MainActivity:ComponentActivity(){
     }
     val stats=card()
     stats.addView(label("累计 "+batches.sumOf{it.count}+" 件 · "+batches.size+" 个批次",17f,primary,true))
+    stats.addView(button("📷 扫码失败照片 · 待补录 "+db.pendingPhotoCount()+" 张"){showPendingPhotos()},margins(8))
     val find=card()
     find.addView(label("查询单号",17f,ink,true),margins(9))
     val query=input("直接输入完整单号或末四位")
@@ -408,6 +410,78 @@ class MainActivity:ComponentActivity(){
     }
   }
 
+  /** Decode a bounded thumbnail; never allocate the full-resolution JPEG for every list item. */
+  private fun photoThumbnail(file:File):android.graphics.Bitmap? {
+    if(!file.isFile)return null
+    return try{
+      val bounds=android.graphics.BitmapFactory.Options().apply{inJustDecodeBounds=true}
+      android.graphics.BitmapFactory.decodeFile(file.absolutePath,bounds)
+      if(bounds.outWidth<=0||bounds.outHeight<=0)return null
+      var sample=1
+      while(bounds.outWidth/sample>700||bounds.outHeight/sample>700)sample*=2
+      android.graphics.BitmapFactory.decodeFile(
+        file.absolutePath,
+        android.graphics.BitmapFactory.Options().apply{inSampleSize=sample}
+      )
+    }catch(_:Exception){null}
+  }
+
+  /** Central inbox for unreadable-waybill photos captured by the camera button. */
+  private fun showPendingPhotos(){
+    currentPage="pending";stopCamera()
+    shell("扫码失败件","所有批次集中查看 · 看图补录单号")
+    val count=db.pendingPhotoCount()
+    val rows=db.pendingPhotos(40)
+    val batches=db.batches().associate{it.id to it.name}
+    val summary=card()
+    summary.addView(label("待补录 "+count+" 张照片",21f,primary,true),margins(7))
+    summary.addView(label("扫不出来就直接拍照。拍完继续扫；这里能统一看面单、输入条码。保存后自动移出待补录列表，照片仍保留在原批次记录里。",13f,muted),margins(10))
+    pair(summary,button("返回扫码",true){showScan()},button("刷新列表"){showPendingPhotos()})
+    if(count>rows.size)summary.addView(label("每页显示最新40张，处理后会自动出现下一批。",12f,muted))
+    if(rows.isEmpty()){
+      val empty=card()
+      empty.addView(label("暂无需要补录的照片",17f,primary,true),margins(6))
+      empty.addView(label("扫码失败后点击拍照，照片会自动汇总在这里。",14f,muted))
+      return
+    }
+    rows.forEachIndexed{index,row->
+      val item=card()
+      item.addView(label("失败件 "+(index+1)+" · "+(batches[row.batchId]?:"历史批次"),16f,ink,true),margins(5))
+      item.addView(label(formatTime(row.time),12f,muted),margins(10))
+      val file=File(row.photo)
+      if(file.isFile){
+        val bitmap=photoThumbnail(file)
+        if(bitmap!=null){
+          val thumb=ImageView(this).apply{
+            setImageBitmap(bitmap)
+            scaleType=ImageView.ScaleType.FIT_CENTER
+            background=shape(canvasColor,12)
+            contentDescription="点击放大失败件照片"
+            setOnClickListener{showPhotoFullscreen(row.photo)}
+          }
+          item.addView(thumb,LinearLayout.LayoutParams(-1,dp(160)).apply{bottomMargin=dp(8)})
+        }else item.addView(label("照片预览无法加载，可以尝试打开原图。",13f,muted),margins(8))
+        item.addView(button("放大看单号 · 双指缩放"){showPhotoFullscreen(row.photo)},margins(8))
+      }else{
+        item.addView(label("⚠ 照片文件已丢失；原记录仍在。",13f,Color.rgb(191,70,60)),margins(8))
+      }
+      val codeField=input("输入面单条码下的完整单号")
+      codeField.setSelectAllOnFocus(true)
+      item.addView(codeField,margins(10))
+      pair(item,button("查看批次"){activeBatch=row.batchId;batchName=batches[row.batchId].orEmpty();showBatch()},
+        button("确认补录",true){
+          val code=codeField.text.toString().trim().replace(" ","")
+          if(!valid(code)){toast("请输入10—40位字母、数字或横线的单号");return@button}
+          try{
+            if(db.update(row.id,code,row.note)){
+              showPendingPhotos()
+              toast("✓ 补录成功，照片已归档到原批次")
+            }else toast("该批次单号重复，或记录已不存在")
+          }catch(e:Exception){toast("补录失败："+e.message)}
+        })
+    }
+  }
+
   private fun showBatch(){
     currentPage="batch";stopCamera();shell("批次 "+batchName,"查看记录 · 导出表格")
     val records=db.all(activeBatch)
@@ -421,6 +495,7 @@ class MainActivity:ComponentActivity(){
       prompt("录入快递单号","快递单条码下方数字"){addCode(it)}
     })
     pair(summary,button("复制单号"){copyCodes()},button("切换批次"){selectBatch{showBatch()}})
+    summary.addView(button("📷 集中处理失败照片 · "+db.pendingPhotoCount()+" 张"){showPendingPhotos()},margins(5))
     val manager=card()
     manager.addView(label("照片管理 · "+photoRecords.size+" 张",18f,ink,true),margins(7))
     val count=label("已选 0 张 · 只删除照片，保留快递单号及扫码时间",12f,muted)
@@ -712,7 +787,9 @@ class MainActivity:ComponentActivity(){
     val titleRow=container(false).apply{gravity=Gravity.CENTER_VERTICAL}
     scanCount=label("扫码记录",17f,ink,true)
     titleRow.addView(scanCount,LinearLayout.LayoutParams(0,-2,1f))
-    titleRow.addView(button("导出 Excel"){exportBatch()})
+    pendingQueueButton=button("失败件 "+db.pendingPhotoCount()){showPendingPhotos()}
+    titleRow.addView(pendingQueueButton,LinearLayout.LayoutParams(-2,-2).apply{rightMargin=dp(7)})
+    titleRow.addView(button("导出"){exportBatch()})
     bottom.addView(titleRow,margins(9))
     scanSearch=input("搜索单号 / 后四位")
     bottom.addView(scanSearch,margins(9))
@@ -765,6 +842,7 @@ class MainActivity:ComponentActivity(){
     val q=scanSearch?.text?.toString()?.trim().orEmpty()
     val total=db.count(activeBatch)
     scanCount?.text="扫码记录 · "+total+" 件"
+    pendingQueueButton?.text="失败件 "+db.pendingPhotoCount()
     val rows=db.recent(activeBatch,q,if(q.isEmpty())14 else 100)
     if(rows.isEmpty()){
       holder.addView(label(if(q.isBlank())"暂无扫码记录" else "没有匹配单号",13f,muted))
@@ -1142,8 +1220,9 @@ class MainActivity:ComponentActivity(){
   private fun showSettings(){
     currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
     val info=card()
-    info.addView(label("快递快扫 v0.14.1",21f,ink,true),margins(8))
-    info.addView(label("三档识别速度：极速2/3帧、标准3/4帧、严谨4/5帧。支持新条码快速切换，动态绿色定位框，成功/重复悬浮提示。照片保存后才提示成功，注意保持面单不离开取景框。",13f,muted))
+    info.addView(label("快递快扫 v0.15.0",21f,ink,true),margins(8))
+    info.addView(button("打开失败件照片 · 待补录 "+db.pendingPhotoCount()+" 张"){showPendingPhotos()},margins(8))
+    info.addView(label("三档识别速度：极速2/3帧、标准3/4帧、严谨4/5帧。支持倾斜和竖向条码检测、新条码快速切换、动态绿色定位框、成功/重复悬浮提示。照片保存后才提示成功，注意保持面单不离开取景框。",13f,muted))
     val speed=card()
     speed.addView(label("识别速度",18f,ink,true),margins(8))
     speed.addView(button("当前："+modeLabel()+"模式 · 点击选择"){showScanModeDialog()},margins(5))
@@ -1176,7 +1255,7 @@ class MainActivity:ComponentActivity(){
     pair(actions,button("复制单号",true){copyCodes()},button("导出/分享 Excel"){exportBatch()})
     val help=card()
     help.addView(label("模糊条码怎么办？",17f,ink,true),margins(7))
-    help.addView(label("点击取景画面可对焦，也可以调整距离、角度或打开补光。扫不出来就拍照留底，稍后打开记录补录单号。",14f,muted),margins(10))
+    help.addView(label("点击取景画面可对焦，也可以调整距离、角度或打开补光。扫不出来就拍照留底，所有照片集中在“失败件”页面统一补录。",14f,muted),margins(10))
     help.addView(label("照片保存在手机本地的应用专用 files/photos 目录，普通相册不会自动显示。点记录里的照片可全屏放大、分享或另存到手机。卸载软件会删除本机记录和照片。Excel不嵌入照片。",13f,muted),margins(10))
     help.addView(button("打开系统应用设置"){
       startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+packageName)))
@@ -1191,6 +1270,7 @@ class MainActivity:ComponentActivity(){
     scanRowsBox=null
     scanSearch=null
     scanCount=null
+    pendingQueueButton=null
     repairTarget=null
     provider?.unbindAll()
     provider=null;camera=null;imageCapture=null;previewView=null;flashlight=false
