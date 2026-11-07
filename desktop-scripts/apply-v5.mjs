@@ -27,8 +27,8 @@ patch('src/workbench_v3/logic.ts',
  "'user_imported_web' | 'system'",
  "'user_imported_web' | 'official_web' | 'system'");
 patch('src/workbench_v3/logic.ts',
- "'official_api' | 'user_imported_web'",
- "'official_api' | 'user_imported_web' | 'official_web'");
+ "source: 'official_api' | 'user_imported_web' }",
+ "source: 'official_api' | 'user_imported_web' | 'official_web' }");
 
 const copies=[
  'src/ui/OfficialProviderPane.tsx',
