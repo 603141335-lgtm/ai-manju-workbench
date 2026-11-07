@@ -2,7 +2,7 @@
 /** v2.2: account/password + verified email sign-up; sync only episodes/prompts/images/status. */
 (function(){
  const ENV='marginal-wildfowl-d9dw2q0e469ceb',REGION='ap-singapore',BUCKET='manju-assets';
- let cloud=null,verifyRegistration=null,uid='',email='',busy=false,loginMode='login',timer=0;
+ let cloud=null,verifyRegistration=null,uid='',email='',busy=false,loginMode='login',timer=0,projectId='',catalog=[],caching=new Set();
  const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}};
  const save=(key,val)=>localStorage.setItem(key,JSON.stringify(val));
  const $=id=>document.getElementById(id);
@@ -98,22 +98,36 @@
      const ws=mapProject(project,episodes,segments);
      if(!window.Native?.saveCloudWorkspace)throw Error('安装包缺少项目缓存接口');
      window.Native.saveCloudWorkspace(JSON.stringify(ws),uid);
-     let requested=0,errors=[];
-     // Signed URL is temporary. Never persist it into the workspace or share across users.
-     for(const item of assets){
-       if(!item.code||!item.storage_path||!/^[0-9a-f]{64}$/i.test(String(item.sha256||''))) {errors.push(item.code||'未知图');continue;}
-       try{
-         const signed=response(await app().storage.from(BUCKET).createSignedUrl(item.storage_path,900),'请求私有原图');
-         const url=typeof signed==='string'?signed:(signed.fullSignedURL||signed.signedUrl||signed.url);
-         if(!url||!/^https:\/\//.test(url))throw Error('返回了无效的下载地址');
-         window.Native.cacheCloudAsset(uid,project.id,normalize(item.code),item.sha256,item.mime_type||'image/jpeg',url);
-         requested++;
-       }catch(e){errors.push(item.code+':'+e.message);}
-     }
-     msg('获取 '+episodes.length+' 集、'+segments.length+' 段，安排缓存 '+requested+' 张图片。'+(errors.length?' 有'+errors.length+'张失败，可重试。':''));
-     return {episodes:episodes.length,segments:segments.length,images:requested,errors};
+     projectId=project.id;catalog=assets;
+     const starting=(ws.episodes[0]?.segments[0]?.codes)||[];
+     const initial=await ensureReferences(starting);
+     msg('已同步 '+episodes.length+' 集、'+segments.length+' 段、'+assets.length+' 个参考图编号；当前段已安排 '+initial.requested+' 张原图缓存。进入其他段时自动按需下载。'+(initial.errors.length?' 失败：'+initial.errors.slice(0,3).join('；'):''));
+     return {episodes:episodes.length,segments:segments.length,catalog:assets.length,requested:initial.requested,errors:initial.errors};
    }finally{busy=false;}
  }
+
+ async function ensureReferences(codes){
+   if(!uid||!projectId||!Array.isArray(codes))return {requested:0,errors:[]};
+   const need=[...new Set(codes.map(normalize))],errors=[];let requested=0;
+   for(const code of need){
+     const item=catalog.find(x=>normalize(x.code)===code&&Number(x.variant||1)===1);
+     if(!item){errors.push(code+' 无云端原图');continue}
+     const exists=(()=>{try{return JSON.parse(window.Native?.getAssets?.()||'[]').some(x=>x.code===code&&String(x.name||'').includes(String(item.sha256||'').slice(0,20)))}catch{return false}})();
+     if(exists||caching.has(code))continue;
+     if(!item.storage_path||!/^[a-f0-9]{64}$/i.test(String(item.sha256||''))){errors.push(code+' 缺少有效校验值');continue;}
+     try{
+       caching.add(code);
+       const signed=response(await app().storage.from(BUCKET).createSignedUrl(item.storage_path,900),'请求私有原图');
+       const url=typeof signed==='string'?signed:(signed.fullSignedURL||signed.signedUrl||signed.url);
+       if(!url||!url.startsWith('https://'))throw Error('云端返回的图片地址无效');
+       window.Native?.cacheCloudAsset?.(uid,projectId,code,String(item.sha256),item.mime_type||'image/jpeg',url);
+       requested++;
+     }catch(e){errors.push(code+':'+String(e.message||e));}
+     finally{caching.delete(code)}
+   }
+   return {requested,errors};
+ }
+
  function queueStatus(key,status){
    if(!uid||!key.startsWith('desktop_'))return;
    const id=key.slice(8);
@@ -194,5 +208,5 @@
    }catch(e){msg('操作失败：'+diagnose(e));}
    finally{b.disabled=false;}
  });
- window.ManjuCloud={open,queueStatus,download,uploadStatuses,session,diagnose,normalize,reportProbe:msg};
+ window.ManjuCloud={open,queueStatus,download,uploadStatuses,session,diagnose,normalize,reportProbe:msg,ensureReferences,catalog:()=>catalog.slice()};
 })();
