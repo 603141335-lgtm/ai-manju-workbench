@@ -173,7 +173,7 @@
      '<button class="btn full" id="cloudVerifyButton" data-cloud="verify" style="display:none;margin-top:8px">完成注册并登录</button></div>'+
      '<div class="divider"></div><div class="grid-2"><button class="btn secondary" data-cloud="pull">↓ 重新获取参考图</button><button class="btn" data-cloud="push">↑ 回传完成状态</button></div>'+
      '<div class="grid-2 wide-gap"><button class="btn" data-cloud="logout">退出账号</button><button class="btn" data-cloud="clear">清除旧云缓存</button></div>'+
-     '<p class="tip" id="cloudMessage" role="status">检查 CloudBase 登录状态中…</p>';
+     '<p class="tip" id="cloudMessage" role="status">检查 CloudBase 登录状态中…</p><button class="btn slim secondary wide-gap" data-cloud="probe">诊断网络连接</button>';
    try{const u=await session();msg(u?'已登录 '+(u.email||u.uid):'尚未登录，第一次使用请先注册')}catch(e){msg(diagnose(e));}
  }
  $('modal').addEventListener('click',async ev=>{
@@ -190,8 +190,9 @@
      else if(key==='push')await uploadStatuses();
      else if(key==='logout')await logout();
      else if(key==='clear')clearCache();
+     else if(key==='probe'){msg('正在检查腾讯云网关连通性…');window.Native?.probeCloudGateway?.();}
    }catch(e){msg('操作失败：'+diagnose(e));}
    finally{b.disabled=false;}
  });
- window.ManjuCloud={open,queueStatus,download,uploadStatuses,session,diagnose,normalize};
+ window.ManjuCloud={open,queueStatus,download,uploadStatuses,session,diagnose,normalize,reportProbe:msg};
 })();
