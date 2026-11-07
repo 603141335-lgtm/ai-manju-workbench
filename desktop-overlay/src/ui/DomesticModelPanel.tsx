@@ -2,14 +2,17 @@ import { useRef, useState } from 'react';
 import { host } from '../host';
 
 type Provider = 'doubao' | 'deepseek' | 'kimi' | 'qwen';
+type WebProvider = Provider | 'yuanbao';
 type ApiStep = {id:string; provider:Provider; role:string; model:string; instruction:string};
 type Result = {provider:Provider; role:string; text:string; model:string};
-const members: {id:Provider;label:string;hint:string}[] = [
+const members: {id:WebProvider;label:string;hint:string}[] = [
   {id:'doubao',label:'豆包',hint:'豆包会员网页 · 模型档位在官网选'},
   {id:'deepseek',label:'DeepSeek',hint:'DeepSeek 网页账号'},
   {id:'kimi',label:'Kimi',hint:'Kimi 官网 · 模式在官网选'},
   {id:'qwen',label:'千问 Qwen',hint:'千问官网会员网页'},
+  {id:'yuanbao',label:'腾讯元宝',hint:'仅官网网页版；未接入 API 自动接力'},
 ];
+const apiMembers=members.filter((m):m is {id:Provider;label:string;hint:string}=>m.id!=='yuanbao');
 const presets:ApiStep[]=[
   {id:'s1',provider:'deepseek',role:'编剧',model:'',instruction:'根据原始任务写出完整剧本，保留全部关键剧情、原对白和人物动作。'},
   {id:'s2',provider:'doubao',role:'分镜导演',model:'',instruction:'阅读原始任务和上一步的完整剧本，制作视频分镜，严守原剧情，不遗漏重要信息。'},
@@ -20,7 +23,7 @@ const historyKey='multi_ai_domestic_api_results_v24';
 function restoredSteps():ApiStep[]{
   try {
     const value=JSON.parse(localStorage.getItem(savedKey)??'null');
-    return Array.isArray(value) && value.length>=1 && value.length<=8 && value.every(x=>members.some(m=>m.id===x.provider))
+    return Array.isArray(value) && value.length>=1 && value.length<=8 && value.every(x=>apiMembers.some(m=>m.id===x.provider))
       ? value : presets;
   } catch {return presets;}
 }
@@ -37,6 +40,14 @@ export function makeStepPrompt(task:string,steps:readonly ApiStep[],results:read
 }
 export function DomesticModelPanel(){
   const [expanded,setExpanded]=useState(false);
+  const [webSlot,setWebSlot]=useState<number>(()=>{
+    const saved=Number(localStorage.getItem('multi_ai_web_slot_v40')??1);
+    return Number.isInteger(saved)&&saved>=1&&saved<=10 ? saved : 1;
+  });
+  const setSlot=(n:number)=>{
+    if(!Number.isInteger(n)||n<1||n>10)return;
+    setWebSlot(n);localStorage.setItem('multi_ai_web_slot_v40',String(n));
+  };
   const [steps,setSteps]=useState<ApiStep[]>(restoredSteps);
   const [keys,setKeys]=useState<Partial<Record<Provider,string>>>({});
   const [task,setTask]=useState('');
@@ -47,8 +58,8 @@ export function DomesticModelPanel(){
   const cancel=useRef(false);
   const update=(index:number,patch:Partial<ApiStep>)=>setSteps(old=>old.map((s,i)=>i===index?{...s,...patch}:s));
   const save=()=>{localStorage.setItem(savedKey,JSON.stringify(steps));setNotice('已保存本机步骤设置（不保存 API Key）');};
-  const openMember=async(provider:Provider)=>{
-    try {await host.domestic.openMember(provider);setNotice('已打开 '+provider+' 官网窗口。登录状态由该网页管理。');}
+  const openMember=async(provider:WebProvider)=>{
+    try {await host.domestic.openMemberSlot(provider,webSlot);setNotice('已打开 '+provider+' 账号 '+webSlot+' 的独立官网窗口。');}
     catch(e){setNotice('打开失败：'+String(e));}
   };
   const run=async()=>{
@@ -97,6 +108,12 @@ export function DomesticModelPanel(){
       <span className="text-slate-500">官网会员可在软件里登录；自动交接使用 API</span>
     </div>
     {expanded&&<div className="mt-3 space-y-3">
+      <label className="flex items-center gap-2">网页版账号位
+        <select aria-label="网页版账号位" className="rounded border bg-transparent p-1" value={webSlot}
+          onChange={e=>setSlot(Number(e.target.value))}>
+          {Array.from({length:10},(_,i)=><option key={i+1} value={i+1}>账号 {i+1}</option>)}
+        </select>
+      </label>
       <div className="grid grid-cols-2 gap-2">
         {members.map(m=><button key={m.id} type="button" onClick={()=>void openMember(m.id)}
           className="rounded-lg border border-slate-300 bg-white p-2 text-left hover:border-sky-500 dark:border-slate-600 dark:bg-slate-900">
@@ -104,7 +121,7 @@ export function DomesticModelPanel(){
         </button>)}
       </div>
       <p className="rounded-lg bg-amber-50 p-2 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-        网页会员窗口是软件内原生 WebView，不是 API，也没有自动抓取回复。网页登录是否成功、是否长期保持，需在本机确认。
+        网页会员窗口是软件内原生 WebView，不是 API，也没有自动抓取回复。1 号位继续沿用旧版登录资料，2—10 号位分别保留独立 WebView2 数据。官网模型和工作模式仍在真实官网手动选择；是否保持登录需在 Windows 实机确认。
       </p>
       <div className="flex items-center justify-between gap-2">
         <strong>API 顺序接力 · 可编辑步骤</strong>
@@ -123,7 +140,7 @@ export function DomesticModelPanel(){
               <select disabled={busy} aria-label={'API步骤'+(i+1)+'提供商'} value={s.provider}
                 onChange={e=>update(i,{provider:e.target.value as Provider})}
                 className="ml-1 rounded border bg-transparent p-1">
-                {members.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
+                {apiMembers.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
             </label>
             <button type="button" disabled={busy||steps.length<=1} onClick={()=>setSteps(v=>v.filter((_,j)=>j!==i))}
