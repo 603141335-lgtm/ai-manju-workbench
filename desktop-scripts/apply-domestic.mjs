@@ -16,6 +16,15 @@ modify('src-tauri/src/lib.rs',
 modify('src-tauri/src/lib.rs',
   '            webviews::provider_open,',
   '            domestic::domestic_open_member,\n            domestic::domestic_api_chat,\n            webviews::provider_open,');
+modify('src/host/index.ts',
+  "export const host = {\n  app:",
+  `export const host = {
+  domestic: {
+    openMember: (provider: string): Promise<void> => invoke('domestic_open_member', {provider}),
+    apiChat: (request: {provider: string; model: string; apiKey: string; prompt: string}): Promise<string> =>
+      invoke('domestic_api_chat', {request}),
+  },
+  app:`);
 modify('src/App.tsx',
   "import { CustomRelayPanel } from './ui/CustomRelayPanel';",
   "import { CustomRelayPanel } from './ui/CustomRelayPanel';\nimport { DomesticModelPanel } from './ui/DomesticModelPanel';");
