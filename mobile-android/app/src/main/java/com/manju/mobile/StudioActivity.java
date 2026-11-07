@@ -224,7 +224,7 @@ public class StudioActivity extends Activity {
         return new int[]{copied,skipped,failed};
     }
     public class Bridge {
-        @JavascriptInterface public String version(){return "2.2.0";}
+        @JavascriptInterface public String version(){return "2.3.0";}
         @JavascriptInterface public void restorePrompts(String source){worker.execute(()->{try(OutputStream out=new FileOutputStream(promptsFile())){out.write(source.getBytes(StandardCharsets.UTF_8));}catch(Exception e){emit("error","恢复原始提示词失败："+e.getMessage());}});}
         @JavascriptInterface public String getPrompts(){
             try(InputStream in=new FileInputStream(promptsFile())){return readAll(in,25*1024*1024);}
@@ -234,6 +234,32 @@ public class StudioActivity extends Activity {
         @JavascriptInterface public String getDesktopWorkspace(){try(InputStream in=new FileInputStream(desktopWorkspaceFile())){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
         @JavascriptInterface public String getCloudWorkspaceForUid(String uid){if(!uid.equals(getSharedPreferences(PREF,0).getString("cloud_uid","")))return "";try(InputStream in=new FileInputStream(cloudWorkspaceFile())){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
         @JavascriptInterface public String getCloudOwner(){return getSharedPreferences(PREF,0).getString("cloud_uid","");}
+
+        @JavascriptInterface public void registerWithInvite(String username,String password,String invitation){
+            worker.execute(()->{
+                HttpURLConnection conn=null;
+                try{
+                    if(username==null||!username.matches("[A-Za-z0-9][A-Za-z0-9_.-]{4,23}"))throw new IOException("用户名需5—24位，仅可使用英文、数字、点、下划线和短横线");
+                    if(password==null||password.length()<8||password.length()>32)throw new IOException("密码长度需8—32位");
+                    if(invitation==null||invitation.length()<16||invitation.length()>70)throw new IOException("邀请码格式不正确");
+                    URL api=new URL("https://marginal-wildfowl-d9dw2q0e469ceb-1526863510.ap-singapore.app.tcloudbase.com/api/manju-register");
+                    if(!"https".equals(api.getProtocol())||!"marginal-wildfowl-d9dw2q0e469ceb-1526863510.ap-singapore.app.tcloudbase.com".equals(api.getHost()))throw new IOException("注册接口地址未授权");
+                    conn=(HttpURLConnection)api.openConnection();
+                    conn.setInstanceFollowRedirects(false);conn.setConnectTimeout(15000);conn.setReadTimeout(30000);
+                    conn.setRequestMethod("POST");conn.setDoOutput(true);conn.setRequestProperty("Content-Type","application/json; charset=utf-8");
+                    JSONObject req=new JSONObject();req.put("username",username);req.put("password",password);req.put("invite",invitation);
+                    try(OutputStream out=conn.getOutputStream()){out.write(req.toString().getBytes(StandardCharsets.UTF_8));}
+                    int status=conn.getResponseCode();String resp="";
+                    try(InputStream in=status<400?conn.getInputStream():conn.getErrorStream()){
+                        if(in!=null)resp=readAll(in,8192);
+                    }
+                    JSONObject json;
+                    try{json=new JSONObject(resp);}catch(Exception e){throw new IOException("注册接口未返回正确JSON（HTTP "+status+"），请确认腾讯云云函数和 /api/manju-register 路由已部署");}
+                    JSONObject event=new JSONObject();event.put("type","inviteRegister");event.put("ok",status>=200&&status<300&&json.optBoolean("ok",false));event.put("message",json.optString("message","注册请求完成"));send(event);
+                }catch(Exception ex){emit("inviteRegisterError","注册失败："+ex.getMessage());}
+                finally{if(conn!=null)conn.disconnect();}
+            });
+        }
         @JavascriptInterface public void probeCloudGateway(){
             worker.execute(()->{
                 HttpURLConnection h=null;
