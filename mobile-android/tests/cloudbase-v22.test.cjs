@@ -15,7 +15,7 @@ const auth={
 };
 const db={from(name){captures.table=name;return {select(){return Promise.resolve({data:[]})}}}};
 const sdk={init:opts=>{captures.init=opts;return {auth,rdb:()=>db}}};
-const window={ManjuCloudBaseSDK:sdk,Native:{getCloudOwner:()=>'',getCloudWorkspaceForUid:()=>'',saveCloudWorkspace(){},cacheCloudAsset(){},registerWithInvite:(username,password,invite)=>{captures.invite={username,password,invite}}}}};
+const window={ManjuCloudBaseSDK:sdk,Native:{getCloudOwner:()=>'',getCloudWorkspaceForUid:()=>'',saveCloudWorkspace(){},cacheCloudAsset(){},registerWithInvite:(username,password,invite)=>{captures.invite={username,password,invite}}}};
 const localStorage={getItem:()=>null,setItem(){},removeItem(){}};
 const location={reload(){}};
 vm.runInNewContext(source,{window,document,localStorage,location,setTimeout,clearTimeout,console},{timeout:3000});
