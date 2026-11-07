@@ -1,8 +1,0 @@
-{
-  "name": "ai-manju-workbench",
-  "version": "4.2.0",
-  "private": true,
-  "description": "AI漫剧文档式提示词与参考图拖拽工作台（纯文档版）",
-  "main": "main.js",
-  "license": "UNLICENSED"
-}
