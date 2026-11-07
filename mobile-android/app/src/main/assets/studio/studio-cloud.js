@@ -71,7 +71,7 @@
    const r=response(await q,'读取'+table);
    return Array.isArray(r)?r:[];
  }
- const normalize=c=>String(c||'').toUpperCase().replace(/\s+/g,'').replace(/[－_]/g,'-');
+ const normalize=c=>String(c||'').normalize('NFKC').toUpperCase().replace(/\s+/g,'').replace(/[－_]/g,'-');
  function mapProject(project,episodes,segments){
    const items=episodes.sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)).map(e=>({
      id:e.id,number:e.episode_number,title:e.title||'第'+e.episode_number+'集',original:e.original_text||'',
