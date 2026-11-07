@@ -1,0 +1,138 @@
+name: Build Multi-AI Chat Desktop v4.0 M2 (embedded official webviews)
+on:
+  push:
+    branches:
+      - ai-chat-desktop-v4.0-m2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-desktop:
+    name: Windows desktop - native login preserved
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout custom desktop overlay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout upstream native desktop source (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: TED-H-com/multi-ai-chat-desktop
+          ref: 2b87d509b8242c371d492d43aef08cc679a0dddc
+          path: upstream
+          persist-credentials: false
+
+      - name: Apply simplified Chinese, theme and custom relay
+        shell: pwsh
+        run: |
+          node desktop-scripts/apply-desktop.mjs upstream desktop-overlay
+          if ($LASTEXITCODE -ne 0) { throw "Patch failed" }
+          node desktop-scripts/fix-locale.mjs upstream
+          if ($LASTEXITCODE -ne 0) { throw "Locale patch failed" }
+
+      - name: Update upstream locale tests for additional language
+        shell: pwsh
+        run: node desktop-scripts/verify-compat.mjs upstream
+
+      - name: Apply domestic AI native webview and API module
+        shell: pwsh
+        run: |
+          node desktop-scripts/apply-domestic.mjs upstream desktop-overlay
+          if ($LASTEXITCODE -ne 0) { throw "Domestic patch failed" }
+
+      - name: Apply v3 native SQLite and unified conversations
+        shell: pwsh
+        run: |
+          node desktop-scripts/apply-v3-m1.mjs upstream desktop-overlay
+          if ($LASTEXITCODE -ne 0) { throw "V3 patch failed" }
+
+      - name: Apply v3 M2 per-group workflow and recovery patch
+        shell: pwsh
+        run: |
+          node desktop-scripts/apply-v3-m2.mjs upstream desktop-overlay
+          if ($LASTEXITCODE -ne 0) { throw "V3 M2 patch failed" }
+          node desktop-scripts/apply-v3-m2-safety.mjs upstream
+          if ($LASTEXITCODE -ne 0) { throw "M2 safety patch failed" }
+
+      - name: Apply v4 account-slot bridge
+        shell: pwsh
+        run: |
+          node desktop-scripts/apply-v4-m1.mjs upstream
+          if ($LASTEXITCODE -ne 0) { throw "V4 M1 bridge failed" }
+
+      - name: Verify v4 source contract
+        run: node --test desktop-scripts/tests/v4-m1.test.mjs
+
+      - name: Apply v4.0 M2 main-window embedded webviews
+        shell: pwsh
+        run: |
+          node desktop-scripts/apply-v4-m2.mjs upstream desktop-overlay
+          if ($LASTEXITCODE -ne 0) { throw "V4 M2 patch failed" }
+
+      - name: Verify v4 M2 embedded browser contract
+        run: node --test desktop-scripts/tests/v4-m2.test.mjs
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: upstream/pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: upstream
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify app, TypeScript, lint, native bridge and tests
+        working-directory: upstream
+        run: pnpm verify
+
+      - name: Verify Rust library tests
+        working-directory: upstream
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Build native Windows executable and NSIS installer
+        id: native_build
+        continue-on-error: true
+        working-directory: upstream
+        run: pnpm tauri build
+
+      - name: Check native executable was really generated
+        shell: pwsh
+        run: |
+          $exe = "upstream/src-tauri/target/release/multi-ai-chat-desktop.exe"
+          if (!(Test-Path $exe)) { throw "Native EXE not generated. See build step logs." }
+          Write-Host "Native EXE exists: $exe"
+
+      - name: Publish Windows prerelease binaries (Actions Artifact quota fallback)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $native = 'upstream/src-tauri/target/release/multi-ai-chat-desktop.exe'
+          $setups = @(Get-ChildItem 'upstream/src-tauri/target/release/bundle/nsis' -Filter '*x64-setup.exe' -ErrorAction SilentlyContinue)
+          if (!(Test-Path $native) -or $setups.Count -ne 1) { throw 'Missing native EXE or NSIS installer' }
+          $setup = $setups[0].FullName
+          $checksum = 'SHA256SUMS-v4.0.2.txt'
+          @($native,$setup) | ForEach-Object {
+            $file = Get-Item $_
+            $sha = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLower()
+            "$sha  $($file.Name)"
+          } | Set-Content -Encoding utf8 $checksum
+          $tag = "v4.0.2-m2-build-$env:GITHUB_RUN_ID"
+          $title = "Multi-AI Chat Desktop v4.0.2 M2 Windows preview #$env:GITHUB_RUN_NUMBER"
+          $notes = 'Windows test build: original core retained, domestic official sites can dock inside the main window. Real account login/model switching not yet authenticated on user device. BACK UP existing app data before installing.'
+          gh release create $tag $native $setup $checksum --target $env:GITHUB_SHA --title $title --notes $notes --prerelease --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub prerelease upload failed; inspect repository Actions write policy' }
