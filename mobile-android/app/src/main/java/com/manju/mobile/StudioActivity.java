@@ -20,6 +20,8 @@ import java.text.Normalizer;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import org.json.*;
 
 /** A native offline Android companion with a bundled HTML UI and a narrow SAF/MediaStore bridge. */
@@ -28,6 +30,7 @@ public class StudioActivity extends Activity {
     static final String PREF="manju_v2", ALBUM="Pictures/AI漫剧待上传/";
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final ArrayList<Asset> assets=new ArrayList<>();
+    private final ArrayList<Asset> cloudAssets=new ArrayList<>();
     private final Object assetLock=new Object();
     private WebView web;
     private String pendingVideoKey="", backupJSON="";
@@ -46,17 +49,38 @@ public class StudioActivity extends Activity {
         getWindow().setNavigationBarColor(Color.rgb(255,255,255));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         web=new WebView(this);web.setBackgroundColor(Color.rgb(247,249,253));
+        // Android 15 enforces edge-to-edge for targetSdk 35; reserve actual status bar insets.
+        if(Build.VERSION.SDK_INT>=35){
+            web.setOnApplyWindowInsetsListener((v,insets)->{
+                int top=insets.getInsets(WindowInsets.Type.statusBars()).top;
+                if(v.getPaddingTop()!=top)v.setPadding(0,top,0,0);
+                return insets;
+            });
+        }
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
-        web.getSettings().setAllowFileAccess(true);
+        web.getSettings().setAllowFileAccess(false);
         web.getSettings().setAllowContentAccess(false);
         web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient(){
-            @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return true;}
+            @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){
+                return !"appassets.androidplatform.net".equals(r.getUrl().getHost());
+            }
+            @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest req){
+                Uri uri=req.getUrl();String p=uri.getPath();
+                if(!"https".equals(uri.getScheme())||!"appassets.androidplatform.net".equals(uri.getHost())||p==null||!p.startsWith("/assets/studio/"))return null;
+                if(p.contains(".."))return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
+                String file="studio/"+p.substring("/assets/studio/".length());
+                String mime=file.endsWith(".css")?"text/css":file.endsWith(".js")?"application/javascript":"text/html";
+                try{return new WebResourceResponse(mime,"UTF-8",getAssets().open(file));}
+                catch(Exception ex){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}
+            }
         });
         web.addJavascriptInterface(new Bridge(),"Native");
-        setContentView(web);web.loadUrl("file:///android_asset/studio/index.html");
+        setContentView(web);web.loadUrl("https://appassets.androidplatform.net/assets/studio/index.html");
+        String cloudUid=getSharedPreferences(PREF,0).getString("cloud_uid","");
+        synchronized(assetLock){cloudAssets.addAll(CloudCache.scan(getFilesDir(),cloudUid));}
         String saved=getSharedPreferences(PREF,0).getString("tree","");
         if(!saved.isEmpty())rescan(Uri.parse(saved));
     }
@@ -73,6 +97,7 @@ public class StudioActivity extends Activity {
     }
     private File promptsFile(){return new File(getFilesDir(),"manju_v2_prompts.txt");}
     private File desktopWorkspaceFile(){return new File(getFilesDir(),"doubao_v03_workspace.json");}
+    private File cloudWorkspaceFile(){return new File(getFilesDir(),"cloud_user_project.json");}
     private String readAll(InputStream in,int limit)throws IOException{
         if(in==null)throw new IOException("没有读取权限");
         ByteArrayOutputStream dst=new ByteArrayOutputStream();byte[] buf=new byte[32768];int count;
@@ -121,7 +146,7 @@ public class StudioActivity extends Activity {
     }
     private JSONArray filesJSON(){
         JSONArray array=new JSONArray();
-        synchronized(assetLock){for(int i=0;i<assets.size();i++){try{array.put(assets.get(i).json(i));}catch(Exception ignored){}}}
+        synchronized(assetLock){for(int i=0;i<cloudAssets.size();i++){try{array.put(cloudAssets.get(i).json(i));}catch(Exception ignored){}}for(int i=0;i<assets.size();i++){try{array.put(assets.get(i).json(i+cloudAssets.size()));}catch(Exception ignored){}}}
         return array;
     }
     private Bitmap bitmap(Uri u,int max)throws Exception{
@@ -139,7 +164,7 @@ public class StudioActivity extends Activity {
     }
     private String imageData(int index,int px){
         try{
-            Asset a; synchronized(assetLock){if(index<0||index>=assets.size())return "";a=assets.get(index);}
+            Asset a; synchronized(assetLock){if(index<0||index>=assets.size()+cloudAssets.size())return "";a=index<cloudAssets.size()?cloudAssets.get(index):assets.get(index-cloudAssets.size());}
             Bitmap bmp=bitmap(a.uri,Math.max(110,Math.min(1400,px)));
             ByteArrayOutputStream out=new ByteArrayOutputStream();bmp.compress(Bitmap.CompressFormat.JPEG,78,out);bmp.recycle();
             return "data:image/jpeg;base64,"+Base64.encodeToString(out.toByteArray(),Base64.NO_WRAP);
@@ -173,7 +198,7 @@ public class StudioActivity extends Activity {
                 JSONArray ids=task.getJSONArray("ids");
                 for(int i=0;i<ids.length();i++){
                     int id=ids.getInt(i);Asset asset;
-                    synchronized(assetLock){if(id<0||id>=assets.size()){failed++;continue;}asset=assets.get(id);}
+                    synchronized(assetLock){if(id<0||id>=assets.size()+cloudAssets.size()){failed++;continue;}asset=id<cloudAssets.size()?cloudAssets.get(id):assets.get(id-cloudAssets.size());}
                     String name=String.format(Locale.ROOT,"%02d_%s_%s",i+1,asset.code,safe(asset.name));
                     if(existing(folder,name)){skipped++;continue;}
                     Uri inserted=null;
@@ -199,7 +224,7 @@ public class StudioActivity extends Activity {
         return new int[]{copied,skipped,failed};
     }
     public class Bridge {
-        @JavascriptInterface public String version(){return "2.0.1";}
+        @JavascriptInterface public String version(){return "2.2.0";}
         @JavascriptInterface public void restorePrompts(String source){worker.execute(()->{try(OutputStream out=new FileOutputStream(promptsFile())){out.write(source.getBytes(StandardCharsets.UTF_8));}catch(Exception e){emit("error","恢复原始提示词失败："+e.getMessage());}});}
         @JavascriptInterface public String getPrompts(){
             try(InputStream in=new FileInputStream(promptsFile())){return readAll(in,25*1024*1024);}
@@ -207,6 +232,54 @@ public class StudioActivity extends Activity {
         }
         @JavascriptInterface public String getAssets(){return filesJSON().toString();}
         @JavascriptInterface public String getDesktopWorkspace(){try(InputStream in=new FileInputStream(desktopWorkspaceFile())){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
+        @JavascriptInterface public String getCloudWorkspaceForUid(String uid){if(!uid.equals(getSharedPreferences(PREF,0).getString("cloud_uid","")))return "";try(InputStream in=new FileInputStream(cloudWorkspaceFile())){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
+        @JavascriptInterface public String getCloudOwner(){return getSharedPreferences(PREF,0).getString("cloud_uid","");}
+        @JavascriptInterface public void probeCloudGateway(){
+            worker.execute(()->{
+                HttpURLConnection h=null;
+                try{
+                    URL url=new URL("https://marginal-wildfowl-d9dw2q0e469ceb.api.tcloudbasegateway.com/");
+                    h=(HttpURLConnection)url.openConnection();
+                    h.setConnectTimeout(12000);h.setReadTimeout(12000);h.setInstanceFollowRedirects(false);
+                    h.setRequestMethod("GET");int code=h.getResponseCode();
+                    emit("cloudProbe","腾讯云网关可连通（HTTP "+code+"）。如果登录仍提示 Failed to fetch，请检查 CloudBase 安全来源授权和 SDK 登录配置。");
+                }catch(Exception ex){emit("cloudProbe","手机原生网络也无法连接 CloudBase："+ex.getMessage()+"。请检查网络、DNS、代理和证书。");}
+                finally{if(h!=null)h.disconnect();}
+            });
+        }
+
+        @JavascriptInterface public void saveCloudWorkspace(String json,String uid){
+            worker.execute(()->{try{
+                if(!CloudCache.validUid(uid))throw new IOException("用户ID格式错误");
+                JSONObject data=new JSONObject(json);if(data.optJSONArray("episodes")==null)throw new IOException("项目数据没有剧集");
+                String existing=getSharedPreferences(PREF,0).getString("cloud_uid","");
+                if(!existing.isEmpty()&&!existing.equals(uid))throw new IOException("本机已保存另一用户的云端资料，请先退出并清理云缓存");
+                File temp=new File(getFilesDir(),"cloud_user_project.json.tmp");
+                try(OutputStream out=new FileOutputStream(temp)){out.write(json.getBytes(StandardCharsets.UTF_8));}
+                if(!temp.renameTo(cloudWorkspaceFile()))throw new IOException("保存失败");
+                getSharedPreferences(PREF,0).edit().putString("cloud_uid",uid).apply();
+                JSONObject ev=new JSONObject();ev.put("type","desktopWorkspace");ev.put("workspace",data);send(ev);
+            }catch(Exception ex){emit("error","保存云端剧集失败："+ex.getMessage());}});
+        }
+        @JavascriptInterface public void clearCloudWorkspace(){worker.execute(()->{
+            cloudWorkspaceFile().delete();CloudCache.wipe(CloudCache.base(getFilesDir()));
+            synchronized(assetLock){cloudAssets.clear();}
+            getSharedPreferences(PREF,0).edit().remove("cloud_uid").apply();
+            emit("assets","云端私有缓存已清理");
+        });}
+        @JavascriptInterface public void cacheCloudAsset(String uid,String project,String code,String digest,String mime,String url){
+            worker.execute(()->{
+                try{
+                    if(!uid.equals(getSharedPreferences(PREF,0).getString("cloud_uid","")))throw new IOException("账号不匹配");
+                    File file=CloudCache.fetch(getFilesDir(),uid,project,code,digest,mime,url);
+                    synchronized(assetLock){
+                        cloudAssets.removeIf(a->a.code.equals(code));
+                        cloudAssets.add(new Asset(code,file.getName(),mime,Uri.fromFile(file)));
+                    }
+                    emit("assets","云端参考图已缓存："+code);
+                }catch(Exception ex){emit("error","缓存参考图 "+code+" 失败："+ex.getMessage());}
+            });
+        }
         @JavascriptInterface public void chooseDesktopWorkspace(){runOnUiThread(()->{Intent in=new Intent(Intent.ACTION_OPEN_DOCUMENT);in.addCategory(Intent.CATEGORY_OPENABLE);in.setType("*/*");startActivityForResult(in,DESKTOP_WORKSPACE);});}
         @JavascriptInterface public String getFolder(){
             return getSharedPreferences(PREF,0).getString("treeName","未选择参考图文件夹");

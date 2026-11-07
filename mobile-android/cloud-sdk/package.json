@@ -1,0 +1,11 @@
+{
+  "name": "manju-cloud-client-bundle",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "@cloudbase/js-sdk": "^3.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
