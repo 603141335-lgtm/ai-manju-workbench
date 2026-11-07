@@ -1,5 +1,4 @@
 import {useEffect,useRef,useState} from 'react';
-import {host} from '../host';
 import {DomesticBrowserDock,type DomesticWebProvider} from './DomesticBrowserDock';
 import {useUnifiedChat} from '../workbench_v3/useUnifiedChat';
 import {API_PROVIDER_IDS,type Member,type ChatMode} from '../workbench_v3/logic';
