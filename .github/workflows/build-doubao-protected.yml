@@ -54,7 +54,7 @@ jobs:
           npx electron-builder --win nsis --x64 --config ../electron-builder.release.yml --publish never
       - name: Validate Windows output and hashes
         run: |
-          $files = @(Get-ChildItem 'dist-doubao' -Filter '*.exe' -File -Recurse)
+          $files = @(Get-ChildItem 'dist-doubao' -Filter '*Setup*.exe' -File)
           if ($files.Count -lt 1) { throw 'No NSIS installer generated.' }
           foreach ($f in $files) { if ($f.Length -lt 15000000) { throw "Suspiciously small installer: $($f.Name)" } }
           $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $(Split-Path $_.Path -Leaf)" } | Set-Content 'dist-doubao/SHA256SUMS.txt'
