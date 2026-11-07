@@ -5,10 +5,12 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const json=(s,def)=>{try{return JSON.parse(s)}catch(e){return def}};
 const defaults=()=>({tab:'make',selected:0,status:{},notes:{},edits:{},videos:{},chosen:{},expanded:{},dark:false,limit:9,projectName:'我的AI漫剧项目',search:'',assetSearch:'',assetFilter:'全部',assetPage:0,episodeOpen:{},lastProject:''});
-let ui=Object.assign(defaults(),json(localStorage.getItem('manju-v2-state'),{}));
+const initialOwner=typeof N.getCloudOwner==='function'?N.getCloudOwner():'';
+let ui=initialOwner?defaults():Object.assign(defaults(),json(localStorage.getItem('manju-v2-state'),{}));
+// A cloud workspace must never appear before a fresh authenticated session check.
 for(const k of ['status','notes','edits','videos','chosen','expanded','episodeOpen'])if(!ui[k]||typeof ui[k]!=='object')ui[k]={};
 let raw='',segments=[],episodes=[],files=[],busy=false,timer,pending=[];
-function saveState(){try{localStorage.setItem('manju-v2-state',JSON.stringify(ui))}catch(e){console.warn(e)}}
+function saveState(){try{const owner=typeof N.getCloudOwner==='function'?N.getCloudOwner():'';localStorage.setItem(owner?'manju-v2-state:'+owner:'manju-v2-state',JSON.stringify(ui))}catch(e){console.warn(e)}}
 function cnNum(s){if(/^\d+$/.test(s))return Number(s);const d={零:0,〇:0,一:1,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9};if(s==='十')return 10;let n=0;if(s.includes('百')){let p=s.split('百');n+=(d[p[0]]||1)*100;s=p[1]}if(s.includes('十')){let p=s.split('十');n+=(p[0]?d[p[0]]:1)*10;s=p[1]}return n+(d[s]||0)}
 function norm(v){const s=String(v).normalize('NFKC').toUpperCase().replace(/\s+/g,'').replace(/[－_]/g,'-');const m=s.match(/^(AG|BL|[ABCDEK])-?(\d{1,4})(?:-(\d{1,3}))?$/);return m?m[1]+m[2].padStart(2,'0')+(m[3]?'-'+m[3].padStart(2,'0'):''):s}
 function extract(t){const re=/(^|[^A-Za-z0-9])((?:AG|BL|[ABCDEK])\s*[-_ ]?\s*\d{1,4}(?:\s*[-_－]\s*\d{1,3})?)(?![A-Za-z0-9]|[-_－]\d)/gi,out=[],set=new Set();for(const m of String(t||'').normalize('NFKC').matchAll(re)){let c=norm(m[2]);if(!set.has(c)){set.add(c);out.push(c)}}return out}
@@ -49,6 +51,8 @@ function setPrompts(t,imported){
 let desktopProject=null;
 function setDesktopProject(project,imported){
  const converted=window.ManjuCompat.convert(project);
+ const owner=typeof N.getCloudOwner==='function'?N.getCloudOwner():'';
+ if(project.cloudAuthoritative&&owner){ui=Object.assign(defaults(),json(localStorage.getItem('manju-v2-state:'+owner),{}));for(const k of ['status','notes','edits','videos','chosen','expanded','episodeOpen'])if(!ui[k]||typeof ui[k]!=='object')ui[k]={};}
  const hash=signature(JSON.stringify(converted.original.episodes.map(e=>[e.id,e.number,e.segments.map(x=>[x.id,x.n,x.text,x.codes,x.status])])));
  if(imported&&ui.lastProject!==hash){
   ui.status={};ui.notes={};ui.edits={};ui.videos={};ui.chosen={};ui.expanded={};ui.selected=0;
@@ -64,14 +68,15 @@ function setDesktopProject(project,imported){
      for(const [id,entry] of Object.entries(all[uid]||{}))ui.status['desktop_'+id]=entry.status;
    }catch(e){console.warn('云端待同步状态读取失败',e)}
  }else ui.status={...converted.statuses,...ui.status};
- ui.chosen={...converted.versions,...ui.chosen};
+ ui.chosen=project.cloudAuthoritative?{}:{...converted.versions,...ui.chosen};
  ui.selected=imported?converted.activeIndex:Math.min(ui.selected,segments.length-1);
  saveState();render();
 }
 const current=()=>segments[ui.selected];
 const textOf=s=>ui.edits[s.key]===undefined?s.original:ui.edits[s.key];
 const codesOf=s=>{
- if(Array.isArray(s.desktopCodes)&&(s.manual||ui.edits[s.key]===undefined))return {codes:s.desktopCodes,fallback:false};
+ if(ui.edits[s.key]!==undefined)return refInfo(ui.edits[s.key]);
+ if(Array.isArray(s.desktopCodes))return {codes:s.desktopCodes,fallback:false};
  return refInfo(textOf(s));
 };
 const fileOptions=c=>files.filter(f=>f.code===c);
@@ -122,6 +127,7 @@ function studio(){
  h+='<div class="row wide-gap"><strong class="small">本集 '+(pos+1)+' / '+ep.items.length+' 段</strong><button class="btn slim ghost" data-act="directory">快速跳转段落 ▾</button></div>'+bar(metrics(ep.items));
  h+='<div class="card wide-gap"><div class="row"><strong>本段参考图</strong><span class="badge '+(miss.length?'danger':'ok')+'">'+(list.length-miss.length)+' / '+list.length+' 已匹配</span></div><div class="refs-grid">'+(list.length?list.map(refCard).join(''):'<span class="subtitle">无参考图编号</span>')+'</div>'+(miss.length?'<div class="tip danger-text">缺少：'+esc(miss.join('、'))+'</div>':'')+(c.fallback&&list.length?'<div class="tip">按整段兜底识别编号，请人工核对。</div>':'')+'</div>';
  h+='<div class="card"><div class="row"><strong>完整提示词</strong><button class="btn slim secondary" data-act="expand">'+(full?'收起 ⌃':'展开 ⌄')+'</button></div><div class="subtitle">原文 '+prompt.length+'字 · 一键复制不截断</div><div class="text-panel '+(full?'expanded':'')+'">'+esc(full?prompt:(prompt.length>430?prompt.slice(0,430)+'\n…展开查看全部内容':prompt))+'</div><div class="tool-row wide-gap"><button class="btn slim" data-act="edit" '+(s.locked?'disabled':'')+'>编辑</button>'+(ui.edits[s.key]!==undefined?'<button class="btn slim" data-act="restore">恢复原文</button>':'')+'<button class="btn slim" data-act="quality">质量检查</button></div></div>';
+ h+='<div class="row wide-gap"><button class="btn slim" data-act="draft">✎ 临时编辑提示词（自动匹配图片）</button>'+(ui.edits[s.key]!==undefined?'<button class="btn slim" data-act="restore">恢复电脑正式原文</button>':'')+'</div>';
  h+='<div class="action-dock"><div class="action-stack"><button class="btn xl primary" data-act="save" '+(busy?'disabled':'')+'><span class="btn-icon">↓</span> 一键保存本段全部图片（'+list.length+'张）</button><button class="btn xl secondary" data-act="copy"><span class="btn-icon">▤</span> 一键复制完整提示词</button></div><div class="row"><button class="btn slim" data-act="doubao">↗ 打开豆包APP</button><span class="tip">图片保存到系统相册</span></div></div>';
  h+='<div class="section-title">制作进度</div><div class="card"><strong>当前段状态</strong><div class="status-list">'+['待制作','需重做','已完成'].map(x=>'<button class="chip '+(curStatus(s)===x?'active':'')+'" data-act="status" data-value="'+x+'" '+(s.locked?'disabled':'')+'>'+x+'</button>').join('')+'</div><div class="tip">使用同一个邮箱账号后，完成状态可回传电脑版。提示词和参考图由电脑维护。</div><button class="btn slim secondary wide-gap" data-act="cloud-open">☁ 云同步 / 回传进度</button></div>';
  return h;
@@ -186,6 +192,19 @@ function directory(){
  let h='<div class="modal-title">第'+s.ep+'集 · 选择段落</div>';
  for(const t of ep.items)h+='<button class="choice '+(t.index===s.index?'active':'')+'" data-act="jump" data-index="'+t.index+'">'+esc(t.title)+'<span class="badge" style="float:right">'+esc(curStatus(t))+'</span></button>';
  modal(h);
+}
+function draft(s){
+ const value=textOf(s),prev=codesOf(s).codes;
+ const img=c=>'<span class="chip">'+esc(c)+(selectedAsset(c)?' ✓':' ⚠')+'</span>';
+ modal('<div class="modal-title">第'+s.ep+'集 第'+s.number+'段 · 临时提示词草稿</div>'+
+  '<p class="tip">草稿只保存在本机，不覆盖电脑版正式原文。输入“需要参考图：A02、A15”后会自动识别和显示匹配结果。</p>'+
+  '<textarea id="draftText" class="textarea" style="height:40svh">'+esc(value)+'</textarea>'+
+  '<div class="tip wide-gap">即时匹配参考图：</div><div id="draftCodes" class="chip-list">'+prev.map(img).join('')+'</div>'+
+  '<div class="grid-2 wide-gap"><button class="btn" data-act="close">取消</button><button class="btn primary" data-act="save-draft">保存本段草稿</button></div>');
+ $('draftText').addEventListener('input',ev=>{
+  const codes=refInfo(ev.target.value).codes;
+  $('draftCodes').innerHTML=codes.length?codes.map(img).join(''):'<span class="tip">暂无匹配编号</span>';
+ });
 }
 function edit(kind){
  const s=current();if(!s)return;
@@ -261,6 +280,8 @@ function action(ev){
  if(a==='save-partial'){saveTasks(pending);return}
  if(a==='doubao'){N.openDoubao();return}
  if(a==='status'){if(s.locked)return notify('电脑版已锁定此段，无法修改状态');ui.status[s.key]=b.dataset.value;if(window.ManjuCloud)window.ManjuCloud.queueStatus(s.key,b.dataset.value);saveState();render();notify('已设为 '+b.dataset.value+'，联网后可回传');return}
+ if(a==='draft'){draft(s);return}
+ if(a==='save-draft'){ui.edits[s.key]=$('draftText').value;saveState();close();render();notify('草稿已保存，参考图已重新匹配');return}
  if(a==='note'){edit('note');return}if(a==='edit'){if(s.locked)return notify('此段已锁定，暂不能编辑');edit('prompt');return}if(a==='project-name'){edit('project');return}
  if(a==='apply-edit'){
    if(s&&s.locked&&b.dataset.kind==='prompt')return notify('此段已锁定，不能编辑');
@@ -294,6 +315,6 @@ $('settingsBtn').addEventListener('click',()=>page('settings'));
 window.backFromAndroid=function(){if(!$('modal').classList.contains('hidden'))close();else if(ui.tab!=='make')page('make');else notify('当前已在制作中心')};
 try{raw=N.getPrompts()||'';files=json(N.getAssets(),[])}catch(e){console.warn(e)}
 let desktopSource='';try{if(N.getDesktopWorkspace)desktopSource=N.getDesktopWorkspace()||''}catch(e){console.warn(e)}
-if(desktopSource){try{setDesktopProject(json(desktopSource,null),false)}catch(e){console.warn(e);setPrompts(raw,false)}}else setPrompts(raw,false);
+if(initialOwner){segments=[];episodes=[];raw='';render();}else if(desktopSource){try{setDesktopProject(json(desktopSource,null),false)}catch(e){console.warn(e);setPrompts(raw,false)}}else setPrompts(raw,false);
 window.__manjuTest={norm,extract,refInfo,parse,setDesktopProject,getSegments:()=>segments,getEpisodes:()=>episodes,getStatus:()=>ui.status};
 })();
