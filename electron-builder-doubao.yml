@@ -1,0 +1,17 @@
+appId: com.manju.doubao.creativehub
+productName: 豆包创作舱
+directories:
+  output: ../dist-doubao
+files:
+  - "**/*"
+  - "!**/node_modules/**"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
