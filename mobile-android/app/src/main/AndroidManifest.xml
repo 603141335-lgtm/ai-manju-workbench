@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET"/>
   <queries><package android:name="com.larus.nova"/></queries>
-  <application android:label="漫剧随身工作台" android:icon="@drawable/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true">
+  <application android:label="漫剧随身工作台" android:icon="@drawable/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true" android:usesCleartextTraffic="false">
     <activity android:name=".StudioActivity" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
