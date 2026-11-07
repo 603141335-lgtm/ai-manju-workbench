@@ -57,12 +57,6 @@ export function UnifiedChatWorkspace({onClose}:Props){
   try{setBusyUi(true);await w.updateMember(editing);setEditing(null);setModal(null);}
   catch(e){w.setNotice('保存成员失败：'+String(e));}finally{setBusyUi(false);}
  }
- async function openWebsite(m:Member){
-  try{
-   if(['doubao','deepseek','kimi','qwen'].includes(m.provider))await host.domestic.openMember(m.provider);
-   else w.setNotice(m.name+' 的原生网页登录请点击左下角“返回原版”，在原版的会员网页中使用。');
-  }catch(e){w.setNotice('官网无法打开：'+String(e));}
- }
  const pending=w.run?.status==='waiting_manual' ? w.data.members.find(m=>m.id===w.run?.state.memberIds[w.run.state.nextIndex]):undefined;
  const pendingText=w.run?.status==='waiting_manual'?w.run.state.pendingPrompt??'':'';
  async function copy(text:string){
