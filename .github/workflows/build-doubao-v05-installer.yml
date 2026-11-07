@@ -1,4 +1,4 @@
-name: Build Doubao Creative Hub Windows Installer
+name: Build AI Manju Workbench v1.0 Windows Installer
 on:
   push:
     branches:
@@ -44,7 +44,7 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Doubao-Creative-Hub-v0.5-Windows-Setup
+          name: AI-Manju-Workbench-v1.0-Windows-Setup
           path: dist-doubao/*.exe
           if-no-files-found: error
           retention-days: 30
