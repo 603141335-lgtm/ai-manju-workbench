@@ -10,8 +10,8 @@ const modifications=new Map();
 function once(fileName,from,to){
   const text=modifications.get(fileName)??fs.readFileSync(file(fileName),'utf8');
   const index=text.indexOf(from);
-  if(index<0 || text.indexOf(from,index+from.length)>=0)throw Error('上游源码已变更，请停止构建：'+fileName+' :: '+from.slice(0,90));
-  modifications.set(fileName,text.slice(0,index)+to+text.slice(index+from.length));
+  if(index<0)throw Error('上游源码已变更，请停止构建：'+fileName+' :: '+from.slice(0,90));
+  modifications.set(fileName,text.split(from).join(to));
 }
 function assert(condition,message){if(!condition)throw Error(message);}
 assert(JSON.parse(fs.readFileSync(file('package.json'),'utf8')).name==='multi-ai-chat-desktop','必须使用指定 Multi-AI Chat Desktop 原始源码');
