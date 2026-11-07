@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {DomesticBrowserDock,type DomesticWebProvider} from './DomesticBrowserDock';
 import {OfficialProviderPane} from './OfficialProviderPane';
+import {WorkflowPlanEditor} from './WorkflowPlanEditor';
 import {isOriginalWebProvider} from '../workbench_v3/useUnifiedChat';
 import type {AIProvider} from '../../shared/types';
 import {useUnifiedChat} from '../workbench_v3/useUnifiedChat';
@@ -21,7 +22,7 @@ function Avatar({name,group=false}:{name:string;group?:boolean}){
 export function UnifiedChatWorkspace({onClose}:Props){
  const w=useUnifiedChat();
  const [search,setSearch]=useState('');
- const [modal,setModal]=useState<'create'|'group'|'member'|null>(null);
+ const [modal,setModal]=useState<'create'|'group'|'member'|'plan'|null>(null);
  const [createKind,setCreateKind]=useState<'private'|'group'>('group');
  const [createTitle,setCreateTitle]=useState('');
  const [picked,setPicked]=useState<string[]>([]);
@@ -125,6 +126,7 @@ export function UnifiedChatWorkspace({onClose}:Props){
        {modes.map(m=><option key={m.id} value={m.id}>{m.title}</option>)}
       </select>
       {room.kind==='group'&&<button onClick={editGroup} className="rounded-lg border px-3 py-2 text-xs">群成员</button>}
+      {room.mode==='relay'&&<button onClick={()=>setModal('plan')} className="rounded-lg border bg-indigo-50 px-3 py-2 text-xs text-indigo-700">编辑接力流程</button>}
       <button onClick={()=>{const title=window.prompt('会话名称',room.title);if(title?.trim())void w.setConversation(title,room.mode).catch(x=>w.setNotice(String(x)));}}
        className="rounded-lg border px-3 py-2 text-xs">重命名</button>
      </div>
@@ -152,9 +154,11 @@ export function UnifiedChatWorkspace({onClose}:Props){
       <div className="flex items-center gap-2"><strong>工作流状态：{w.run.status}</strong>
        <span>步骤 {Math.min(w.run.state.nextIndex+1,w.run.state.memberIds.length)} / {w.run.state.memberIds.length}</span>
        {w.run.status==='paused'&&<button onClick={()=>void w.resume()} className="rounded-lg border px-2 py-1">继续接力</button>}
+       {!['cancelled','failed'].includes(w.run.status)&&<button onClick={()=>void w.cancelRun().catch(e=>w.setNotice(String(e)))}
+          className="ml-auto rounded-lg border border-rose-300 px-2 py-1 text-rose-700">终止任务</button>}
       </div>
-      {w.run.status==='unknown_completion'&&<p className="mt-2">结果未知：请求可能已经计费，为避免重复计费不会自动重试。请先检查提供商的真实调用记录。</p>}
-      {w.run.status==='waiting_manual'&&<div className="mt-3 space-y-2">
+      {w.run.status==='unknown_completion'&&<p className="mt-2">结果未知：网页请求可能已到达官网，不自动重复发送。请先检查真实会话，再手动确认或终止。</p>}
+      {['waiting_manual','unknown_completion'].includes(w.run.status)&&<div className="mt-3 space-y-2">
        <b>需要 {pending?.name??'AI'} 的官网真实回复</b>
        <div className="flex flex-wrap gap-2">
         <button onClick={()=>void copy(pendingText)} className="rounded-lg bg-amber-200 px-3 py-2">复制完整任务</button>
@@ -236,7 +240,9 @@ export function UnifiedChatWorkspace({onClose}:Props){
    </div>}
    </div>}
   </aside>
-  {modal&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4">
+  {modal==='plan'&&<WorkflowPlanEditor current={w.plan} members={w.inRoom} roles={w.role} busy={w.busy}
+     onSave={w.savePlan} onClose={()=>setModal(null)}/>}
+  {modal&&modal!=='plan'&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4">
    <div role="dialog" aria-modal="true" aria-label="AI 成员与群聊配置" className="max-h-[88vh] w-full max-w-xl overflow-auto rounded-2xl bg-white p-5 shadow-2xl">
     <div className="mb-4 flex items-center justify-between"><b className="text-lg">{modal==='create'?'新建聊天':modal==='group'?'编辑群成员':'AI 联系人设置'}</b>
      <button onClick={()=>setModal(null)} className="rounded-lg border px-3 py-1.5 text-xs">关闭</button></div>
