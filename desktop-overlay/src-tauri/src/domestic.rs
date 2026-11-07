@@ -10,6 +10,7 @@ fn member(provider: &str) -> Option<(&'static str, &'static str)> {
         "deepseek" => Some(("DeepSeek", "https://chat.deepseek.com/")),
         "kimi" => Some(("Kimi", "https://www.kimi.com/")),
         "qwen" => Some(("千问", "https://qwen.ai/")),
+        "yuanbao" => Some(("腾讯元宝", "https://yuanbao.tencent.com/chat")),
         _ => None,
     }
 }
@@ -28,21 +29,32 @@ pub async fn domestic_open_member(
     app: AppHandle,
     webview: tauri::Webview,
     provider: String,
+    slot: Option<u8>,
 ) -> Result<(), String> {
     crate::webviews::ensure_control_webview(&webview)?;
+    let slot = slot.unwrap_or(1);
+    if !(1..=10).contains(&slot) { return Err("账号位只能是 1–10".into()); }
     let (name,url) = member(&provider).ok_or("不支持此会员网站")?;
-    let label = format!("domestic-{provider}");
+    // Preserve the original login and label for slot 1.
+    let label = if slot == 1 {format!("domestic-{provider}")} else {format!("domestic-{provider}-{slot}")};
     if let Some(window) = app.get_webview_window(&label) {
         window.show().map_err(|e|e.to_string())?;
         window.set_focus().map_err(|e|e.to_string())?;
         return Ok(());
     }
     let remote = tauri::Url::parse(url).map_err(|e|e.to_string())?;
-    tauri::WebviewWindowBuilder::new(&app,&label,WebviewUrl::External(remote))
-        .title(format!("{} · Multi-AI Chat Desktop",name))
+    let mut builder = tauri::WebviewWindowBuilder::new(&app,&label,WebviewUrl::External(remote))
+        .title(format!("{} · 账号 {} · Multi-AI Chat Desktop",name,slot))
         .inner_size(1120.0,800.0)
-        .min_inner_size(760.0,520.0)
-        .build().map_err(|e|e.to_string())?;
+        .min_inner_size(760.0,520.0);
+    if slot > 1 {
+        // The provider is whitelisted and the slot is bounded; no user-supplied filesystem path.
+        let profile = app.path().app_local_data_dir().map_err(|e|e.to_string())?
+            .join("domestic-profiles-v4").join(&provider).join(format!("slot-{slot}"));
+        std::fs::create_dir_all(&profile).map_err(|_|"无法创建独立登录档案目录")?;
+        builder = builder.data_directory(profile);
+    }
+    builder.build().map_err(|e|e.to_string())?;
     Ok(())
 }
 
@@ -109,6 +121,7 @@ mod tests {
     fn only_official_destinations() {
         assert!(member("doubao").unwrap().1.starts_with("https://www.doubao.com/"));
         assert!(api_endpoint("deepseek").unwrap().starts_with("https://api.deepseek.com/"));
+        assert_eq!(member("yuanbao").unwrap().0,"腾讯元宝");
         assert!(member("file:///x").is_none());
         assert!(api_endpoint("http://127.0.0.1").is_none());
     }
