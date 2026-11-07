@@ -1,0 +1,58 @@
+name: Build real Doubao Browser Workbench (No Canvas) v0.6.0
+on:
+  push:
+    branches: [release/doubao-browser-no-canvas-v0.6.0]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Verify source and browser/25-account invariants
+        run: npm run check
+      - name: Hardening on ephemeral checkout only
+        run: node scripts/harden.js
+      - name: Verify obfuscated parser/renderer/workspace
+        run: npm run check
+      - name: Prepare optional public update feed
+        env:
+          DOUBAO_UPDATE_URL: ${{ vars.DOUBAO_UPDATE_URL }}
+        run: node scripts/prepare-feed.js
+      - name: Build Windows NSIS Setup
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
+      - name: Verify installer and SHA256
+        run: |
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Setup-v0.6.0-x64.exe' -File)
+          if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
+          $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
+          "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
+          Get-Content release/SHA256SUMS.txt
+      - name: Publish private GitHub Release (avoids Actions artifact quota)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: doubao-browser-v0.6.0
+          target_commitish: ${{ github.sha }}
+          name: 豆包创作舱 v0.6.0（内嵌浏览器·无画布·基础加固）
+          prerelease: true
+          body: |
+            正确基于 01_豆包创作舱_v0.5_单独包.zip 的浏览器工作台，支持 WebContentsView 豆包网页版登录、账号独立持久化分区，去除画布。未应用商业 Themida/VMProtect 加壳；本版具备混淆与 Electron 安全开关，未在用户 Windows 机器实测扫码登录。
+          files: |
+            release/Doubao-Creative-Hub-Setup-v0.6.0-x64.exe
+            release/SHA256SUMS.txt
+            release/latest.yml
+            release/*.blockmap
+          fail_on_unmatched_files: false

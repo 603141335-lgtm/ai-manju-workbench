@@ -1,0 +1,66 @@
+{
+  "name": "doubao-creative-hub",
+  "version": "0.6.0",
+  "private": true,
+  "description": "豆包创作舱：内嵌豆包浏览器、多账号独立登录与AI漫剧文档工作台（无画布）",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
+    "dist:win": "node scripts/prepare-feed.js && electron-builder --win nsis --x64 --config release-build.json --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.10.2",
+    "electron-builder": "26.0.12",
+    "javascript-obfuscator": "4.1.1"
+  },
+  "build": {
+    "appId": "com.manju.doubao.creativehub",
+    "productName": "豆包创作舱",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!src/canvas/**",
+      "!**/*.map",
+      "!**/*.pdb"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Doubao-Creative-Hub-Setup-v${version}-x64.${ext}",
+      "icon": "assets/app.ico"
+    },
+    "compression": "maximum",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "allowScripts": {
+    "electron": true
+  },
+  "dependencies": {
+    "electron-updater": "6.6.2"
+  }
+}
