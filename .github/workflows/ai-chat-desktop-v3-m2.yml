@@ -56,6 +56,8 @@ jobs:
         run: |
           node desktop-scripts/apply-v3-m2.mjs upstream desktop-overlay
           if ($LASTEXITCODE -ne 0) { throw "V3 M2 patch failed" }
+          node desktop-scripts/apply-v3-m2-safety.mjs upstream
+          if ($LASTEXITCODE -ne 0) { throw "M2 safety patch failed" }
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
