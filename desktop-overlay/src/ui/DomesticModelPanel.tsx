@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { host } from '../host';
 
 type Provider = 'doubao' | 'deepseek' | 'kimi' | 'qwen';
 type ApiStep = {id:string; provider:Provider; role:string; model:string; instruction:string};
@@ -24,6 +24,7 @@ function restoredSteps():ApiStep[]{
       ? value : presets;
   } catch {return presets;}
 }
+// eslint-disable-next-line react-refresh/only-export-components
 export function makeStepPrompt(task:string,steps:readonly ApiStep[],results:readonly Result[],index:number):string {
   const step=steps[index];
   if(!step)throw new Error('不存在的步骤');
@@ -47,7 +48,7 @@ export function DomesticModelPanel(){
   const update=(index:number,patch:Partial<ApiStep>)=>setSteps(old=>old.map((s,i)=>i===index?{...s,...patch}:s));
   const save=()=>{localStorage.setItem(savedKey,JSON.stringify(steps));setNotice('已保存本机步骤设置（不保存 API Key）');};
   const openMember=async(provider:Provider)=>{
-    try {await invoke('domestic_open_member',{provider});setNotice('已打开 '+provider+' 官网窗口。登录状态由该网页管理。');}
+    try {await host.domestic.openMember(provider);setNotice('已打开 '+provider+' 官网窗口。登录状态由该网页管理。');}
     catch(e){setNotice('打开失败：'+String(e));}
   };
   const run=async()=>{
@@ -67,9 +68,7 @@ export function DomesticModelPanel(){
         setRunningStep(i);
         const s=steps[i];
         const prompt=makeStepPrompt(task,steps,completed,i);
-        const text=await invoke<string>('domestic_api_chat',{
-          request:{provider:s.provider,model:s.model.trim(),apiKey:keys[s.provider],prompt}
-        });
+        const text=await host.domestic.apiChat({provider:s.provider,model:s.model.trim(),apiKey:keys[s.provider]??'',prompt});
         if(!text?.trim())throw new Error('第 '+(i+1)+' 步返回空答案，已停止');
         completed.push({provider:s.provider,role:s.role,model:s.model,text});
         setResults([...completed]);
