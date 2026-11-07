@@ -1,0 +1,10 @@
+# Automatically generated for the custom Tauri command.
+[[permission]]
+identifier = "allow-domestic-api-chat"
+description = "Allows official-provider API calls from the main control webview only."
+commands.allow = ["domestic_api_chat"]
+
+[[permission]]
+identifier = "deny-domestic-api-chat"
+description = "Denies domestic_api_chat."
+commands.deny = ["domestic_api_chat"]
