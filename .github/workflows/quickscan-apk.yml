@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - quickscan-app
+      - quickscan-v0141-repair
     paths:
       - 'quickscan-android/**'
       - '.github/workflows/quickscan-apk.yml'
