@@ -81,7 +81,7 @@ export function useUnifiedChat(){
   setDraft('');
   try{
    await saveMessage(cid,'user',task,'user');
-   const id='run_'+newid().replaceAll('-','');
+   const id='run_'+newid().replace(/-/g,'');
    if(chosen.mode==='parallel'){
     setBusy(true);
     const settled=await Promise.allSettled(members.map(async m=>{
@@ -118,7 +118,7 @@ export function useUnifiedChat(){
   }catch(e){fail(e);}
  }
  async function create(title:string,kind:'private'|'group',memberIds:string[]){
-  const cid='chat_'+newid().replaceAll('-','');
+  const cid='chat_'+newid().replace(/-/g,'');
   await host.workbench.create({id:cid,title,kind,memberIds});
   await refresh();setSelected(cid);
  }
