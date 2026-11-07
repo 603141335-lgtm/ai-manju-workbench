@@ -3,6 +3,7 @@ const {app,BrowserWindow,ipcMain,dialog,clipboard,nativeImage,protocol,shell,net
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
+const crypto = require('crypto');
 const {pathToFileURL} = require('url');
 const {parseMultiEpisode,parseFilenameCode,safeName,detectSegmentCodes,extractCodes} = require('./parser');
 
@@ -11,6 +12,67 @@ const imageExtensions = new Set(['.png','.jpg','.jpeg','.webp','.bmp','.gif','.a
 let win, project, assets = new Map(), byCode = new Map(), scanStats={}, saveQueue=Promise.resolve();
 const blank = () => ({version:1,title:'我的AI漫剧项目',assetFolder:'',episodes:[],chosenPaths:{}});
 const storeFile = () => path.join(app.getPath('userData'),'workbench.json');
+
+/**
+ * Preserve the original on-disk workbench data across productName changes.
+ * Previous Electron bundles may have used either package name or display name
+ * to derive app.getPath('userData'). Never remove or rewrite the old location.
+ */
+async function configureStableUserData(){
+ if(typeof app.setPath!=='function')return; // test stubs and compatibility
+ const appData=app.getPath('appData');
+ const previous=app.getPath('userData');
+ const stable=path.join(appData,'ai-manju-workbench');
+ await fsp.mkdir(stable,{recursive:true});
+ const target=path.join(stable,'workbench.json');
+ if(!fs.existsSync(target)){
+  const candidates=[previous,path.join(appData,'AI漫剧素材工作台'),path.join(appData,'豆包创作舱')];
+  for(const location of candidates){
+   const source=path.join(location,'workbench.json');
+   if(path.resolve(source)===path.resolve(target)||!fs.existsSync(source))continue;
+   // Refuse to copy unreasonably large/corrupt backups automatically.
+   try{
+    const stat=await fsp.stat(source);
+    if(stat.size>0&&stat.size<50_000_000){
+     const content=await fsp.readFile(source);
+     JSON.parse(content.toString('utf8'));
+     await fsp.writeFile(target,content,{flag:'wx'});
+     break;
+    }
+   }catch(e){if(e.code==='EEXIST')break;}
+  }
+ }
+ app.setPath('userData',stable);
+}
+
+let updater=null;
+let updaterState={state:'idle',message:'尚未检查更新'};
+function notifyUpdate(state,message,version){
+ updaterState={state,message,version:version||null};
+ if(win&&!win.isDestroyed?.())win.webContents.send('workspace:update-status',updaterState);
+}
+function initUpdater(){
+ const hasFeed=app.isPackaged&&fs.existsSync(path.join(process.resourcesPath,'app-update.yml'));
+ if(!hasFeed){
+  updaterState={state:'unconfigured',message:'此安装包未配置公开 HTTPS 更新源，可下载新版安装包原位覆盖更新。'};
+  return;
+ }
+ try{
+  updater=require('electron-updater').autoUpdater;
+  updater.autoDownload=false;
+  updater.autoInstallOnAppQuit=false;
+  updater.on('checking-for-update',()=>notifyUpdate('checking','正在检查新版本…'));
+  updater.on('update-not-available',()=>notifyUpdate('current','已经是最新版本'));
+  updater.on('update-available',async(info)=>{
+   notifyUpdate('downloading','发现 v'+info.version+'，正在下载更新…',info.version);
+   try{await updater.downloadUpdate();}catch(e){notifyUpdate('error','下载失败：'+e.message);}
+  });
+  updater.on('download-progress',p=>notifyUpdate('downloading','正在下载更新 '+Math.round(p.percent)+'%'));
+  updater.on('update-downloaded',info=>notifyUpdate('ready','新版本 '+info.version+' 已就绪，点击安装更新',info.version));
+  updater.on('error',e=>notifyUpdate('error','更新失败：'+e.message));
+ }catch(e){notifyUpdate('error','更新模块无法启动：'+e.message);}
+}
+
 function sanitizeProject(input){
  if(!input || typeof input!=='object')return blank();
  const p=blank();
@@ -87,6 +149,16 @@ function findDragPaths(msg){
 const iconPath=path.join(__dirname,'drag.png');
 function attachIpc(){
  ipcMain.handle('workspace:state',getState);
+ ipcMain.handle('workspace:update-status',()=>updaterState);
+ ipcMain.handle('workspace:check-updates',async()=>{
+  if(!updater)return updaterState;
+  try{await updater.checkForUpdates();}catch(e){notifyUpdate('error','检查更新失败：'+e.message);}
+  return updaterState;
+ });
+ ipcMain.handle('workspace:install-update',()=>{
+  if(!updater||updaterState.state!=='ready')return false;
+  updater.quitAndInstall(false,true);return true;
+ });
  ipcMain.handle('workspace:choose-folder',async()=>{
   const result=await dialog.showOpenDialog(win,{title:'选择全部参考图的总文件夹',properties:['openDirectory']});
   if(result.canceled||!result.filePaths.length)return null;
@@ -165,6 +237,7 @@ function attachIpc(){
  });
 }
 async function boot(){
+ await configureStableUserData();
  project=blank();try{project=sanitizeProject(JSON.parse(await fsp.readFile(storeFile(),'utf8')));}catch{}
  await scanFolder(project.assetFolder);
  protocol.handle('manju-img',async(request)=>{
@@ -174,7 +247,8 @@ async function boot(){
   }catch{return new Response('missing',{status:404});}
  });
  attachIpc();
- win=new BrowserWindow({width:1370,height:920,minWidth:860,minHeight:620,title:'AI漫剧素材工作台',backgroundColor:'#f5f7fb',autoHideMenuBar:true,
+ initUpdater();
+ win=new BrowserWindow({width:1370,height:920,minWidth:860,minHeight:620,title:'豆包创作舱',backgroundColor:'#f5f7fb',autoHideMenuBar:true,
   webPreferences:{preload:path.join(__dirname,'preload.js'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  win.webContents.on('will-navigate',e=>e.preventDefault());

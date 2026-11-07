@@ -1,24 +1,27 @@
-# AI漫剧素材工作台
+# 豆包创作舱 · Windows 无画布文档工作台
 
-Windows 本地 AI 漫剧制作辅助工具。此仓库保存 **v1.0 桌面版源码**，供后续增量维护；不是漫剧成片或参考图素材仓库。
+基于原 `doubao-creative-hub-v0.5` 增量开发。保留提示词、剧集段落、参考图索引及原生拖拽，**不包含节点画布**。
 
-## 功能
-- 支持一个项目、多集提示词，按片段连续滚动显示原文。
-- 解析 A01、A01-01、AG14、BL06、C02、E02-05 等编号，匹配本地图片。
-- 片段提示词一键复制；参考图单张、多选、整组原生拖拽。
-- 重复编号手工选择版本、缺失图片警告。
-- 本地项目自动保存、备份恢复和按集导出文件夹。
+## 主要功能
+- 导入整集／多集 TXT、MD 提示词，保留台词和完整原文。
+- 解析 A01、A01-01、AG14、BL06、E02-05 编号，匹配参考图。
+- 段落浏览、编辑校正、单张及多选图片拖拽。
+- 本地自动保存、备份／恢复、按集导出。
+- 保留旧版 `com.manju.workbench.desktop` 安装身份以及原有 workbench.json 数据，首次启动有非覆盖式迁移。
+- 新增「检查更新」；仅在发布者配置真实公开 HTTPS 更新源时启用在线更新；始终支持同身份 NSIS 安装包覆盖升级。
 
-## 运行
-1. 使用兼容的 Windows x64 Electron 运行环境打开 `app/`（`app/package.json` 指向 `main.js`）。
-2. 可通过 `launcher/launcher.go` 对应的 Windows 启动器获取 Electron，但首次下载依赖网络；此仓库不包含 Electron 运行库或 EXE。
-3. Windows 实机多文件拖拽到豆包/即梦等网站尚需按目标网站实际上传区域验证。
+## 构建
+```sh
+cd app
+npm install
+npm test
+npm run build:win
+```
+GitHub Actions 将构建 x64 NSIS 安装包，上传至 Actions Artifacts。
+CI 在 **仅有获授权商业工具、签名证书和编译后的原生核心** 时才能运行真正的 Themida/VMProtect 商业加壳。未配置时构建结果只具有 JS 混淆与 Electron Fuses/ASAR 完整性加固，不应宣称商业加壳完成。
 
-## 测试
-- `node tests/test_parser.js` 检查编号和剧集解析。
-- `node tests/test_main_mock.js` 检查主进程模拟行为。
-- `tests/test_ui.py` 为界面检查测试，需要其对应环境依赖。
-- 真实 Windows 拖拽请在软件的「拖拽验证」页面测试，**模拟测试不等于真实网站兼容**。
+在线更新源要求：GitHub Actions repo variable `DOUBAO_UPDATE_URL` 设置为自己的公开 HTTPS 静态文件路径，必须在该路径发布生成的 EXE 与 latest.yml；不要在客户端保存私有 GitHub Token。
+商业加壳与签名的集成条件及发布验收见 [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md)。
 
-## 维护
-修改前阅读 [DEVELOPMENT.md](DEVELOPMENT.md) 和 [TESTS.md](TESTS.md)，详见 [CHANGELOG.md](CHANGELOG.md)。
+## 验证
+`node tests/test_parser.js`、`node tests/test_main_mock.js` 和 `node tests/test_no_canvas.js`。Windows 真机拖拽与两次覆盖升级仍需手动验收。

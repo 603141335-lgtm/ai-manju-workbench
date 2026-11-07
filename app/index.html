@@ -1,7 +1,7 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>AI漫剧素材工作台</title><link rel="stylesheet" href="style.css"></head><body>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>豆包创作舱</title><link rel="stylesheet" href="style.css"></head><body>
 <div id="app">
  <aside class="sidebar">
-  <div class="brand"><div class="brandmark">剧</div><div><strong>AI漫剧素材工作台</strong><small>提示词 · 参考图 · 原生拖拽</small></div></div>
+  <div class="brand"><div class="brandmark">剧</div><div><strong>豆包创作舱</strong><small>提示词 · 参考图 · 原生拖拽</small></div></div>
   <div class="project-card"><span class="label">当前项目</span><div class="project-edit"><input id="projectTitle" maxlength="120" value="我的AI漫剧项目" aria-label="项目名称"><button id="renameBtn" class="icon-btn" title="保存名称">✓</button></div><div id="projectStats" class="tiny muted">0 集 · 0 段</div></div>
   <div class="side-actions"><button id="pasteBtn" class="primary block">＋ 粘贴整集 / 多集</button><button id="filesBtn" class="secondary block">↥ 导入 TXT / MD 文件</button></div>
   <div class="side-title"><strong>剧集目录</strong><span id="episodeCount">0 集</span></div><input id="filterEpisodes" class="search" placeholder="搜索集数或标题...">
@@ -9,7 +9,7 @@
   <div class="side-footer"><button id="backupBtn">保存项目备份</button><button id="restoreBtn">恢复备份</button><small>项目自动保存到本机；不上传服务器</small></div>
  </aside>
  <main class="main">
-  <header class="toolbar"><div><div class="eyebrow">本地素材库 / 连续文档视图</div><div class="toolbar-title" id="workspaceTitle">选择一个剧集开始制作</div></div><div class="toolbar-buttons"><button id="chooseFolderBtn" class="secondary">📁 设置参考图总目录</button><button id="rescanBtn" class="secondary">↻ 重新扫描</button><button id="testBtn" class="secondary">⇢ 拖拽验证</button></div></header>
+  <header class="toolbar"><div><div class="eyebrow">本地素材库 / 连续文档视图</div><div class="toolbar-title" id="workspaceTitle">选择一个剧集开始制作</div></div><div class="toolbar-buttons"><button id="chooseFolderBtn" class="secondary">📁 设置参考图总目录</button><button id="rescanBtn" class="secondary">↻ 重新扫描</button><button id="testBtn" class="secondary">⇢ 拖拽验证</button><button id="checkUpdateBtn" class="secondary">检查更新</button><button id="installUpdateBtn" class="primary hidden">安装已下载更新</button></div></header>
   <div id="status" role="status" class="status info">一次选择参考图文件夹，整集导入后即可复制提示词并拖拽原始图片。</div>
   <div class="assets-summary"><div><strong id="folderLabel">尚未选择参考图文件夹</strong><small id="scanDetail">不会修改或移动原始图片</small></div><button id="scanInfoBtn" class="linkish">查看未识别 / 重复编号</button></div>
   <div id="scanReport" class="report hidden"></div>

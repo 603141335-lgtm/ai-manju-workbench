@@ -125,6 +125,8 @@ function wire(){
  $('chooseFolderBtn').onclick=async()=>{const r=await update(api.chooseFolder());if(r)status(`素材库读取完毕：${r.scanStats.images} 张图片，其中 ${r.scanStats.recognized} 张提取到编号。`,'ok');};
  $('rescanBtn').onclick=async()=>{const r=await update(api.rescan());if(r)status(`扫描完成：${r.scanStats.recognized} 张编号图片、${r.scanStats.unique} 种编号。`,'ok');};
  $('testBtn').onclick=async()=>{await update(api.dragTester(),'已经打开本机拖拽验证窗口');};
+ $('checkUpdateBtn').onclick=async()=>{try{const info=await api.checkUpdates();if(info?.message)status(info.message,info.state==='error'?'error':'info');}catch(e){status('检查更新失败：'+e.message,'error');}};
+ $('installUpdateBtn').onclick=async()=>{if(confirm('已保存的项目会保留。确定关闭并安装新版本吗？'))await api.installUpdate();};
  $('backupBtn').onclick=async()=>{const r=await update(api.backup());if(r)toast('项目已备份至：'+r);};
  $('restoreBtn').onclick=async()=>{if(!confirm('恢复备份将覆盖当前项目。确定继续吗？'))return;const r=await update(api.restore());if(r){activeEpisodeId=null;render();toast('备份已恢复');}};
  $('scanInfoBtn').onclick=showReport;
@@ -139,4 +141,6 @@ function wire(){
  $('saveCodesBtn').onclick=async()=>{if(!codesTarget)return;const r=await update(api.editSegment({...codesTarget,manual:true,codes:$('codesInput').value}));if(r){$('codesDialog').close();toast('参考图编号已校正，文字原文未修改');}};
  api.onDragError(msg=>{status('原生拖拽失败：'+msg,'error');toast(msg);});
 }
+api.onUpdateStatus(info=>{status(info.message,info.state==='error'?'error':'info');$('installUpdateBtn').classList.toggle('hidden',info.state!=='ready');});
+api.getUpdateStatus().then(info=>{if(info?.state==='ready')$('installUpdateBtn').classList.remove('hidden');}).catch(()=>{});
 wire();api.getState().then(v=>{state=v;render();if(!state.project.assetFolder)status('请先设置一次参考图总文件夹，然后导入整集提示词。');}).catch(e=>status('读取工作台失败：'+e.message,'error'));

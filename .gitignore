@@ -15,3 +15,7 @@ workbench.json
 参考图/
 素材/
 剧本/
+
+dist-doubao/
+*.map
+*.pdb

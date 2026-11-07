@@ -1,1 +1,21 @@
-{"name":"ai-manju-workbench","version":"1.0.0","private":true,"description":"本地AI漫剧提示词与参考图拖拽工作台","main":"main.js","license":"UNLICENSED"}
+{
+  "name": "ai-manju-workbench",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Windows 本地 AI 漫剧文档与素材工作台（无画布）",
+  "main": "main.js",
+  "license": "UNLICENSED",
+  "productName": "豆包创作舱",
+  "dependencies": {
+    "electron-updater": "6.6.2"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "26.0.12",
+    "javascript-obfuscator": "4.1.1"
+  },
+  "scripts": {
+    "test": "node ../tests/test_parser.js && node ../tests/test_main_mock.js",
+    "build:win": "electron-builder --win nsis --x64 --config ../electron-builder-doubao.yml --publish never"
+  }
+}

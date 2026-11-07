@@ -2,6 +2,10 @@
 const {contextBridge,ipcRenderer}=require('electron');
 const api={
  getState:()=>ipcRenderer.invoke('workspace:state'),
+ getUpdateStatus:()=>ipcRenderer.invoke('workspace:update-status'),
+ checkUpdates:()=>ipcRenderer.invoke('workspace:check-updates'),
+ installUpdate:()=>ipcRenderer.invoke('workspace:install-update'),
+ onUpdateStatus:cb=>ipcRenderer.on('workspace:update-status',(_event,value)=>cb(value)),
  chooseFolder:()=>ipcRenderer.invoke('workspace:choose-folder'),
  rescan:()=>ipcRenderer.invoke('workspace:rescan'),
  importText:s=>ipcRenderer.invoke('workspace:import-text',s),

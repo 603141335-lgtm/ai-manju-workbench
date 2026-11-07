@@ -1,0 +1,73 @@
+name: Build Doubao Studio v1.1.0 Windows Installer
+on:
+  push:
+    branches:
+      - release/doubao-no-canvas-protected-v1.1.0
+    paths:
+      - 'app/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'electron-builder-doubao.yml'
+      - '.github/workflows/build-doubao-protected.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  win:
+    runs-on: windows-latest
+    timeout-minutes: 70
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: app
+        run: npm install --no-audit --no-fund
+      - name: Test unmodified business logic and canvas absence
+        run: |
+          node tests/test_parser.js
+          node tests/test_main_mock.js
+          node tests/test_no_canvas.js
+      - name: Production JavaScript hardening
+        run: node scripts/harden.js
+      - name: Test hardened parser and import/export behavior
+        run: |
+          node tests/test_parser.js
+          node tests/test_main_mock.js
+          node tests/test_no_canvas.js
+      - name: Prepare optional HTTPS update feed
+        env:
+          DOUBAO_UPDATE_URL: ${{ vars.DOUBAO_UPDATE_URL }}
+        run: node scripts/prepare-update-feed.js
+      - name: Build NSIS x64 installer
+        working-directory: app
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          npx electron-builder --win nsis --x64 --config ../electron-builder.release.yml --publish never
+      - name: Validate Windows output and hashes
+        run: |
+          $files = @(Get-ChildItem 'dist-doubao' -Filter '*.exe' -File -Recurse)
+          if ($files.Count -lt 1) { throw 'No NSIS installer generated.' }
+          foreach ($f in $files) { if ($f.Length -lt 15000000) { throw "Suspiciously small installer: $($f.Name)" } }
+          $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $(Split-Path $_.Path -Leaf)" } | Set-Content 'dist-doubao/SHA256SUMS.txt'
+          Get-Content 'dist-doubao/SHA256SUMS.txt'
+          Write-Host 'Commercial binary packer: NOT APPLIED (license/native component not configured).'
+      - name: Upload installer and update metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: Doubao-Studio-v1.1.0-Windows-Setup-Hardened-NotCommercialPacked
+          path: |
+            dist-doubao/*.exe
+            dist-doubao/*.yml
+            dist-doubao/*.blockmap
+            dist-doubao/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
