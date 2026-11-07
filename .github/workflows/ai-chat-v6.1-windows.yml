@@ -1,14 +1,14 @@
-name: Multi-AI v6.1 Windows prototype
+name: Multi-AI v6.1 API relay Windows preview
 on:
   push:
     branches: [ai-chat-desktop-v6.1-integration]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: tools/multi-ai-v6.1-queue
@@ -17,22 +17,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.16.0'
-      - name: Queue tests
+      - name: Run queue and API transport tests
         run: npm test
-      - name: Install Electron
-        run: npm install --no-audit --no-fund
-      - name: Package Windows
-        run: npm run dist:win
-      - name: Installer checksum
+      - name: Verify Node module syntax
         shell: pwsh
         run: |
-          $files = @(Get-ChildItem -Path 'dist' -Filter '*Setup*.exe')
-          if ($files.Count -lt 1) { throw 'Setup.exe missing' }
-          $files | ForEach-Object { $h=Get-FileHash $_.FullName -Algorithm SHA256; "$($h.Hash.ToLower())  $($_.Name)" | Out-File 'dist/SHA256SUMS.txt' -Append -Encoding utf8 }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Multi-AI-v6.1-Windows
-          path: |
-            tools/multi-ai-v6.1-queue/dist/*Setup*.exe
-            tools/multi-ai-v6.1-queue/dist/SHA256SUMS.txt
-          retention-days: 7
+          Get-ChildItem src -Filter *.mjs | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Syntax error" } }
+          node --check desktop/main.cjs
+      - name: Install Electron build dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build unsigned Windows NSIS installer
+        run: npm run dist:win
+      - name: Publish prerelease and checksum (GitHub Releases, not Actions artifacts)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $setup = @(Get-ChildItem 'dist' -Filter '*Setup*.exe')
+          if ($setup.Count -ne 1) { throw 'Expected exactly one Setup.exe' }
+          $sha = (Get-FileHash $setup[0].FullName -Algorithm SHA256).Hash.ToLower()
+          $hashFile = 'dist/SHA256SUMS.txt'
+          "$sha  $($setup[0].Name)" | Set-Content -Encoding utf8 $hashFile
+          $tag = "v6.1.0-wq-b-preview-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $notes = 'WQ-B test preview: real OpenAI-compatible API task stages + manual web handoff + 30-episode checkpoint engine. NOT Chatbox full integration. No member website auto extraction. Unsigned installer; Windows verification required.'
+          gh release create $tag $setup[0].FullName $hashFile --target $env:GITHUB_SHA --title "Multi-AI v6.1 WQ-B Windows preview" --notes $notes --prerelease --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release upload failed' }

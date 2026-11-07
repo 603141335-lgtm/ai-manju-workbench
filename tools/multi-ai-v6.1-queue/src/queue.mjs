@@ -44,9 +44,15 @@ export class QueueEngine {
       CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY,episode_id TEXT NOT NULL,stage_id TEXT,version INTEGER NOT NULL,file_path TEXT NOT NULL,hash TEXT NOT NULL,bytes INTEGER NOT NULL,created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS quality_reports (id TEXT PRIMARY KEY,episode_id TEXT NOT NULL,stage_id TEXT,report_json TEXT NOT NULL,created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS queue_events (id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,type TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS api_usages(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,episode_id TEXT NOT NULL,stage_id TEXT NOT NULL,model TEXT NOT NULL,prompt_tokens INTEGER,completion_tokens INTEGER,total_tokens INTEGER,created_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS idx_api_usage_job ON api_usages(job_id);
       CREATE INDEX IF NOT EXISTS idx_episode_job ON episodes(job_id,number);
       CREATE INDEX IF NOT EXISTS idx_artifacts_ep ON artifacts(episode_id,stage_id,version);
     `);
+    // Migration supports jobs created by the older web-manual version.
+    if(!this.db.prepare('PRAGMA table_info(stages)').all().some(c=>c.name==='model'))this.db.exec('ALTER TABLE stages ADD COLUMN model TEXT');
+    // Never repeat a possibly-billed API request automatically after a crash.
+    this.db.prepare("UPDATE stages SET status='api_interrupted',last_error='进程异常退出，请确认上游是否计费后手动重试',updated_at=? WHERE status='api_generating'").run(now());
   }
   close(){this.db.close()}
   _job(id){const j=this.db.prepare('SELECT * FROM jobs WHERE id=?').get(id);if(!j)throw new Error('任务不存在');return j}
@@ -59,17 +65,17 @@ export class QueueEngine {
     if(!Number.isInteger(totalEpisodes)||totalEpisodes<1||totalEpisodes>200)throw new Error('集数必须为1-200');
     if(!String(source).trim())throw new Error('请填写原始故事或全剧总纲');
     if(!Array.isArray(stages)||stages.length===0||stages.length>12)throw new Error('每集需要1-12个阶段');
-    if(stages.some(s=>!s.name||!s.role||s.mode!=='web_manual'))throw new Error('此版本只支持web_manual人工网页交接');
+    if(stages.some(s=>!s.name||!s.role||!['web_manual','api'].includes(s.mode)||(s.mode==='api'&&(!s.model||typeof s.model!=='string'||s.model.length>180))))throw new Error('阶段需要合法的接入方式与API模型ID');
     const id=randomUUID(),t=now();
     const options={episodePlans,stages,immutableRules,minChars};
     this.db.exec('BEGIN IMMEDIATE');
     try{
       this.db.prepare('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?)').run(id,title,totalEpisodes,'queued',source,JSON.stringify(options),t,t);
       const insE=this.db.prepare('INSERT INTO episodes(id,job_id,number,status,updated_at) VALUES(?,?,?,?,?)');
-      const insS=this.db.prepare('INSERT INTO stages(id,episode_id,seq,provider,name,role,mode,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?)');
+      const insS=this.db.prepare('INSERT INTO stages(id,episode_id,seq,provider,name,role,mode,status,updated_at,model) VALUES(?,?,?,?,?,?,?,?,?,?)');
       for(let n=1;n<=totalEpisodes;n++){
         const eId=randomUUID();insE.run(eId,id,n,'queued',t);
-        for(let i=0;i<stages.length;i++){const s=stages[i];insS.run(randomUUID(),eId,i,s.provider??s.name,s.name,s.role,s.mode,'queued',t)}
+        for(let i=0;i<stages.length;i++){const s=stages[i];insS.run(randomUUID(),eId,i,s.provider??s.name,s.name,s.role,s.mode,'queued',t,s.mode==='api'?s.model:null)}
       }
       event(this.db,id,'created',{totalEpisodes,stages:stages.map(s=>s.name)});
       this.db.exec('COMMIT');
@@ -99,9 +105,9 @@ export class QueueEngine {
     if(!episode){this.db.prepare("UPDATE jobs SET status='completed',updated_at=? WHERE id=?").run(now(),id);event(this.db,id,'job_completed');return this.getJob(id)}
     if(!stage){this.db.prepare("UPDATE episodes SET status='needs_review',quality_status='manual_required',updated_at=? WHERE id=?").run(now(),episode.id);event(this.db,id,'episode_needs_review',{episode:episode.number});return this.getJob(id)}
     if(stage.status==='queued'){
-      this.db.prepare("UPDATE stages SET status='waiting_web',updated_at=? WHERE id=?").run(now(),stage.id);
+      this.db.prepare("UPDATE stages SET status=?,updated_at=? WHERE id=?").run(stage.mode==='api'?'ready_api':'waiting_web',now(),stage.id);
       this.db.prepare("UPDATE episodes SET status='running',updated_at=? WHERE id=?").run(now(),episode.id);
-      event(this.db,id,'handoff_prepared',{episode:episode.number,stage:stage.seq,provider:stage.provider});
+      event(this.db,id,stage.mode==='api'?'api_queued':'handoff_prepared',{episode:episode.number,stage:stage.seq,provider:stage.provider,model:stage.model});
     }
     return this.getJob(id);
   }
@@ -109,13 +115,13 @@ export class QueueEngine {
   resume(id){const j=this._job(id);if(j.status!=='paused')throw new Error('仅暂停中的任务可继续');this.db.prepare("UPDATE jobs SET status='running',updated_at=? WHERE id=?").run(now(),id);event(this.db,id,'resumed');return this._advance(id)}
   current(id){
     const {job,episode,stage}=this._getActive(id);
-    const prompt=stage&&episode&&stage.status==='waiting_web'?this.preparePrompt(id):null;
-    return {job:{id:job.id,title:job.title,status:job.status,totalEpisodes:job.total_episodes},episode:episode?.number??null,stage:stage?{id:stage.id,name:stage.name,provider:stage.provider,role:stage.role,status:stage.status,attempt:stage.attempt}:null,prompt};
+    const prompt=stage&&episode&&['waiting_web','ready_api'].includes(stage.status)?this.preparePrompt(id):null;
+    return {job:{id:job.id,title:job.title,status:job.status,totalEpisodes:job.total_episodes},episode:episode?.number??null,stage:stage?{id:stage.id,name:stage.name,provider:stage.provider,role:stage.role,status:stage.status,attempt:stage.attempt,mode:stage.mode,model:stage.model,last_error:stage.last_error}:null,prompt};
   }
   preparePrompt(id){
     const {job,episode,stage}=this._getActive(id);
     if(!episode||!stage)throw new Error('没有待交接阶段');
-    if(!['waiting_web','manual_required'].includes(stage.status))throw new Error('阶段状态暂不可交接');
+    if(!['waiting_web','manual_required','ready_api','api_generating'].includes(stage.status))throw new Error('阶段状态暂不可交接');
     const settings=JSON.parse(job.settings_json);
     const prior=this.db.prepare('SELECT * FROM episodes WHERE job_id=? AND number=?').get(id,episode.number-1);
     const prevContinuity=prior?JSON.parse(prior.continuity_json):{};
@@ -127,9 +133,32 @@ export class QueueEngine {
     if(prompt.length>400000)throw new Error('提示词过长，请人工分段，原文未被截断');
     return prompt;
   }
-  importReply(id,reply){
+  claimApi(id,stageId){
     const {job,episode,stage}=this._getActive(id);
-    if(job.status!=='running'||!episode||!stage||!['waiting_web','manual_required'].includes(stage.status))throw new Error('当前没有可导入的运行中网页阶段');
+    if(job.status!=='running'||!episode||stage?.id!==stageId||stage.mode!=='api'||stage.status!=='ready_api')return false;
+    const changed=this.db.prepare("UPDATE stages SET status='api_generating',attempt=attempt+1,updated_at=? WHERE id=? AND status='ready_api'").run(now(),stage.id);
+    if(changed.changes!==1)return false;
+    event(this.db,id,'api_started',{episode:episode.number,stage:stage.seq,model:stage.model});
+    return true;
+  }
+  failApi(id,stageId,error){
+    const {job,episode,stage}=this._getActive(id);
+    if(stage?.id!==stageId||stage.status!=='api_generating')return this.current(id);
+    const state=job.status==='paused'?'api_interrupted':'api_failed';
+    const message=String(error?.message||error||'API请求失败').slice(0,450);
+    this.db.prepare('UPDATE stages SET status=?,last_error=?,updated_at=? WHERE id=?').run(state,message,now(),stage.id);
+    event(this.db,id,'api_error',{episode:episode?.number,stage:stage.seq,state,message});
+    return this.current(id);
+  }
+  usage(id){
+    this._job(id);
+    return this.db.prepare('SELECT model,COUNT(*) AS calls,SUM(COALESCE(prompt_tokens,0)) AS input_tokens,SUM(COALESCE(completion_tokens,0)) AS output_tokens,SUM(COALESCE(total_tokens,0)) AS total_tokens FROM api_usages WHERE job_id=? GROUP BY model ORDER BY model').all(id);
+  }
+  importReply(id,reply,origin={kind:'web_manual'}){
+    const {job,episode,stage}=this._getActive(id);
+    const manual=origin.kind==='web_manual' && stage?.mode==='web_manual' && ['waiting_web','manual_required'].includes(stage.status);
+    const api=origin.kind==='api' && stage?.mode==='api' && stage.status==='api_generating' && origin.stageId===stage.id;
+    if(job.status!=='running'||!episode||!stage||!(manual||api))throw new Error('当前阶段不允许此方式提交回复');
     if(typeof reply!=='string')throw new Error('内容必须是文本');
     const options=JSON.parse(job.settings_json);
     const report=checkReply({text:reply,episodeNo:episode.number,minChars:options.minChars??20});
@@ -142,8 +171,13 @@ export class QueueEngine {
     try{
       this.db.prepare('INSERT INTO artifacts VALUES(?,?,?,?,?,?,?,?)').run(artifactId,episode.id,stage.id,version,file,hash,Buffer.byteLength(reply),time);
       this.db.prepare('INSERT INTO quality_reports VALUES(?,?,?,?,?)').run(randomUUID(),episode.id,stage.id,JSON.stringify(report),time);
-      this.db.prepare('UPDATE stages SET status=?,reply_artifact_id=?,prompt_hash=?,last_error=?,updated_at=? WHERE id=?').run(report.pass?'completed':'manual_required',artifactId,promptHash,report.pass?null:JSON.stringify(report.checks),time,stage.id);
-      event(this.db,id,'reply_imported',{episode:episode.number,stage:stage.seq,version,hash,pass:report.pass});
+      this.db.prepare('UPDATE stages SET status=?,reply_artifact_id=?,prompt_hash=?,last_error=?,updated_at=? WHERE id=?').run(report.pass?'completed':api?'api_failed':'manual_required',artifactId,promptHash,report.pass?null:JSON.stringify(report.checks),time,stage.id);
+      if(api){
+        const u=origin.usage||{};
+        const count=n=>Number.isSafeInteger(n)&&n>=0?n:null;
+        this.db.prepare('INSERT INTO api_usages VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),id,episode.id,stage.id,stage.model,count(u.prompt_tokens),count(u.completion_tokens),count(u.total_tokens),time);
+      }
+      event(this.db,id,'reply_imported',{episode:episode.number,stage:stage.seq,version,hash,pass:report.pass,source:api?'api':'web_manual'});
       this.db.exec('COMMIT');
     }catch(e){this.db.exec('ROLLBACK');throw e}
     if(report.pass)this._advance(id);
@@ -165,8 +199,8 @@ export class QueueEngine {
     const result=this._advance(id);
     return {checkpoint,current:this.current(id),job:result};
   }
-  retryStage(id){const {job,episode,stage}=this._getActive(id);if(job.status!=='running'||!stage||!['manual_required','waiting_web'].includes(stage.status))throw new Error('当前状态不能重试');
-    this.db.prepare("UPDATE stages SET status='waiting_web',attempt=attempt+1,last_error=NULL,updated_at=? WHERE id=?").run(now(),stage.id);
+  retryStage(id){const {job,episode,stage}=this._getActive(id);if(job.status!=='running'||!stage||!['manual_required','waiting_web','api_failed','api_interrupted'].includes(stage.status))throw new Error('当前状态不能重试');
+    this.db.prepare('UPDATE stages SET status=?,attempt=attempt+1,last_error=NULL,updated_at=? WHERE id=?').run(stage.mode==='api'?'ready_api':'waiting_web',now(),stage.id);
     event(this.db,id,'stage_retry',{episode:episode.number,stage:stage.seq});return this.current(id)}
   events(id,limit=300){this._job(id);return this.db.prepare('SELECT * FROM queue_events WHERE job_id=? ORDER BY id DESC LIMIT ?').all(id,Math.min(Math.max(limit,1),1000))}
   exportCompleted(id){const job=this._job(id);const eps=this.db.prepare("SELECT * FROM episodes WHERE job_id=? AND status='completed' ORDER BY number").all(id);const parts=[];

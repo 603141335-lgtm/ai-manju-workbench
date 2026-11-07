@@ -1,7 +1,7 @@
 {
   "name": "multi-ai-chat-desktop-v61-queue-core",
   "private": true,
-  "version": "6.1.0-wq-a.2",
+  "version": "6.1.0-wq-b.1",
   "type": "module",
   "main": "desktop/main.cjs",
   "engines": {
@@ -39,7 +39,7 @@
           ]
         }
       ],
-      "artifactName": "Multi-AI-Chat-Desktop-v6.1-WQ-A-${version}-Setup.${ext}"
+      "artifactName": "Multi-AI-Chat-Desktop-v6.1-WQ-B-${version}-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -47,6 +47,6 @@
       "createDesktopShortcut": true
     }
   },
-  "description": "中文多模型逐集任务队列测试原型，官网会员人工交接",
+  "description": "30集真实API接力与会员网页人工交接，含后台托盘、恢复和用量统计",
   "author": "Multi-AI Chat Desktop community prototype"
 }
