@@ -1,5 +1,5 @@
-appId: com.manju.doubao.creativehub
-productName: 豆包创作舱
+appId: com.manju.workbench.desktop
+productName: AI漫剧素材工作台
 directories:
   output: ../dist-doubao
 files:
