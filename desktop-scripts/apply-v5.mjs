@@ -12,6 +12,25 @@ function patch(rel,from,to){
  staged.set(rel,s.replace(from,to));
 }
 patch('src-tauri/tauri.conf.json','"version": "4.0.2"','"version": "5.0.0"');
+// New Chinese chat UI is the entry point. Keep original App mounted for
+// its bridge subscriptions and settings, and hide restored native panes first.
+patch('src/App.tsx',
+ '  const [unifiedChatOpen,setUnifiedChatOpen]=useState(false);',
+ `  const [unifiedChatOpen,setUnifiedChatOpen]=useState(true);
+  const [unifiedReady,setUnifiedReady]=useState(false);
+  useEffect(()=>{
+    if(!unifiedChatOpen){setUnifiedReady(false);return;}
+    if(!initialRestoreComplete)return;
+    let active=true;
+    void Promise.allSettled((['chatgpt','claude','gemini','grok','meta'] as AIProvider[])
+      .map(provider=>host.provider.hide(provider)))
+      .then(()=>{if(active)setUnifiedReady(true);});
+    return()=>{active=false;};
+  },[unifiedChatOpen,initialRestoreComplete]);`);
+patch('src/App.tsx',
+ '  if (unifiedChatOpen) return <UnifiedChatWorkspace onClose={()=>{',
+ '  if (unifiedChatOpen && unifiedReady) return <UnifiedChatWorkspace onClose={()=>{');
+
 patch('src-tauri/src/workbench_v3.rs',
  '["normal","parallel","relay","debate","consult","coding"].contains',
  '["normal","parallel","relay","debate","consult","coding","roundtable","brainstorm"].contains');
