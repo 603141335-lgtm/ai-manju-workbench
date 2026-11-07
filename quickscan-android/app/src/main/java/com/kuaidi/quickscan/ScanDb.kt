@@ -58,6 +58,21 @@ class ScanDb(context:Context):SQLiteOpenHelper(context,"quickscan_offline.db",nu
     }
   }
 
+  /** Photos captured when a label could not be decoded. Across all batches. */
+  fun pendingPhotos(limit:Int=50):List<ScanRow> = buildList {
+    readableDatabase.rawQuery(
+      "SELECT id,batch_id,code,time,photo,note FROM scans "+
+        "WHERE code='' AND photo<>'' ORDER BY time DESC,id DESC LIMIT "+limit.coerceIn(1,200),
+      null
+    ).use{c->
+      while(c.moveToNext())add(ScanRow(c.getLong(0),c.getLong(1),c.getString(2),c.getLong(3),c.getString(4),c.getString(5)))
+    }
+  }
+
+  fun pendingPhotoCount():Int=readableDatabase.rawQuery(
+    "SELECT COUNT(*) FROM scans WHERE code='' AND photo<>''",null
+  ).use{c->if(c.moveToFirst())c.getInt(0) else 0}
+
   fun find(id:Long):ScanRow?=readableDatabase.rawQuery(
     "SELECT id,batch_id,code,time,photo,note FROM scans WHERE id=?",arrayOf(id.toString())
   ).use{c->
