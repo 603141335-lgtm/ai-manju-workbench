@@ -12,7 +12,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: quickscan-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-apk:
@@ -42,10 +46,18 @@ jobs:
         run: |
           test -s quickscan-android/app/build/outputs/apk/debug/app-debug.apk
           sha256sum quickscan-android/app/build/outputs/apk/debug/app-debug.apk
-      - name: Upload APK for download
-        uses: actions/upload-artifact@v4
-        with:
-          name: QuickScan-v0150-Android-APK
-          path: quickscan-android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 30
+      # GitHub Actions artifact storage is currently at its quota. Release
+      # assets use GitHub Releases rather than Actions artifact storage.
+      - name: Publish v0.15.0 APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG=quickscan-v0.15.0-preview
+          APK=quickscan-android/app/build/outputs/apk/debug/app-debug.apk
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "快递快扫 v0.15.0 测试版" \
+            --notes "失败件照片集中补录、倾斜条码识别改进。注意：调试签名，仅供测试；旧版数据请勿通过卸载清理。"
+          gh release upload "$TAG" "$APK#QuickScan_v0.15.0_debug.apk" --clobber
+          gh release view "$TAG" --json url,assets
