@@ -56,7 +56,7 @@
        status:s.status==='已完成'?'done':s.status==='需重做'?'redo':'pending'
      }))
    }));
-   return {version:2,title:project.title||'漫剧项目',episodes,assetFolder:'',chosenPaths:{},
+   return {version:2,cloudAuthoritative:true,title:project.title||'漫剧项目',episodes,assetFolder:'',chosenPaths:{},
       activeEpisodeId:episodes[0]&&episodes[0].id||null,activeSegmentId:episodes[0]&&episodes[0].segments[0]&&episodes[0].segments[0].id||null};
  }
  async function download(){
