@@ -41,6 +41,8 @@ export function makeStepPrompt(task:string,steps:readonly ApiStep[],results:read
 export function DomesticModelPanel(){
   const [expanded,setExpanded]=useState(false);
   const [webSlot,setWebSlot]=useState<number>(()=>{
+    // Server-side render and static UI tests have no browser storage.
+    if(typeof window==='undefined'||typeof localStorage==='undefined')return 1;
     const saved=Number(localStorage.getItem('multi_ai_web_slot_v40')??1);
     return Number.isInteger(saved)&&saved>=1&&saved<=10 ? saved : 1;
   });
