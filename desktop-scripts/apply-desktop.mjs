@@ -47,8 +47,6 @@ once('src/ui/settingsModel.ts',
 once('src/ui/settingsModel.ts',
   "return value === 'light' || value === 'dark' || value === 'ai-sister' ? value : fallback;",
   "return value === 'light' || value === 'dark' || value === 'slate' || value === 'ai-sister' ? value : fallback;");
-once('src/ui/settingsModel.ts',"language: 'system',","language: 'zh-CN',");
-once('src/ui/settingsModel.ts',"theme: 'light',","theme: 'slate',");
 once('src/ui/SettingsModal.tsx',
   "                  <option value=\"ai-sister\">{t('settings.themeAiSister')}</option>",
   "                  <option value=\"slate\">专业蓝灰</option>\n                  <option value=\"ai-sister\">{t('settings.themeAiSister')}</option>");
