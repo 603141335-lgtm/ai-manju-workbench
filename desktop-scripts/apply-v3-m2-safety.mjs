@@ -17,6 +17,13 @@ patch(h,
    return;
   }`);
 patch(h,
+ "  if(task.length>150000){setNotice('文本超限：请分段处理，不会静默截断');return;}",
+ `  if(task.length>150000){setNotice('文本超限：请分段处理，不会静默截断');return;}
+  if(chosen.mode==='relay' && plan){
+   const issues=validatePlan(plan,inRoom);
+   if(issues.length){setNotice('本群的接力步骤配置已失效，请先打开编辑器修复：'+issues.join('；'));return;}
+  }`);
+patch(h,
  "  setDraft('');\n  try{\n   await saveMessage",
  `  const estimatedCalls=chosen.mode==='relay' && plan && validatePlan(plan,inRoom).length===0
     ?plan.steps.filter(step=>members.some(m=>m.id===step.memberId))
