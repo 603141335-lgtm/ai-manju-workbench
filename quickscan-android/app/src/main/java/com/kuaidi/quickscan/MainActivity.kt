@@ -94,6 +94,8 @@ class MainActivity:ComponentActivity(){
   private var repairTarget:ScanRow?=null
   private var pendingRepair:ScanRow?=null
   private var flashlight=false
+  private var lastVisibleBarcodeAt=0L
+  private var lastRefocusAt=0L
   private var voiceEnabled=true
   private var vibrationEnabled=true
   private var voice:TextToSpeech?=null
@@ -686,6 +688,8 @@ class MainActivity:ComponentActivity(){
     if(activeBatch==0L){selectBatch{showScan()};return}
     currentPage="scan"
     stopCamera()
+    lastVisibleBarcodeAt=SystemClock.elapsedRealtime()
+    lastRefocusAt=0L
     repairTarget=repair
     getPreferences(MODE_PRIVATE).edit().putLong("lastScanBatch",activeBatch).apply()
     val windowRoot=FrameLayout(this).apply{setBackgroundColor(Color.WHITE)}
@@ -917,6 +921,13 @@ class MainActivity:ComponentActivity(){
     task.addOnSuccessListener{codes->
       if(previewView===view && hasWindowFocus() && !captureBusy.get()){
         val selected=strictGate.select(codes,w,h)
+        // Try a bounded center refocus if the camera has not seen a readable
+        // barcode for a while. Avoid refocusing during normal rapid scanning.
+        if(selected!=null) lastVisibleBarcodeAt=now
+        else if(now-lastVisibleBarcodeAt>2200L && now-lastRefocusAt>4500L) {
+          lastRefocusAt=now
+          focusCamera(view,view.width/2f,view.height/2f)
+        }
         scanOverlay?.updateTarget(selected,w,h)
         val result=strictGate.observeSelected(selected,w,h,now)
         if(result!=null)onStableCandidate(result)
