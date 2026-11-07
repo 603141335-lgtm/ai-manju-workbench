@@ -1,0 +1,61 @@
+name: Archive only latest software sources
+on:
+  push:
+    branches:
+      - deliver/latest-only-20261107
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Collect source from latest project branches
+        shell: bash
+        run: |
+          import subprocess
+          import zipfile
+          import json
+          from pathlib import Path
+          
+          SPECS = [
+           ("AI_Manju_Document_Workbench_v4.5", "feature/doc-v4-5-collapse", ["app/", "docs/", "launcher/", "tests/", ".github/workflows/"]),
+           ("Multi_AI_Chat_Workbench_v3.0_M2", "ai-chat-desktop-v3.0-m2", ["desktop-overlay/", "desktop-scripts/", ".github/workflows/"]),
+           ("QuickScan_Android_v0.14.1", "quickscan-v0141-repair", ["quickscan-android/", ".github/workflows/"]),
+           ("Manju_Mobile_Workbench_v2.3", "feature/invite-password-v23", ["mobile-android/", "docs/", ".github/workflows/"]),
+           ("Android_MultiDesk_v1.0", "android-multi-instance-workbench", ["android-multi-desktop/", ".github/workflows/"]),
+          ]
+          OUT = Path("latest-software-source.zip")
+          manifest = ["# 最新版源码汇总 (2026-11-07)", "", "仅保留每个项目一个当前已确认最新版本。不包含 cookie、密钥、账号数据或旧版本独立快照。", ""]
+          total=0
+          with zipfile.ZipFile(OUT,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6,allowZip64=True) as z:
+           for dest,branch,folders in SPECS:
+            remote = "refs/remotes/origin/"+branch
+            subprocess.run(["git","fetch","--no-tags","--depth=1","origin","refs/heads/"+branch+":"+remote],check=True,stdout=subprocess.DEVNULL)
+            sha=subprocess.check_output(["git","rev-parse",remote],text=True).strip()
+            paths=subprocess.check_output(["git","ls-tree","-r","--name-only",remote],text=True).splitlines()
+            count=0
+            for p in paths:
+             if not any(p.startswith(prefix) for prefix in folders): continue
+             if p.endswith((".exe",".apk",".zip",".p12",".keystore",".jks",".env")) or any(s in p.lower() for s in ["node_modules/","/build/","/dist/","__pycache__/","/cookies","/secrets"]): continue
+             data=subprocess.check_output(["git","show",remote+":"+p])
+             z.writestr(dest+"/"+p,data)
+             count+=1
+            manifest.append("- "+dest+" — 分支 \x60"+branch+"\x60，commit \x60"+sha[:12]+"\x60，源码文件 "+str(count)+" 个")
+            total+=count
+           manifest.extend(["", "豆包创作舱 v0.5 由本地最新源码工程包另外合并，避免以 GitHub 的旧名安装包冒充最新版。", "所有源码的原仓库及旧分支没有被删除。"])
+           z.writestr("LATEST_SOURCES_MANIFEST.md","\n".join(manifest))
+          print("SOURCES",total,"ZIP_BYTES",OUT.stat().st_size)
+          
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Latest-Only-Software-Sources-20261107
+          path: latest-software-source.zip
+          retention-days: 30
