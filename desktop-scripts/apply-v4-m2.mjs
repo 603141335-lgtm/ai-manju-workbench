@@ -12,6 +12,8 @@ function patch(file,from,to){
   staged.set(file,content.replace(from,to));
 }
 const commands=['domestic_dock_open','domestic_dock_bounds','domestic_dock_hide','domestic_dock_close'];
+// Only change package version, never the app identifier or browser-profile paths.
+patch('src-tauri/tauri.conf.json','"version": "0.0.0"','"version": "4.0.2"');
 patch('src-tauri/src/lib.rs',
   '            domestic::domestic_api_chat,',
   ['            domestic::domestic_api_chat,',...commands.map(c=>'            domestic::'+c+',')].join('\n'));
