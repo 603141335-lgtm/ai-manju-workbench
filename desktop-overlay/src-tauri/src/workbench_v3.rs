@@ -114,7 +114,7 @@ pub fn wb_create(app:AppHandle,webview:tauri::Webview,id:String,title:String,kin
 #[tauri::command]
 pub fn wb_set_conversation(app:AppHandle,webview:tauri::Webview,id:String,title:String,mode:String)->Result<(),String>{
  secure(&webview)?;
- if !self::id(&id)||!checked(&title,160)||!["normal","parallel","relay","debate","consult","coding"].contains(&mode.as_str()){return Err("会话标题或模式无效".into());}
+ if !self::id(&id)||!checked(&title,160)||!["normal","parallel","relay","debate","consult","coding","roundtable","brainstorm"].contains(&mode.as_str()){return Err("会话标题或模式无效".into());}
  let c=db(&app)?;
  if c.execute("UPDATE conversations SET title=?1,mode=?2,updated_at=?3 WHERE id=?4",params![title,mode,now(),id]).map_err(error)?!=1{return Err("会话不存在".into());}Ok(())
 }
@@ -151,8 +151,8 @@ pub fn wb_message(app:AppHandle,webview:tauri::Webview,message:MessageInput)->Re
  if !id(&message.id)||!id(&message.conversation_id)||message.body.len()>500000
  ||!["user","ai","system"].contains(&message.sender.as_str())
  ||!["completed","failed","waiting_manual","unknown_completion"].contains(&message.status.as_str())
- ||!["user","official_api","user_imported_web","system"].contains(&message.source.as_str()){return Err("消息字段无效".into());}
- if message.sender=="ai" && (!message.member_id.as_deref().is_some_and(id)||!["official_api","user_imported_web"].contains(&message.source.as_str())){return Err("AI 消息必须标明真实提供商与来源".into());}
+ ||!["user","official_api","user_imported_web","official_web","system"].contains(&message.source.as_str()){return Err("消息字段无效".into());}
+ if message.sender=="ai" && (!message.member_id.as_deref().is_some_and(id)||!["official_api","user_imported_web","official_web"].contains(&message.source.as_str())){return Err("AI 消息必须标明真实提供商与来源".into());}
  if message.sender=="user" && message.source!="user"{return Err("用户消息来源无效".into());}
  let mut c=db(&app)?;let tx=c.transaction().map_err(error)?;
  tx.execute("INSERT INTO messages(id,conversation_id,member_id,sender,status,source,body,run_id,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",params![message.id,message.conversation_id,message.member_id,message.sender,message.status,message.source,message.body,message.run_id,now()]).map_err(error)?;
