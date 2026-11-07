@@ -47,6 +47,14 @@ public class StudioActivity extends Activity {
         getWindow().setNavigationBarColor(Color.rgb(255,255,255));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         web=new WebView(this);web.setBackgroundColor(Color.rgb(247,249,253));
+        // Android 15 enforces edge-to-edge for targetSdk 35; reserve actual status bar insets.
+        if(Build.VERSION.SDK_INT>=35){
+            web.setOnApplyWindowInsetsListener((v,insets)->{
+                int top=insets.getInsets(WindowInsets.Type.statusBars()).top;
+                if(v.getPaddingTop()!=top)v.setPadding(0,top,0,0);
+                return insets;
+            });
+        }
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
         web.getSettings().setAllowFileAccess(false);
@@ -214,7 +222,7 @@ public class StudioActivity extends Activity {
         return new int[]{copied,skipped,failed};
     }
     public class Bridge {
-        @JavascriptInterface public String version(){return "2.1.0";}
+        @JavascriptInterface public String version(){return "2.2.0";}
         @JavascriptInterface public void restorePrompts(String source){worker.execute(()->{try(OutputStream out=new FileOutputStream(promptsFile())){out.write(source.getBytes(StandardCharsets.UTF_8));}catch(Exception e){emit("error","恢复原始提示词失败："+e.getMessage());}});}
         @JavascriptInterface public String getPrompts(){
             try(InputStream in=new FileInputStream(promptsFile())){return readAll(in,25*1024*1024);}
