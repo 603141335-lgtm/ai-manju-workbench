@@ -1,0 +1,100 @@
+name: Build Multi-AI Chat Desktop v2.4 (Windows + Domestic AI)
+on:
+  push:
+    branches:
+      - ai-chat-desktop-v2.4
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-desktop:
+    name: Windows desktop - native login preserved
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout custom desktop overlay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout upstream native desktop source (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: TED-H-com/multi-ai-chat-desktop
+          ref: 2b87d509b8242c371d492d43aef08cc679a0dddc
+          path: upstream
+          persist-credentials: false
+
+      - name: Apply simplified Chinese, theme and custom relay
+        shell: pwsh
+        run: |
+          node desktop-scripts/apply-desktop.mjs upstream desktop-overlay
+          if ($LASTEXITCODE -ne 0) { throw "Patch failed" }
+          node desktop-scripts/fix-locale.mjs upstream
+          if ($LASTEXITCODE -ne 0) { throw "Locale patch failed" }
+
+      - name: Update upstream locale tests for additional language
+        shell: pwsh
+        run: node desktop-scripts/verify-compat.mjs upstream
+
+      - name: Apply domestic AI native webview and API module
+        shell: pwsh
+        run: |
+          node desktop-scripts/apply-domestic.mjs upstream desktop-overlay
+          if ($LASTEXITCODE -ne 0) { throw "Domestic patch failed" }
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: upstream/pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: upstream
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify app, TypeScript, lint, native bridge and tests
+        working-directory: upstream
+        run: pnpm verify
+
+      - name: Verify Rust library tests
+        working-directory: upstream
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Build native Windows executable and NSIS installer
+        id: native_build
+        continue-on-error: true
+        working-directory: upstream
+        run: pnpm tauri build
+
+      - name: Check native executable was really generated
+        shell: pwsh
+        run: |
+          $exe = "upstream/src-tauri/target/release/multi-ai-chat-desktop.exe"
+          if (!(Test-Path $exe)) { throw "Native EXE not generated. See build step logs." }
+          Write-Host "Native EXE exists: $exe"
+
+      - name: Collect Windows install and portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Multi-AI-Chat-Desktop-v2.4-Windows
+          path: |
+            upstream/src-tauri/target/release/multi-ai-chat-desktop.exe
+            upstream/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Report installer bundling status
+        if: steps.native_build.outcome == 'failure'
+        run: echo "Native EXE was compiled, but NSIS installer packaging failed. Download standalone EXE from workflow artifact."
