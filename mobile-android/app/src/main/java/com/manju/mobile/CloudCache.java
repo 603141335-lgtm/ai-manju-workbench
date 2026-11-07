@@ -3,6 +3,7 @@ package com.manju.mobile;
 import android.net.Uri;
 import java.io.*;
 import java.net.*;
+import java.security.MessageDigest;
 import java.util.*;
 import java.util.regex.*;
 
@@ -16,6 +17,11 @@ public final class CloudCache {
         if(f.isDirectory()){File[] kids=f.listFiles();if(kids!=null)for(File c:kids)wipe(c);}
         if(f.exists())f.delete();
     }
+    private static String sha256(File file)throws Exception{
+        MessageDigest digest=MessageDigest.getInstance("SHA-256");
+        try(InputStream in=new FileInputStream(file)){byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)digest.update(buf,0,n);}
+        StringBuilder b=new StringBuilder();for(byte x:digest.digest())b.append(String.format(Locale.ROOT,"%02x",x&255));return b.toString();
+    }
     public static File fetch(File filesDir,String uid,String project,String code,String digest,String mime,String signedUrl)throws Exception{
         if(!validUid(uid)||!validProject(project)||!code.matches("(AG|BL|[ABCDE])[0-9]{2,4}(-[0-9]{2,3})?")||!digest.matches("[a-fA-F0-9]{64}"))throw new IOException("云端图片参数无效");
         URL endpoint=new URL(signedUrl);
@@ -24,10 +30,10 @@ public final class CloudCache {
         File dir=new File(new File(base(filesDir),uid),project);
         if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException("无法创建私有缓存目录");
         File target=new File(dir,code+"_"+digest.substring(0,20)+ext);
-        if(target.exists())return target;
+        if(target.exists()&&target.length()>0){if(sha256(target).equalsIgnoreCase(digest))return target;target.delete();}
         File partial=new File(dir,target.getName()+".part");
         HttpURLConnection http=(HttpURLConnection)endpoint.openConnection();
-        http.setConnectTimeout(16000);http.setReadTimeout(60000);http.setInstanceFollowRedirects(true);
+        http.setConnectTimeout(16000);http.setReadTimeout(60000);http.setInstanceFollowRedirects(false);
         try {
             if(http.getResponseCode()!=200)throw new IOException("图片下载失败 HTTP "+http.getResponseCode());
             try(InputStream in=http.getInputStream();FileOutputStream out=new FileOutputStream(partial)){
@@ -35,6 +41,7 @@ public final class CloudCache {
                 while((n=in.read(buffer))!=-1){total+=n;if(total>20L*1024*1024)throw new IOException("图片超过20MB");out.write(buffer,0,n);}
                 out.getFD().sync();
             }
+            if(!sha256(partial).equalsIgnoreCase(digest))throw new IOException("参考图片校验失败，已拒绝保存");
             if(!partial.renameTo(target))throw new IOException("缓存文件写入失败");
             return target;
         }finally {http.disconnect();partial.delete();}
