@@ -117,6 +117,12 @@ replace(hook,
  "    const prompt=buildRelayPrompt(state.task,member,role(member.id),state.outputs);",
  "    const step=state.steps?.[state.nextIndex];\n    const effectiveRole=step?.role||role(member.id);\n    const prompt=step?stepPrompt(state.task,step,state.outputs):buildRelayPrompt(state.task,member,effectiveRole,state.outputs);");
 replace(hook,
+ "    await persist(id,cid,{...state,status:'running',pendingPrompt:undefined});",
+ "    await persist(id,cid,{...state,status:'running',pendingPrompt:prompt});");
+replace(hook,
+ "    state={...state,nextIndex:state.nextIndex+1,outputs:[...state.outputs,output],status:'running'};",
+ "    state={...state,nextIndex:state.nextIndex+1,outputs:[...state.outputs,output],status:'running',pendingPrompt:undefined};");
+replace(hook,
  "    const output:StepOutput={memberId:member.id,provider:member.provider,role:role(member.id),body:reply,source:'official_api'};",
  "    const output:StepOutput={memberId:member.id,provider:member.provider,role:effectiveRole,body:reply,source:'official_api'};");
 replace(hook,
@@ -169,7 +175,7 @@ replace(ui,
  `  {modal==='plan'&&<WorkflowPlanEditor current={w.plan} members={w.inRoom} roles={w.role} busy={w.busy}
     onSave={w.savePlan} onClose={()=>setModal(null)}/>}
   {modal&&modal!=='plan'&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4">`);
-const add=['src/workbench_v3/plan.ts','src/ui/WorkflowPlanEditor.tsx'];
+const add=['src/workbench_v3/plan.ts','src/ui/WorkflowPlanEditor.tsx','src/workbench_v3/__tests__/plan.test.ts'];
 for(const rel of add){
  const src=path.join(overlay,rel);
  if(!fs.existsSync(src)||fs.existsSync(path.join(root,rel)))throw Error('新文件缺失或已存在：'+rel);
