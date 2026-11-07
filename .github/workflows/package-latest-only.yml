@@ -19,6 +19,7 @@ jobs:
       - name: Collect source from latest project branches
         shell: bash
         run: |
+          python - <<'PY'
           import subprocess
           import zipfile
           import json
@@ -53,6 +54,7 @@ jobs:
            z.writestr("LATEST_SOURCES_MANIFEST.md","\n".join(manifest))
           print("SOURCES",total,"ZIP_BYTES",OUT.stat().st_size)
           
+          PY
       - name: Upload source ZIP
         uses: actions/upload-artifact@v4
         with:
