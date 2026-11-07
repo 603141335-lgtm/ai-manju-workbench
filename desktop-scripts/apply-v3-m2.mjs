@@ -159,9 +159,6 @@ replace(ui,
  "      {room.kind==='group'&&<button onClick={editGroup} className=\"rounded-lg border px-3 py-2 text-xs\">群成员</button>}",
  "      {room.kind==='group'&&<button onClick={editGroup} className=\"rounded-lg border px-3 py-2 text-xs\">群成员</button>}\n      {room.mode==='relay'&&<button onClick={()=>setModal('plan')} className=\"rounded-lg bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700\">编辑接力流程</button>}");
 replace(ui,
- "     {w.run&&w.run.status!=='completed'&&<div className=",
- "     {w.run&&w.run.status!=='completed'&&<div className=");
-replace(ui,
  "      {w.run.status==='unknown_completion'&&<p className=\"mt-2\">结果未知：请求可能已经计费，为避免重复计费不会自动重试。请先检查提供商的真实调用记录。</p>}",
  "      {w.run.status==='unknown_completion'&&<p className=\"mt-2\">结果未知：请求可能已经计费。不会自动重试。请在官网核对真实结果，若已完成可粘贴并确认继续。</p>}");
 replace(ui,
