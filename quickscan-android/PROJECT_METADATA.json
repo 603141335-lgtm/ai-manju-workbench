@@ -1,9 +1,9 @@
 {
   "project": "快递快扫",
-  "currentVersion": "0.14.1",
-  "lastArchived": "2026-11-06",
+  "currentVersion": "0.15.0",
+  "lastArchived": "2026-11-07",
   "githubRepo": "603141335-lgtm/ai-manju-workbench",
-  "activeBranch": "quickscan-v0141-repair",
+  "activeBranch": "quickscan-v0150-fastqueue",
   "codeDirectory": "quickscan-android",
   "packageName": "com.kuaidi.quickscan.v0141",
   "buildSystem": "Gradle 8.9 / Android SDK 35 / Kotlin",
@@ -14,7 +14,7 @@
     "apkName": "QuickScan-APK-v0.8",
     "type": "debug-signed"
   },
-  "upgradeNotes": "v0.14.1: targeted photo repair pauses scanning, protects camera callbacks across pages, and adds tap-to-focus and quick resume. Standalone debug package coexists with v0.13. Records and photos stay in their original app.",
+  "upgradeNotes": "v0.15.0: central failed-photo inbox across batches with direct number entry, camera tilt/rotation geometry gate fix and throttled refocus. Keeps com.kuaidi.quickscan.v0141; matching signing certificate still required for in-place APK upgrade.",
   "features": [
     "1D barcode-only",
     "continuous scan",
@@ -43,6 +43,10 @@
     "immediate transition to different physical barcode",
     "highlight selected barcode rectangle and value",
     "floating success/duplicate cards",
-    "adjustable TTS pitch and rate, light/calm/short/beep options"
+    "adjustable TTS pitch and rate, light/calm/short/beep options",
+    "pending unreadable-waybill photo inbox across batches",
+    "direct barcode entry from saved photo thumbnails",
+    "angle-independent barcode geometry check using ML Kit corner points",
+    "throttled autofocus retry after no barcode recognition"
   ]
 }
