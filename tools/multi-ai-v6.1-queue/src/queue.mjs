@@ -158,7 +158,8 @@ export class QueueEngine {
     const {job,episode,stage}=this._getActive(id);
     const manual=origin.kind==='web_manual' && stage?.mode==='web_manual' && ['waiting_web','manual_required'].includes(stage.status);
     const api=origin.kind==='api' && stage?.mode==='api' && stage.status==='api_generating' && origin.stageId===stage.id;
-    if(job.status!=='running'||!episode||!stage||!(manual||api))throw new Error('当前阶段不允许此方式提交回复');
+    if(job.status!=='running'||!episode||!stage)throw new Error('当前没有可导入的运行中网页阶段');
+    if(!(manual||api))throw new Error('当前阶段不允许此方式提交回复');
     if(typeof reply!=='string')throw new Error('内容必须是文本');
     const options=JSON.parse(job.settings_json);
     const report=checkReply({text:reply,episodeNo:episode.number,minChars:options.minChars??20});
