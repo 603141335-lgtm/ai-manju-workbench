@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET"/>
   <queries><package android:name="com.larus.nova"/></queries>
   <application android:label="漫剧随身工作台" android:icon="@drawable/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true">
     <activity android:name=".StudioActivity" android:exported="true">
