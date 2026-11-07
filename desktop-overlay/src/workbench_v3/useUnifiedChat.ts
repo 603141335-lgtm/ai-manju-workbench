@@ -172,6 +172,10 @@ export function useUnifiedChat(){
    const check=await preflightGraph(graph,roleAssignments);
    if(!check.ok){setNotice('原版工作流准备失败：请先确认参与者均已登录，且同时使用不同的可用席位。'+check.unavailable.join('、'));return;}
    const received:{memberId:string;provider:string;body:string}[]=[];
+   const persisted:Promise<void>[]=[];
+   // Graphs may have multiple steps per provider (Coding, Roundtable, Brainstorm).
+   // Every genuine response is persisted as soon as it arrives.
+   const expectedSteps=Object.values(graph.nodes).filter(node=>node.kind==='step').length;
    // Use upstream's trusted RESPONSE_DONE bus events, and record only genuine completions.
    const off=onBridgeMessage(message=>{
      if(message.action!=='RESPONSE_DONE'||(message.transport!=='pull'&&message.transport!=='local'))return;
@@ -182,8 +186,11 @@ export function useUnifiedChat(){
        payload&&typeof payload==='object'&&typeof payload.text==='string'?payload.text:'';
      if(!body.trim()||providerResponseError(provider,body))return;
      const member=distinct.find(m=>m.provider===provider);
-     if(member)received.push({memberId:member.id,provider,body});
-     setLive('已收到 '+received.length+' 个真实网页工作流步骤…');
+     if(member){
+       received.push({memberId:member.id,provider,body});
+       persisted.push(saveMessage(cid,'ai',body,'official_web',member.id,id));
+     }
+     setLive('已收到 '+received.length+' / '+expectedSteps+' 个真实网页工作流步骤…');
    });
    setBusy(true);setLive('原版 '+mode+' 工作流已启动…');
    try{
@@ -196,15 +203,16 @@ export function useUnifiedChat(){
      });
      if(!result.ok){await persist(id,cid,{task,memberIds:distinct.map(m=>m.id),nextIndex:0,outputs:[],status:'failed'});
        setNotice('原版工作流未满足预检要求，未开始发送');return;}
-     const outputs:StepOutput[]=[];
-     for(const m of received){
-       await saveMessage(cid,'ai',m.body,'official_web',m.memberId,id);
-       outputs.push({memberId:m.memberId,provider:m.provider as StepOutput['provider'],role:role(m.memberId),body:m.body,source:'official_web'});
-     }
-     const allDone=received.length>=roleKeys.length;
+     const saved=await Promise.allSettled(persisted);
+     const storageFailed=saved.some(x=>x.status==='rejected');
+     const outputs:StepOutput[]=received.map(m=>({
+       memberId:m.memberId,provider:m.provider as StepOutput['provider'],role:role(m.memberId),body:m.body,source:'official_web'
+     }));
+     const allDone=!storageFailed&&expectedSteps>0&&received.length>=expectedSteps;
      await persist(id,cid,{task,memberIds:distinct.map(m=>m.id),
        nextIndex:allDone?distinct.length:0,outputs,status:allDone?'completed':'unknown_completion'});
-     setNotice(allDone?'原版工作流完成，真实回复已回填':'部分步骤未返回真实回复；请查看各平台官网，不会假装成功');
+     setNotice(allDone?'原版工作流完成，真实回复已回填':
+       '真实步骤 '+received.length+' / '+expectedSteps+'，或保存失败。请检查官网和本地历史，不会假装成功');
    }catch(e){
      await persist(id,cid,{task,memberIds:distinct.map(m=>m.id),nextIndex:0,outputs:[],status:'unknown_completion'}).catch(()=>{});
      setNotice('原版工作流中断，已保留状态：'+String(e));
