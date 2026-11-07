@@ -1,9 +1,13 @@
 import {useEffect,useRef,useState} from 'react';
 import {host} from '../host';
+import {DomesticBrowserDock,type DomesticWebProvider} from './DomesticBrowserDock';
 import {useUnifiedChat} from '../workbench_v3/useUnifiedChat';
 import {API_PROVIDER_IDS,type Member,type ChatMode} from '../workbench_v3/logic';
 
 type Props={onClose:()=>void};
+function isDomesticProvider(value:string):value is DomesticWebProvider {
+ return value==='doubao'||value==='deepseek'||value==='kimi'||value==='qwen'||value==='yuanbao';
+}
 const modes:{id:ChatMode;title:string}[]=[
  {id:'normal',title:'普通聊天'},{id:'parallel',title:'同时回答'},{id:'relay',title:'顺序接力'},
  {id:'debate',title:'四方辩论（原版）'},{id:'consult',title:'多方咨询（原版）'},{id:'coding',title:'Coding（原版）'}
@@ -22,6 +26,7 @@ export function UnifiedChatWorkspace({onClose}:Props){
  const [editing,setEditing]=useState<Member|null>(null);
  const [showTools,setShowTools]=useState(false);
  const [busyUi,setBusyUi]=useState(false);
+ const [dock,setDock]=useState<{provider:DomesticWebProvider;slot:number}|null>(null);
  const inputRef=useRef<HTMLTextAreaElement>(null);
  const transcript=useRef<HTMLDivElement>(null);
  useEffect(()=>{transcript.current?.scrollTo({top:transcript.current.scrollHeight,behavior:'smooth'});},[w.messages.length,w.selected,w.run?.status]);
@@ -71,6 +76,8 @@ export function UnifiedChatWorkspace({onClose}:Props){
    <button title="聊天消息" className="w-full rounded-xl bg-white/15 p-2 text-xs">消息</button>
    <button title="新建群聊" onClick={()=>startCreate('group')} className="w-full rounded-xl p-2 text-xs hover:bg-white/10">建群</button>
    <button title="新建私聊" onClick={()=>startCreate('private')} className="w-full rounded-xl p-2 text-xs hover:bg-white/10">好友</button>
+   <button title="国内 AI 真实会员官网" onClick={()=>setDock({provider:'doubao',slot:1})}
+    className="w-full rounded-xl p-2 text-xs hover:bg-white/10">官网</button>
    <button title="备份本地数据库" onClick={()=>void w.backup().catch(e=>w.setNotice(String(e)))} className="w-full rounded-xl p-2 text-xs hover:bg-white/10">备份</button>
    <div className="flex-1"/>
    <button title="返回原有会员网页及讨论模式" onClick={onClose} className="w-full rounded-xl bg-white/10 p-2 text-xs">原版</button>
@@ -143,8 +150,11 @@ export function UnifiedChatWorkspace({onClose}:Props){
        <b>需要 {pending?.name??'AI'} 的官网真实回复</b>
        <div className="flex flex-wrap gap-2">
         <button onClick={()=>void copy(pendingText)} className="rounded-lg bg-amber-200 px-3 py-2">复制完整任务</button>
-        {pending&&<button onClick={()=>{if(API_PROVIDER_IDS.has(pending.provider))void host.domestic.openMember(pending.provider).catch(e=>w.setNotice(String(e)));else w.setNotice('请返回原版，打开 '+pending.name+' 官网窗口');}}
-         className="rounded-lg border border-amber-300 px-3 py-2">打开官网</button>}
+        {pending&&<button onClick={()=>{
+          if(isDomesticProvider(pending.provider))setDock({provider:pending.provider,slot:1});
+          else w.setNotice('请返回原版，打开 '+pending.name+' 的官网页面');
+        }}
+         className="rounded-lg border border-amber-300 px-3 py-2">在工作台内打开官网</button>}
        </div>
        <details><summary className="cursor-pointer">查看本次完整交接文本</summary>
         <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-white p-2">{pendingText}</pre></details>
@@ -187,8 +197,11 @@ export function UnifiedChatWorkspace({onClose}:Props){
         onChange={e=>w.setKeys(v=>({...v,[m.provider]:e.target.value}))}
         placeholder="填写官网 API Key" className="mt-1 w-full rounded-lg border px-2 py-2 text-xs"/></label>}
      <div className="mt-2 flex items-center justify-between">
-      <button onClick={()=>{if(API_PROVIDER_IDS.has(m.provider))void host.domestic.openMember(m.provider).catch(e=>w.setNotice(String(e)));else w.setNotice('原版会员网页请返回原版使用');}}
-       className="rounded-lg border px-2 py-1 text-[11px]">官网窗口</button>
+      <button onClick={()=>{
+        if(isDomesticProvider(m.provider))setDock({provider:m.provider,slot:1});
+        else w.setNotice('原版会员网页请返回原版使用');
+      }}
+       className="rounded-lg border px-2 py-1 text-[11px]">打开真实官网</button>
       <span className="text-[10px] text-slate-500">{m.kind==='api'&&m.modelId&&w.keys[m.provider]?'可自动调用':'网页/待配置'}</span>
      </div>
     </div>)}
@@ -240,5 +253,9 @@ export function UnifiedChatWorkspace({onClose}:Props){
     </div>}
    </div>
   </div>}
+  {dock&&<DomesticBrowserDock provider={dock.provider} slot={dock.slot}
+    onSelect={provider=>setDock(v=>v?{...v,provider}:null)}
+    onSlot={slot=>setDock(v=>v?{...v,slot}:null)}
+    onClose={()=>setDock(null)}/>}
  </main>;
 }
