@@ -57,11 +57,23 @@ class StrictBarcodeGate {
       val itf = item.format != Barcode.FORMAT_ITF ||
         (value.all { it.isDigit() } && value.length >= 12 && value.length % 2 == 0)
       val rect = item.boundingBox
+      // A long waybill can be rotated or photographed diagonally. The old
+      // rect.width > rect.height * 1.4 check rejected otherwise decoded labels.
+      // ML Kit's four corners describe the actual rotated barcode edges.
+      val corners = item.cornerPoints
+      val edges = if(corners != null && corners.size == 4) {
+        (0..3).map { i ->
+          val a = corners[i]
+          val b = corners[(i + 1) % 4]
+          kotlin.math.hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble()).toFloat()
+        }
+      } else null
+      val longEdge = edges?.maxOrNull() ?: rect?.let { maxOf(it.width(), it.height()).toFloat() } ?: 0f
+      val shortEdge = edges?.minOrNull() ?: rect?.let { minOf(it.width(), it.height()).toFloat() } ?: 0f
       val geometry = rect != null &&
-        rect.width() > width * minWidth && rect.height() > 10 &&
-        rect.width() > rect.height() * 1.4f &&
-        rect.centerX() in (width * 0.08f).toInt()..(width * 0.92f).toInt() &&
-        rect.centerY() in (height * 0.08f).toInt()..(height * 0.92f).toInt()
+        longEdge > minOf(width, height) * minWidth && shortEdge > 6f &&
+        rect.centerX() in (width * 0.06f).toInt()..(width * 0.94f).toInt() &&
+        rect.centerY() in (height * 0.06f).toInt()..(height * 0.94f).toInt()
       syntax && format && itf && geometry
     }
     // If multiple courier labels are in view, target whichever is nearest center.
