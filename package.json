@@ -11,7 +11,7 @@
     "start": "node src/server.mjs",
     "test": "node --test test/*.test.mjs",
     "desktop": "electron .",
-    "dist:win": "electron-builder --win nsis --x64"
+    "dist:win": "electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^39.0.0",
