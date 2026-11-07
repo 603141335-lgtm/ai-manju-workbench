@@ -53,7 +53,9 @@ function setDesktopProject(project,imported){
  const converted=window.ManjuCompat.convert(project);
  const owner=typeof N.getCloudOwner==='function'?N.getCloudOwner():'';
  if(project.cloudAuthoritative&&owner){ui=Object.assign(defaults(),json(localStorage.getItem('manju-v2-state:'+owner),{}));for(const k of ['status','notes','edits','videos','chosen','expanded','episodeOpen'])if(!ui[k]||typeof ui[k]!=='object')ui[k]={};}
- const hash=signature(JSON.stringify(converted.original.episodes.map(e=>[e.id,e.number,e.segments.map(x=>[x.id,x.n,x.text,x.codes,x.status])])));
+ const hash=signature(JSON.stringify(converted.original.episodes.map(e=>[e.id,e.number,e.segments.map(x=>[x.id,x.n])])));
+ const previousId=segments[ui.selected]?.desktopId||'';
+ const sameProject=ui.lastProject===hash;
  if(imported&&ui.lastProject!==hash){
   ui.status={};ui.notes={};ui.edits={};ui.videos={};ui.chosen={};ui.expanded={};ui.selected=0;
  }
@@ -69,7 +71,8 @@ function setDesktopProject(project,imported){
    }catch(e){console.warn('云端待同步状态读取失败',e)}
  }else ui.status={...converted.statuses,...ui.status};
  ui.chosen=project.cloudAuthoritative?{}:{...converted.versions,...ui.chosen};
- ui.selected=imported?converted.activeIndex:Math.min(ui.selected,segments.length-1);
+ const matched=previousId?segments.findIndex(x=>x.desktopId===previousId):-1;
+ ui.selected=matched>=0?matched:(imported&&!sameProject?converted.activeIndex:Math.max(0,Math.min(ui.selected,segments.length-1)));
  saveState();render();
 }
 const current=()=>segments[ui.selected];
@@ -88,7 +91,7 @@ function metrics(list){let complete=0,redo=0,missing=0;for(const s of list){if(c
 const bar=m=>'<div class="progress"><div style="width:'+(m.count?Math.round(m.complete/m.count*100):0)+'%"></div></div>';
 function notify(t){let e=$('toast');clearTimeout(timer);e.textContent=t;e.classList.add('show');timer=setTimeout(()=>e.classList.remove('show'),3200)}
 function page(tab){ui.tab=tab;saveState();render();window.scrollTo(0,0)}
-function jump(index){if(index<0||index>=segments.length)return;ui.selected=index;ui.tab='make';saveState();render();window.scrollTo(0,0)}
+function jump(index){if(index<0||index>=segments.length)return;ui.selected=index;ui.tab='make';saveState();render();window.scrollTo(0,0);if(window.ManjuCloud)window.ManjuCloud.ensureReferences(codesOf(current()).codes).catch(e=>notify('参考图下载异常：'+e.message))}
 function stepEpisode(d){const s=current();if(!s)return;let i=episodes.findIndex(e=>e.num===s.ep);let next=episodes[i+d];if(next)jump(next.items[0].index);else notify('已经是'+(d<0?'第一':'最后一')+'集')}
 function empty(){return '<div class="card empty"><div class="em">▤</div><strong>先导入制作素材</strong><p>首次导入剧本TXT/MD，并选择手机上的参考图文件夹。</p><button class="btn primary full" data-act="import">① 导入提示词</button><div style="height:9px"></div><button class="btn secondary full" data-act="folder">② 选择图片文件夹</button></div>'}
 function home(){
@@ -134,7 +137,14 @@ function studio(){
 }
 
 function library(){
- let h='<div class="title">参考图素材库</div><div class="subtitle">图片编号、预览和多版本选择都在这里管理。</div>';
+ let h='<div class="title">参考图素材库</div><div class="subtitle">与电脑共用参考图编号目录，图片按段落需要下载。</div>';
+ const catalog=window.ManjuCloud?.catalog?.()||[];
+ if(catalog.length){
+   const cached=new Set(files.map(f=>f.code));
+   const pending=catalog.filter(item=>!cached.has(norm(item.code)));
+   h+='<div class="card"><div class="row"><strong>云端参考图库</strong><span class="badge blue">'+cached.size+'/'+catalog.length+' 已缓存</span></div><div class="subtitle">已同步全部编号，当前段所需的图片会自动下载；也可点击编号单独缓存。</div>'+
+      '<div class="chip-list wide-gap">'+pending.slice(0,60).map(a=>'<button class="chip" data-act="fetch-code" data-code="'+esc(norm(a.code))+'">'+esc(norm(a.code))+' ↓</button>').join('')+'</div></div>';
+ }
  h+='<div class="card flat wide-gap"><div class="row"><strong>'+files.length+' 张参考图</strong><button class="btn slim secondary" data-act="rescan">重新扫描</button></div><div class="subtitle">来源：'+esc(N.getFolder())+'</div><button class="btn slim wide-gap" data-act="folder">更换图片文件夹</button></div>';
  h+='<input id="assetSearch" class="input" placeholder="搜索编号或文件名，例如 A15" value="'+esc(ui.assetSearch)+'"><div class="chip-list wide-gap">'+['全部','A','AG','B','BL','C','D','E'].map(x=>'<button class="chip '+(ui.assetFilter===x?'active':'')+'" data-act="filter" data-value="'+x+'">'+x+'</button>').join('')+'</div>';
  const q=ui.assetSearch.trim().toUpperCase();
@@ -296,6 +306,7 @@ function action(ev){
  if(a==='quality'){quality();return}
  if(a==='video'){N.pickVideo(s.key);return}
  if(a==='play'){if(ui.videos[s.key])N.playVideo(ui.videos[s.key].uri);return}
+ if(a==='fetch-code'){if(window.ManjuCloud)window.ManjuCloud.ensureReferences([b.dataset.code]).then(x=>notify(x.errors.length?x.errors.join('；'):'已安排下载 '+b.dataset.code));return}
  if(a==='filter'){ui.assetFilter=b.dataset.value;ui.assetPage=0;saveState();render();return}
  if(a==='more'){ui.assetPage++;saveState();render();return}
  if(a==='dark'){ui.dark=!ui.dark;saveState();render();return}
