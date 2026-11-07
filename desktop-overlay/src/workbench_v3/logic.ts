@@ -1,6 +1,6 @@
-export type ProviderId = 'chatgpt' | 'gemini' | 'claude' | 'grok' | 'meta' | 'doubao' | 'deepseek' | 'kimi' | 'qwen';
+export type ProviderId = 'chatgpt' | 'gemini' | 'claude' | 'grok' | 'meta' | 'doubao' | 'deepseek' | 'kimi' | 'qwen' | 'yuanbao';
 export type MemberKind = 'api' | 'web_native' | 'manual';
-export type ChatMode = 'normal' | 'parallel' | 'relay' | 'debate' | 'consult' | 'coding';
+export type ChatMode = 'normal' | 'parallel' | 'relay' | 'debate' | 'consult' | 'coding' | 'roundtable' | 'brainstorm';
 export type RunStatus = 'running' | 'waiting_manual' | 'unknown_completion' | 'failed' | 'completed' | 'paused' | 'cancelled';
 export interface Member {
   id: string; provider: ProviderId; name: string; kind: MemberKind; modelId: string; role: string;
@@ -11,7 +11,7 @@ export interface Conversation {
 export interface Assignment { conversationId: string; memberId: string; role: string }
 export interface Message {
   id: string; conversationId: string; memberId: string | null; sender: 'user' | 'ai' | 'system';
-  status: string; source: 'user' | 'official_api' | 'user_imported_web' | 'system';
+  status: string; source: 'user' | 'official_api' | 'user_imported_web' | 'official_web' | 'official_web' | 'system';
   body: string; runId: string | null; createdAt: number;
 }
 export interface WorkspaceState {members: Member[]; conversations: Conversation[]; assignments: Assignment[]}
