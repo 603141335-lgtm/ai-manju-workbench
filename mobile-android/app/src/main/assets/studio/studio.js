@@ -135,7 +135,7 @@ function library(){
  return h;
 }
 function settings(){
- let h='<div class="title">工作台设置</div><div class="subtitle">本地项目、制作偏好和数据备份。</div>';
+ let h='<div class="title">工作台设置</div><div class="subtitle">本地项目、制作偏好和数据备份。</div><div class="card wide-gap"><div class="row"><strong>☁ 电脑手机同步</strong><button class="btn primary" data-act="cloud-open">邮箱登录 / 下载</button></div><div class="subtitle">获取电脑版提示词和参考图；制作完回传状态。其他功能不需要同步。</div></div>';
  h+='<div class="card wide-gap"><div class="section-title" style="margin:0 0 12px">项目管理</div><div class="setting-row"><span class="label">项目名称</span><button class="btn slim" data-act="project-name">修改</button></div><div class="subtitle">'+esc(ui.projectName)+'</div><div class="divider"></div><div class="setting-row"><span class="label">导入豆包创作舱 v0.3 项目 JSON</span><button class="btn slim primary" data-act="import-desktop">导入</button></div><div class="setting-row"><span class="label">导入剧本 TXT / MD</span><button class="btn slim secondary" data-act="import">导入</button></div><div class="setting-row"><span class="label">选择参考图文件夹</span><button class="btn slim secondary" data-act="folder">选择</button></div><div class="setting-row"><span class="label">重新扫描图片编号</span><button class="btn slim" data-act="rescan">扫描</button></div></div>';
  h+='<div class="card"><div class="section-title" style="margin:0 0 12px">制作偏好</div><div class="setting-row"><span class="label">参考图数量上限</span><select class="select" id="limit" style="max-width:105px">'+[4,7,9,12].map(n=>'<option value="'+n+'" '+(Number(ui.limit)===n?'selected':'')+'>'+n+'张</option>').join('')+'</select></div><div class="tip">用于本地检测；实际豆包上传数量以官方APP界面为准。</div><div class="divider"></div><div class="setting-row"><span class="label">深色模式</span><button class="btn slim '+(ui.dark?'primary':'secondary')+'" data-act="dark">'+(ui.dark?'已开启':'开启')+'</button></div></div>';
  h+='<div class="card"><div class="section-title" style="margin:0 0 10px">本地备份与换手机</div><div class="subtitle">备份保存剧本原文、修改稿、备注、段落状态和视频记录。不包含图片或视频本体。</div><div class="grid-2 wide-gap"><button class="btn secondary" data-act="backup-out">导出项目备份</button><button class="btn" data-act="backup-in">恢复项目备份</button></div><div class="divider"></div><div class="tip">云端自动同步尚需服务器和账户授权。本版仅做离线数据管理与手动备份迁移。</div></div>';
@@ -236,7 +236,7 @@ function action(ev){
  const b=ev.target.closest('[data-act]');if(!b)return;
  const a=b.dataset.act,s=current();
  if(a==='close'){close();return}
- if(a==='import'){N.choosePrompts();return}if(a==='import-desktop'){N.chooseDesktopWorkspace();return}if(a==='folder'){close();N.chooseFolder();return}if(a==='rescan'){N.refreshAssets();return}
+ if(a==='cloud-open'){if(window.ManjuCloud)window.ManjuCloud.open();else notify('云端组件未加载');return}if(a==='import'){N.choosePrompts();return}if(a==='import-desktop'){N.chooseDesktopWorkspace();return}if(a==='folder'){close();N.chooseFolder();return}if(a==='rescan'){N.refreshAssets();return}
  if(a==='continue'){page('make');return}if(a==='episodes'){close();page('episodes');return}if(a==='settings'){page('settings');return}
  if(a==='jump'){let i=Number(b.dataset.index);close();jump(i);return}
  if(a==='episode-toggle'){let k=b.dataset.num;ui.episodeOpen[k]=!ui.episodeOpen[k];saveState();render();return}
@@ -254,7 +254,7 @@ function action(ev){
  if(a==='episode-batch'){startSave(episodes.find(x=>x.num===s.ep).items);return}
  if(a==='save-partial'){saveTasks(pending);return}
  if(a==='doubao'){N.openDoubao();return}
- if(a==='status'){if(s.locked)return notify('电脑版已锁定此段，无法修改状态');ui.status[s.key]=b.dataset.value;saveState();render();notify('已设为 '+b.dataset.value);return}
+ if(a==='status'){if(s.locked)return notify('电脑版已锁定此段，无法修改状态');ui.status[s.key]=b.dataset.value;if(window.ManjuCloud)window.ManjuCloud.queueStatus(s.key,b.dataset.value);saveState();render();notify('已设为 '+b.dataset.value+'，联网后可回传');return}
  if(a==='note'){edit('note');return}if(a==='edit'){if(s.locked)return notify('此段已锁定，暂不能编辑');edit('prompt');return}if(a==='project-name'){edit('project');return}
  if(a==='apply-edit'){
    if(s&&s.locked&&b.dataset.kind==='prompt')return notify('此段已锁定，不能编辑');
