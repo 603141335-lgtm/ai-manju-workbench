@@ -1,0 +1,52 @@
+{
+  "name": "multi-ai-chat-desktop-v61-queue-core",
+  "private": true,
+  "version": "6.1.0-wq-a.2",
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "engines": {
+    "node": ">=22.13 <23"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "desktop": "electron .",
+    "dist:win": "electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.multi.ai.chat.desktop.wqa",
+    "productName": "Multi-AI Chat Desktop",
+    "asar": true,
+    "files": [
+      "desktop/**",
+      "src/**",
+      "public/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Multi-AI-Chat-Desktop-v6.1-WQ-A-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  },
+  "description": "中文多模型逐集任务队列测试原型，官网会员人工交接",
+  "author": "Multi-AI Chat Desktop community prototype"
+}
