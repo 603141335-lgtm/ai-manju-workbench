@@ -11,7 +11,7 @@ on:
       - '.github/workflows/build-doubao-protected.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   win:
     runs-on: windows-latest
@@ -60,14 +60,23 @@ jobs:
           $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $(Split-Path $_.Path -Leaf)" } | Set-Content 'dist-doubao/SHA256SUMS.txt'
           Get-Content 'dist-doubao/SHA256SUMS.txt'
           Write-Host 'Commercial binary packer: NOT APPLIED (license/native component not configured).'
-      - name: Upload installer and update metadata
-        uses: actions/upload-artifact@v4
+      - name: Publish NSIS installer as GitHub Release asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: Doubao-Studio-v1.1.0-Windows-Setup-Hardened-NotCommercialPacked
-          path: |
-            dist-doubao/*.exe
+          tag_name: doubao-v1.1.0
+          target_commitish: ${{ github.sha }}
+          name: 豆包创作舱 v1.1.0（无画布·基础加固）
+          prerelease: true
+          draft: false
+          body: |
+            Windows x64 NSIS 安装程序，保留原 com.manju.workbench.desktop 应用身份。
+            通过 JS 混淆、ASAR 完整性验证、Electron Fuses 加固。
+            **本版本尚未进行 Themida/VMProtect 商业加壳，也未完成 Windows 真机升级验证。**
+            原有工作台数据迁移、参考图匹配与多选拖拽已通过自动模拟测试。
+            未配置在线更新 HTTPS 发布源时，可使用此安装包手动原位覆盖升级。
+          files: |
+            dist-doubao/*Setup*.exe
+            dist-doubao/SHA256SUMS.txt
             dist-doubao/*.yml
             dist-doubao/*.blockmap
-            dist-doubao/SHA256SUMS.txt
-          retention-days: 30
-          if-no-files-found: error
+          fail_on_unmatched_files: false
