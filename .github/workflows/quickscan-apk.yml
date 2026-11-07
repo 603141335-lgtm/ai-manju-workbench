@@ -5,6 +5,7 @@ on:
     branches:
       - quickscan-app
       - quickscan-v0141-repair
+      - quickscan-v0150-fastqueue
     paths:
       - 'quickscan-android/**'
       - '.github/workflows/quickscan-apk.yml'
@@ -36,7 +37,7 @@ jobs:
           gradle-version: '8.9'
       - name: Build APK
         working-directory: quickscan-android
-        run: gradle --no-daemon :app:assembleDebug --stacktrace
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
       - name: Verify APK file
         run: |
           test -s quickscan-android/app/build/outputs/apk/debug/app-debug.apk
@@ -44,7 +45,7 @@ jobs:
       - name: Upload APK for download
         uses: actions/upload-artifact@v4
         with:
-          name: QuickScan-Android-APK
+          name: QuickScan-v0150-Android-APK
           path: quickscan-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
