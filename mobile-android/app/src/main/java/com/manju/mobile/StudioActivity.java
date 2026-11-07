@@ -20,6 +20,8 @@ import java.text.Normalizer;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import org.json.*;
 
 /** A native offline Android companion with a bundled HTML UI and a narrow SAF/MediaStore bridge. */
@@ -232,6 +234,20 @@ public class StudioActivity extends Activity {
         @JavascriptInterface public String getDesktopWorkspace(){try(InputStream in=new FileInputStream(desktopWorkspaceFile())){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
         @JavascriptInterface public String getCloudWorkspaceForUid(String uid){if(!uid.equals(getSharedPreferences(PREF,0).getString("cloud_uid","")))return "";try(InputStream in=new FileInputStream(cloudWorkspaceFile())){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
         @JavascriptInterface public String getCloudOwner(){return getSharedPreferences(PREF,0).getString("cloud_uid","");}
+        @JavascriptInterface public void probeCloudGateway(){
+            worker.execute(()->{
+                HttpURLConnection h=null;
+                try{
+                    URL url=new URL("https://marginal-wildfowl-d9dw2q0e469ceb.api.tcloudbasegateway.com/");
+                    h=(HttpURLConnection)url.openConnection();
+                    h.setConnectTimeout(12000);h.setReadTimeout(12000);h.setInstanceFollowRedirects(false);
+                    h.setRequestMethod("GET");int code=h.getResponseCode();
+                    emit("cloudProbe","腾讯云网关可连通（HTTP "+code+"）。如果登录仍提示 Failed to fetch，请检查 CloudBase 安全来源授权和 SDK 登录配置。");
+                }catch(Exception ex){emit("cloudProbe","手机原生网络也无法连接 CloudBase："+ex.getMessage()+"。请检查网络、DNS、代理和证书。");}
+                finally{if(h!=null)h.disconnect();}
+            });
+        }
+
         @JavascriptInterface public void saveCloudWorkspace(String json,String uid){
             worker.execute(()->{try{
                 if(!CloudCache.validUid(uid))throw new IOException("用户ID格式错误");
