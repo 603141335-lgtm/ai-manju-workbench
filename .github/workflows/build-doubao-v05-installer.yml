@@ -1,0 +1,50 @@
+name: Build Doubao Creative Hub Windows Installer
+on:
+  push:
+    branches:
+      - doubao-creative-hub-v0.5
+    paths:
+      - 'app/**'
+      - '.github/workflows/build-doubao-v05-installer.yml'
+      - 'electron-builder-doubao.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Electron packaging tools
+        working-directory: app
+        run: npm install --no-audit --no-fund --no-save electron@33.4.11 electron-builder@26.0.12
+      - name: Verify application sources
+        shell: pwsh
+        run: |
+          if (!(Test-Path app/main.js)) { throw "Missing Electron entry point" }
+          if (!(Test-Path app/index.html)) { throw "Missing renderer HTML" }
+          if (!(Test-Path app/parser.js)) { throw "Missing prompt parser" }
+          node tests/test_parser.js
+          node tests/test_main_mock.js
+      - name: Build interactive NSIS setup
+        working-directory: app
+        run: npx electron-builder --win nsis --x64 --config ../electron-builder-doubao.yml --publish never
+      - name: Verify installer
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem 'dist-doubao' -Filter '*.exe' -File -Recurse)
+          if ($files.Count -eq 0) { throw "No EXE installer produced" }
+          $files | ForEach-Object { Write-Host "$($_.Name) $($_.Length) bytes" }
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Doubao-Creative-Hub-v0.5-Windows-Setup
+          path: dist-doubao/*.exe
+          if-no-files-found: error
+          retention-days: 30
