@@ -11,7 +11,10 @@ const send=(res,code,data,type='application/json; charset=utf-8')=>{res.writeHea
 const server=http.createServer(async(req,res)=>{
   try{
     const u=new URL(req.url,'http://127.0.0.1');
+    if(!['127.0.0.1',`127.0.0.1:${port}`].includes(req.headers.host))return send(res,403,{error:'非法Host'});
+    if(req.method==='POST'){const origin=req.headers.origin;const localOrigin=`http://127.0.0.1:${port}`;if(origin&&origin!==localOrigin)return send(res,403,{error:'跨站请求已拒绝'});if(!req.headers['content-type']?.startsWith('application/json'))return send(res,415,{error:'仅允许 JSON 请求'})}
     if(req.method==='GET'&&u.pathname==='/'){return send(res,200,readFileSync(path.join(dir,'../public/index.html'),'utf8'),'text/html; charset=utf-8')}
+    if(req.method==='GET'&&u.pathname==='/style.css')return send(res,200,readFileSync(path.join(dir,'../public/style.css'),'utf8'),'text/css; charset=utf-8');
     if(req.method==='GET'&&u.pathname==='/ui.js'){return send(res,200,readFileSync(path.join(dir,'../public/ui.js'),'utf8'),'text/javascript; charset=utf-8')}
     if(req.method==='GET'&&u.pathname==='/api/jobs')return send(res,200,engine.listJobs());
     if(req.method==='POST'){
