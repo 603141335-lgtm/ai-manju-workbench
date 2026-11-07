@@ -16,7 +16,8 @@ patch('src-tauri/tauri.conf.json','"version": "4.0.2"','"version": "5.0.0"');
 // its bridge subscriptions and settings, and hide restored native panes first.
 patch('src/App.tsx',
  '  const [unifiedChatOpen,setUnifiedChatOpen]=useState(false);',
- '  const [unifiedChatOpen,setUnifiedChatOpen]=useState(true);\\n  const [unifiedReady,setUnifiedReady]=useState(false);');
+ `  const [unifiedChatOpen,setUnifiedChatOpen]=useState(true);
+  const [unifiedReady,setUnifiedReady]=useState(false);`);
 patch('src/App.tsx',
  '  const [initialRestoreComplete, setInitialRestoreComplete] = useState(false);',
  `  const [initialRestoreComplete, setInitialRestoreComplete] = useState(false);
