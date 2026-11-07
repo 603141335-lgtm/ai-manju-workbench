@@ -1,5 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
 import {DomesticBrowserDock,type DomesticWebProvider} from './DomesticBrowserDock';
+import {OfficialProviderPane} from './OfficialProviderPane';
+import {isOriginalWebProvider} from '../workbench_v3/useUnifiedChat';
+import type {AIProvider} from '../../shared/types';
 import {useUnifiedChat} from '../workbench_v3/useUnifiedChat';
 import {API_PROVIDER_IDS,type Member,type ChatMode} from '../workbench_v3/logic';
 
@@ -9,7 +12,8 @@ function isDomesticProvider(value:string):value is DomesticWebProvider {
 }
 const modes:{id:ChatMode;title:string}[]=[
  {id:'normal',title:'普通聊天'},{id:'parallel',title:'同时回答'},{id:'relay',title:'顺序接力'},
- {id:'debate',title:'四方辩论（原版）'},{id:'consult',title:'多方咨询（原版）'},{id:'coding',title:'Coding（原版）'}
+ {id:'debate',title:'四方辩论'},{id:'consult',title:'专家会诊'},{id:'coding',title:'编程模式'},
+ {id:'roundtable',title:'圆桌讨论'},{id:'brainstorm',title:'头脑风暴'}
 ];
 function Avatar({name,group=false}:{name:string;group?:boolean}){
  return <div className={'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-bold '+(group?'bg-violet-100 text-violet-700':'bg-indigo-100 text-indigo-700')}>{group?'群':name.slice(0,2)}</div>;
@@ -25,6 +29,8 @@ export function UnifiedChatWorkspace({onClose}:Props){
  const [editing,setEditing]=useState<Member|null>(null);
  const [showTools,setShowTools]=useState(false);
  const [busyUi,setBusyUi]=useState(false);
+ const [rightTab,setRightTab]=useState<'web'|'members'>('web');
+ const [focusProvider,setFocusProvider]=useState<AIProvider|null>(null);
  const [dock,setDock]=useState<{provider:DomesticWebProvider;slot:number}|null>(null);
  const inputRef=useRef<HTMLTextAreaElement>(null);
  const transcript=useRef<HTMLDivElement>(null);
@@ -68,6 +74,9 @@ export function UnifiedChatWorkspace({onClose}:Props){
   catch{w.setNotice('复制失败：请手动选择文本');}
  }
  const room=w.chosen;
+ const defaultNative=w.inRoom.find(m=>m.kind==='web_native'&&isOriginalWebProvider(m.provider));
+ const activeNative=focusProvider&&w.inRoom.some(m=>m.provider===focusProvider&&m.kind==='web_native')?
+   focusProvider:(defaultNative?.provider as AIProvider|undefined);
  const formatted=(date:number)=>new Date(date).toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit',month:'2-digit',day:'2-digit'});
  return <main aria-label="统一 AI 聊天中心" className="flex h-screen min-h-0 bg-[#f6f8fc] text-slate-800">
   <nav className="flex w-[76px] shrink-0 flex-col items-center gap-3 bg-[#162640] p-3 text-white">
@@ -79,12 +88,12 @@ export function UnifiedChatWorkspace({onClose}:Props){
     className="w-full rounded-xl p-2 text-xs hover:bg-white/10">官网</button>
    <button title="备份本地数据库" onClick={()=>void w.backup().catch(e=>w.setNotice(String(e)))} className="w-full rounded-xl p-2 text-xs hover:bg-white/10">备份</button>
    <div className="flex-1"/>
-   <button title="返回原有会员网页及讨论模式" onClick={onClose} className="w-full rounded-xl bg-white/10 p-2 text-xs">原版</button>
+   <button title="高级管理与原版兼容入口" onClick={onClose} className="w-full rounded-xl bg-white/10 p-2 text-xs">管理</button>
   </nav>
   <aside className="flex w-[270px] shrink-0 flex-col border-r border-slate-200 bg-white">
    <div className="space-y-3 border-b border-slate-100 px-4 py-4">
     <div className="flex items-center justify-between"><strong className="text-lg">AI 消息</strong>
-     <button onClick={onClose} className="rounded-lg border px-2 py-1.5 text-[11px]">返回原版</button></div>
+     <button onClick={onClose} className="rounded-lg border px-2 py-1.5 text-[11px]">高级管理</button></div>
     <input id="unified-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索会话 · Ctrl+K"
      className="w-full rounded-xl bg-slate-100 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300"/>
     <div className="grid grid-cols-2 gap-2">
@@ -123,7 +132,7 @@ export function UnifiedChatWorkspace({onClose}:Props){
     <div ref={transcript} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
      {!w.messages.length&&<div className="mx-auto mt-16 max-w-sm text-center text-slate-500">
       <div className="text-3xl">✦</div><b className="mt-3 block">开始真实的 AI 协作</b>
-      <p className="mt-2 text-xs leading-6">使用 @成员 指定对象。API 成员可自动执行，会员网页步骤会要求你确认真实回复。不会出现虚构回答。</p></div>}
+      <p className="mt-2 text-xs leading-6">支持原版真实网页自动聊天、@成员、并行和多阶段工作流。请先在右侧官网完成登录；不支持的网站会明确提示。</p></div>}
      {w.messages.map(m=>{
       const member=w.data.members.find(x=>x.id===m.memberId);const user=m.sender==='user';
       return <article key={m.id} className={'flex gap-3 '+(user?'justify-end':'justify-start')}>
@@ -131,7 +140,7 @@ export function UnifiedChatWorkspace({onClose}:Props){
        <div className={'max-w-[86%] rounded-2xl px-4 py-3 shadow-sm '+(user?'bg-indigo-600 text-white':'border border-slate-200 bg-white')}>
         <div className={'mb-1 flex flex-wrap items-center gap-2 text-[11px] '+(user?'text-indigo-100':'text-slate-500')}>
          <b>{user?'我':member?.name??'系统'}</b><span>{formatted(m.createdAt)}</span>
-         <span>{m.source==='official_api'?'真实 API 回复':m.source==='user_imported_web'?'人工确认官网回复':m.source==='user'?'我':'系统事件'}</span>
+         <span>{m.source==='official_api'?'真实 API 回复':m.source==='official_web'?'真实官网自动回复':m.source==='user_imported_web'?'人工确认官网回复':m.source==='user'?'我':'系统事件'}</span>
          {m.status!=='completed'&&<b>{m.status}</b>}
         </div>
         <div className="whitespace-pre-wrap break-words text-sm leading-6">{m.body}</div>
@@ -151,9 +160,10 @@ export function UnifiedChatWorkspace({onClose}:Props){
         <button onClick={()=>void copy(pendingText)} className="rounded-lg bg-amber-200 px-3 py-2">复制完整任务</button>
         {pending&&<button onClick={()=>{
           if(isDomesticProvider(pending.provider))setDock({provider:pending.provider,slot:1});
-          else w.setNotice('请返回原版，打开 '+pending.name+' 的官网页面');
+          else if(isOriginalWebProvider(pending.provider)){setFocusProvider(pending.provider);setRightTab('web');}
+          else w.setNotice('此成员的官网暂未加入连接器');
         }}
-         className="rounded-lg border border-amber-300 px-3 py-2">在工作台内打开官网</button>}
+         className="rounded-lg border border-amber-300 px-3 py-2">在右侧打开真实官网</button>}
        </div>
        <details><summary className="cursor-pointer">查看本次完整交接文本</summary>
         <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-white p-2">{pendingText}</pre></details>
@@ -165,6 +175,7 @@ export function UnifiedChatWorkspace({onClose}:Props){
     </div>
     <footer className="border-t border-slate-200 bg-white p-4">
      {w.notice&&<div role="status" className="mb-2 max-h-28 overflow-auto rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">{w.notice}</div>}
+     {w.live&&<div role="status" className="mb-2 rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-800">{w.live}</div>}
      <div className="mb-3 flex flex-wrap gap-2">{w.inRoom.map(m=>
       <button key={m.id} onClick={()=>{w.setDraft(w.draft+' @'+m.name+' ');inputRef.current?.focus();}}
        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 hover:border-indigo-400">@{m.name}</button>)}</div>
@@ -176,11 +187,21 @@ export function UnifiedChatWorkspace({onClose}:Props){
       <button disabled={!w.draft.trim()||w.busy} onClick={()=>void w.send()}
        className="rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-40">{w.busy?'执行中':'发送'}</button>
      </div>
-     <p className="mt-2 text-[11px] text-slate-400">网页登录与 API 分离 · API 需要单独费用 · 未获得真实回复不会自动标记成功</p>
+     <p className="mt-2 text-[11px] text-slate-400">原版网页会员直接聊天 · API 为可选付费通道 · 真实回复自动保存 · 官网模型在原生网页选择</p>
     </footer>
    </>:<div className="m-auto text-sm text-slate-500">请从左侧选择会话，或创建新群聊。</div>}
   </section>
-  <aside className="hidden w-[288px] shrink-0 flex-col border-l border-slate-200 bg-white p-4 xl:flex">
+  <aside className="flex w-[min(42vw,530px)] min-w-[380px] shrink-0 flex-col border-l border-slate-200 bg-white">
+   <div className="flex shrink-0 items-center gap-2 border-b p-3 text-xs">
+     <button className={'rounded-md px-3 py-2 '+(rightTab==='web'?'bg-indigo-600 text-white':'bg-slate-100')}
+       onClick={()=>setRightTab('web')}>真实官网与模型</button>
+     <button className={'rounded-md px-3 py-2 '+(rightTab==='members'?'bg-indigo-600 text-white':'bg-slate-100')}
+       onClick={()=>setRightTab('members')}>群成员与设置</button>
+   </div>
+   {rightTab==='web'?(
+     activeNative?<OfficialProviderPane provider={activeNative} enabled={!modal&&!dock}/>:
+     <div className="p-4 text-xs leading-6 text-slate-500">该会话没有原版网页会员。可以从「群成员与设置」选择 ChatGPT、Gemini、Claude、Grok，或在左侧「官网」中使用豆包等国内平台。</div>
+   ):<div className="flex min-h-0 flex-1 flex-col p-4">
    <h2 className="font-semibold">群成员与接入设置</h2>
    <p className="mt-1 text-xs leading-5 text-slate-500">每个成员独立配置。网页登录的 Pro/思考档位在真实官网中选择。</p>
    <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-auto">
@@ -198,7 +219,8 @@ export function UnifiedChatWorkspace({onClose}:Props){
      <div className="mt-2 flex items-center justify-between">
       <button onClick={()=>{
         if(isDomesticProvider(m.provider))setDock({provider:m.provider,slot:1});
-        else w.setNotice('原版会员网页请返回原版使用');
+        else if(isOriginalWebProvider(m.provider)){setFocusProvider(m.provider);setRightTab('web');}
+        else w.setNotice('此平台尚未接通');
       }}
        className="rounded-lg border px-2 py-1 text-[11px]">打开真实官网</button>
       <span className="text-[10px] text-slate-500">{m.kind==='api'&&m.modelId&&w.keys[m.provider]?'可自动调用':'网页/待配置'}</span>
@@ -211,6 +233,7 @@ export function UnifiedChatWorkspace({onClose}:Props){
     <button onClick={()=>void w.backup().catch(e=>w.setNotice(String(e)))} className="block w-full rounded-lg border bg-white p-2 text-left">备份 SQLite 数据库</button>
     {w.run&&<button onClick={()=>void copy(JSON.stringify(w.run?.state,null,2))} className="block w-full rounded-lg border bg-white p-2 text-left">复制工作流检查点</button>}
     {w.busy&&<button onClick={w.stop} className="block w-full rounded-lg border border-red-300 bg-white p-2 text-left text-red-600">停止后续步骤</button>}
+   </div>}
    </div>}
   </aside>
   {modal&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4">
