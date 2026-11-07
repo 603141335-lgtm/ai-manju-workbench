@@ -56,7 +56,14 @@ function setDesktopProject(project,imported){
  ui.lastProject=hash;desktopProject=converted.original;
  ui.projectName=converted.title;
  segments=converted.segments;episodes=converted.episodes;raw='';
- ui.status={...converted.statuses,...ui.status};
+ if(project.cloudAuthoritative){
+   ui.status={...converted.statuses};
+   try{
+     const uid=N.getCloudOwner?N.getCloudOwner():'';
+     const all=JSON.parse(localStorage.getItem('manju_cloud_status_queue')||'{}');
+     for(const [id,entry] of Object.entries(all[uid]||{}))ui.status['desktop_'+id]=entry.status;
+   }catch(e){console.warn('云端待同步状态读取失败',e)}
+ }else ui.status={...converted.statuses,...ui.status};
  ui.chosen={...converted.versions,...ui.chosen};
  ui.selected=imported?converted.activeIndex:Math.min(ui.selected,segments.length-1);
  saveState();render();
