@@ -221,7 +221,8 @@ public class StudioActivity extends Activity {
             catch(Exception ignored){return "";}
         }
         @JavascriptInterface public String getAssets(){return filesJSON().toString();}
-        @JavascriptInterface public String getDesktopWorkspace(){File f=cloudWorkspaceFile().exists()?cloudWorkspaceFile():desktopWorkspaceFile();try(InputStream in=new FileInputStream(f)){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
+        @JavascriptInterface public String getDesktopWorkspace(){try(InputStream in=new FileInputStream(desktopWorkspaceFile())){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
+        @JavascriptInterface public String getCloudWorkspaceForUid(String uid){if(!uid.equals(getSharedPreferences(PREF,0).getString("cloud_uid","")))return "";try(InputStream in=new FileInputStream(cloudWorkspaceFile())){return readAll(in,40*1024*1024);}catch(Exception ignored){return "";}}
         @JavascriptInterface public String getCloudOwner(){return getSharedPreferences(PREF,0).getString("cloud_uid","");}
         @JavascriptInterface public void saveCloudWorkspace(String json,String uid){
             worker.execute(()->{try{
