@@ -1,8 +1,0 @@
-{
-  "name": "ai-manju-workbench",
-  "version": "4.5.0",
-  "private": true,
-  "description": "纯文档版：标题折叠、批量收展、状态和位置记忆、完整复制与多图拖拽",
-  "main": "main.js",
-  "license": "UNLICENSED"
-}
