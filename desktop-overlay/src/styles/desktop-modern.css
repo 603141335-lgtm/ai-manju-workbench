@@ -1,0 +1,65 @@
+/* Multi-AI Chat Desktop v2.3 optional professional slate theme.
+   Scoped to the app shell; never styles third-party login webviews. */
+html.theme-slate {
+  color-scheme: dark;
+  --transcript-provider-highlight: #60a5fa;
+}
+html.theme-slate body { background: #0c1526; }
+html.theme-slate .app-shell {
+  background: radial-gradient(circle at 80% -25%,rgba(56,189,248,.16),transparent 48%),#0c1526;
+  color: #e6edf7;
+}
+html.theme-slate .ai-sister-left-shell,
+html.theme-slate .ai-sister-session-sidebar,
+html.theme-slate .ai-sister-conversation-workspace {
+  background: #101c31;
+  border-color: #273a57;
+}
+html.theme-slate .ai-sister-workflow-shelf {
+  background: #14233a;
+  border-color: #2a3d5b;
+}
+html.theme-slate .ai-sister-conversation-transcript {
+  background: #101b30;
+  border-color: #2b3d58;
+}
+html.theme-slate .ai-sister-conversation-composer {
+  background: #14233a;
+  border-color: #2b3d58;
+}
+html.theme-slate .ai-sister-conversation-toolbar {
+  background: #15233a;
+  border-color: #2b3d58;
+}
+html.theme-slate .ai-sister-preset-card,
+html.theme-slate .relay-panel {
+  border-radius: 14px;
+  border-color: #38506f;
+  background: #17263f;
+  box-shadow: 0 3px 14px rgba(2,9,23,.14);
+  color: #e6edf7;
+}
+html.theme-slate .relay-panel fieldset {
+  background: #10213b;
+  border-radius: 12px;
+}
+html.theme-slate .relay-panel input,
+html.theme-slate .relay-panel textarea,
+html.theme-slate .relay-panel select {
+  background: #0f1b2f;
+  color: #e6edf7;
+  border-color: #4a607f;
+}
+html.theme-slate :focus-visible {
+  outline-color: #60a5fa;
+  outline-offset: 3px;
+}
+/* Global comfort improvements for the existing layout. */
+.ai-sister-preset-card { border-radius: 11px; }
+.ai-sister-conversation-composer textarea {
+  border-radius: 11px;
+  line-height: 1.55;
+}
+.ai-sister-session-sidebar button { border-radius: 9px; }
+.relay-panel select { min-height: 30px; }
+.relay-panel label { line-height: 1.5; }
