@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import { host } from '../host';
+import { DomesticBrowserDock, type DomesticWebProvider } from './DomesticBrowserDock';
 
 type Provider = 'doubao' | 'deepseek' | 'kimi' | 'qwen';
-type WebProvider = Provider | 'yuanbao';
+type WebProvider = DomesticWebProvider;
 type ApiStep = {id:string; provider:Provider; role:string; model:string; instruction:string};
 type Result = {provider:Provider; role:string; text:string; model:string};
 const members: {id:WebProvider;label:string;hint:string}[] = [
@@ -40,6 +41,7 @@ export function makeStepPrompt(task:string,steps:readonly ApiStep[],results:read
 }
 export function DomesticModelPanel(){
   const [expanded,setExpanded]=useState(false);
+  const [dock,setDock]=useState<{provider:WebProvider;slot:number}|null>(null);
   const [webSlot,setWebSlot]=useState<number>(()=>{
     // Server-side render and static UI tests have no browser storage.
     if(typeof window==='undefined'||typeof localStorage==='undefined')return 1;
@@ -60,9 +62,13 @@ export function DomesticModelPanel(){
   const cancel=useRef(false);
   const update=(index:number,patch:Partial<ApiStep>)=>setSteps(old=>old.map((s,i)=>i===index?{...s,...patch}:s));
   const save=()=>{localStorage.setItem(savedKey,JSON.stringify(steps));setNotice('已保存本机步骤设置（不保存 API Key）');};
-  const openMember=async(provider:WebProvider)=>{
+  const openMember=(provider:WebProvider)=>{
+    setDock({provider,slot:webSlot});
+    setNotice('在主工作台内打开 '+provider+' 账号 '+webSlot+'；官网内直接选择模型与模式。');
+  };
+  const openIndependent=async(provider:WebProvider)=>{
     try {await host.domestic.openMemberSlot(provider,webSlot);setNotice('已打开 '+provider+' 账号 '+webSlot+' 的独立官网窗口。');}
-    catch(e){setNotice('打开失败：'+String(e));}
+    catch(e){setNotice('打开独立窗口失败：'+String(e));}
   };
   const run=async()=>{
     if(busy)return;
@@ -102,7 +108,7 @@ export function DomesticModelPanel(){
     }catch{setNotice('历史结果损坏，无法载入');}
   };
   const copy=async(text:string)=>{try{await navigator.clipboard.writeText(text);setNotice('已复制完整内容');}catch{setNotice('复制失败，请手动选择文本');}};
-  return <section aria-label="国内 AI 与 API 接力" className="domestic-panel mt-2 rounded-xl border border-slate-300 p-3 text-xs dark:border-slate-700">
+  return <><section aria-label="国内 AI 与 API 接力" className="domestic-panel mt-2 rounded-xl border border-slate-300 p-3 text-xs dark:border-slate-700">
     <div className="flex flex-wrap items-center gap-2">
       <strong className="text-sm">国内 AI · 会员网页 / 官方 API</strong>
       <button type="button" onClick={()=>setExpanded(v=>!v)}
@@ -117,13 +123,15 @@ export function DomesticModelPanel(){
         </select>
       </label>
       <div className="grid grid-cols-2 gap-2">
-        {members.map(m=><button key={m.id} type="button" onClick={()=>void openMember(m.id)}
-          className="rounded-lg border border-slate-300 bg-white p-2 text-left hover:border-sky-500 dark:border-slate-600 dark:bg-slate-900">
-          <b>{m.label} · 打开</b><div className="text-[11px] text-slate-500">{m.hint}</div>
-        </button>)}
+        {members.map(m=><div key={m.id} className="rounded-lg border border-slate-300 bg-white p-2 text-left dark:border-slate-600 dark:bg-slate-900">
+          <button type="button" onClick={()=>openMember(m.id)} className="block w-full text-left hover:text-sky-600">
+            <b>{m.label} · 在工作台内打开</b><div className="text-[11px] text-slate-500">{m.hint}</div>
+          </button>
+          <button type="button" onClick={()=>void openIndependent(m.id)} className="mt-2 rounded-md border px-2 py-1 text-[11px]">独立窗口（备用）</button>
+        </div>)}
       </div>
       <p className="rounded-lg bg-amber-50 p-2 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-        网页会员窗口是软件内原生 WebView，不是 API，也没有自动抓取回复。1 号位继续沿用旧版登录资料，2—10 号位分别保留独立 WebView2 数据。官网模型和工作模式仍在真实官网手动选择；是否保持登录需在 Windows 实机确认。
+        网页会员使用软件内真实官网 WebView，可在主工作台内切换。不是 API，也没有自动抓取回复。1 号位继续沿用旧版登录资料，2—10 号位分别保留独立 WebView2 数据。官网模型和工作模式仍在真实官网手动选择；是否保持登录需在 Windows 实机确认。
       </p>
       <div className="flex items-center justify-between gap-2">
         <strong>API 顺序接力 · 可编辑步骤</strong>
@@ -195,5 +203,10 @@ export function DomesticModelPanel(){
         </div>)}
       </div>
     </div>}
-  </section>;
+  </section>
+    {dock&&<DomesticBrowserDock provider={dock.provider} slot={dock.slot}
+      onSelect={provider=>setDock(v=>v?{...v,provider}:null)}
+      onSlot={slot=>{setSlot(slot);setDock(v=>v?{...v,slot}:null);}}
+      onClose={()=>setDock(null)}/>}
+  </>;
 }
