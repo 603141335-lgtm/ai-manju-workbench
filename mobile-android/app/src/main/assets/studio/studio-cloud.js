@@ -2,7 +2,7 @@
 /** v2.2: account/password + verified email sign-up; sync only episodes/prompts/images/status. */
 (function(){
  const ENV='marginal-wildfowl-d9dw2q0e469ceb',REGION='ap-singapore',BUCKET='manju-assets';
- let cloud=null,verifyRegistration=null,uid='',email='',busy=false,loginMode='login',timer=0,projectId='',catalog=[],caching=new Set();
+ let cloud=null,uid='',email='',busy=false,loginMode='login',timer=0,projectId='',catalog=[],caching=new Set();
  const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}};
  const save=(key,val)=>localStorage.setItem(key,JSON.stringify(val));
  const $=id=>document.getElementById(id);
@@ -31,27 +31,22 @@
    return {uid,email};
  }
  async function register(){
-   const username=$('cloudUsername').value.trim(),password=$('cloudPassword').value,mail=$('cloudEmail').value.trim();
-   if(!/^[A-Za-z0-9][A-Za-z0-9_.:+@-]{4,23}$/.test(username))throw Error('用户名为5—24位，不能使用中文');
-   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail))throw Error('请输入有效注册邮箱');
-   if(password.length<8||password.length>72)throw Error('密码至少8位，最多72位');
-   const data=response(await auth().signUp({email:mail,username,password}),'注册账号');
-   if(typeof data?.verifyOtp!=='function')throw Error('云端没有返回验证码校验方法');
-   verifyRegistration=data.verifyOtp;
-   msg('注册验证码已发到 '+mail+'。请输入验证码后点「完成注册」。');
+   const username=$('cloudUsername').value.trim(),password=$('cloudPassword').value,invite=$('cloudInvite').value.trim();
+   if(!/^[A-Za-z0-9][A-Za-z0-9_.-]{4,23}$/.test(username))throw Error('用户名为5—24位英文字母、数字、点或下划线');
+   if(password.length<8||password.length>32)throw Error('密码为8—32位，必须包含大写、小写、数字、特殊字符中的至少3类');
+   if([/[A-Z]/,/[a-z]/,/[0-9]/,/[^A-Za-z0-9]/].filter(r=>r.test(password)).length<3)throw Error('密码强度不足：请包含至少3类字符');
+   if(invite.length<16)throw Error('请输入有效邀请码');
+   if(!window.Native?.registerWithInvite)throw Error('请安装 v2.3 或更高版本安卓客户端');
+   msg('已提交注册请求，正在通过安全连接验证邀请码…');
+   window.Native.registerWithInvite(username,password,invite);
  }
- async function verify(){
-   if(!verifyRegistration)throw Error('请先注册并发送邮箱验证码');
-   const code=$('cloudCode').value.trim();
-   if(!/^\d{4,8}$/.test(code))throw Error('请输入邮件里的验证码');
-   response(await verifyRegistration({token:code}),'完成注册');
-   verifyRegistration=null;
-   const user=await session();if(!user)throw Error('注册完成，但没有获取到有效的登录会话');
-   msg('注册并登录成功；正在同步个人项目…');
-   await loadCache();await download();
+ async function registrationResult(ok,text){
+   if(!ok){msg(text+'。请确认云端注册服务已部署、邀请码正确。');return}
+   msg('邀请码注册成功，正在自动登录…');
+   try{await login()}catch(e){msg('账号已创建，请点击「账号密码登录」重试：'+diagnose(e));}
  }
  async function login(){
-   const account=$('cloudUsername').value.trim()||$('cloudEmail').value.trim(),password=$('cloudPassword').value;
+   const account=$('cloudUsername').value.trim(),password=$('cloudPassword').value;
    if(!account||!password)throw Error('请输入登录账号和密码');
    const credentials=account.includes('@')?{email:account,password}:{username:account,password};
    response(await auth().signInWithPassword(credentials),'账号密码登录');
@@ -153,7 +148,7 @@
  }
  async function logout(){
    response(await auth().signOut(),'退出账号');
-   uid='';email='';verifyRegistration=null;clearTimeout(timer);
+   uid='';email='';clearTimeout(timer);
    window.Native?.clearCloudWorkspace?.();
    localStorage.removeItem('manju-v2-state');localStorage.removeItem('manju_cloud_status_queue');
    msg('已退出并清理云端缓存');location.reload();
@@ -171,7 +166,6 @@
    $('cloudRegisterFields').style.display=sign?'block':'none';
    $('cloudLoginButton').style.display=sign?'none':'block';
    $('cloudRegisterButton').style.display=sign?'block':'none';
-   $('cloudVerifyButton').style.display=sign?'block':'none';
  }
  async function open(){
    const modal=$('modal'),p=$('modalPanel');
@@ -181,10 +175,10 @@
      '<div class="grid-2 wide-gap"><button class="btn primary" data-cloud="mode-login">账号密码登录</button><button class="btn secondary" data-cloud="mode-register">注册新账号</button></div>'+
      '<div class="wide-gap"><input class="input" id="cloudUsername" placeholder="用户名或邮箱" autocomplete="username"></div>'+
      '<div class="wide-gap"><input class="input" id="cloudPassword" type="password" placeholder="登录密码（注册至少8位）" autocomplete="current-password"></div>'+
-     '<div id="cloudRegisterFields" style="display:none"><div class="wide-gap"><input class="input" id="cloudEmail" type="email" placeholder="注册邮箱（首次验证）"></div><div class="wide-gap"><input class="input" id="cloudCode" inputmode="numeric" placeholder="邮箱验证码"></div></div>'+
+     '<div id="cloudRegisterFields" style="display:none"><div class="wide-gap"><input class="input" id="cloudInvite" placeholder="输入管理员发放的邀请码" autocapitalize="characters"></div></div>'+
      '<div class="wide-gap"><button class="btn primary full" id="cloudLoginButton" data-cloud="login">登录并获取电脑素材</button>'+
-     '<button class="btn primary full" id="cloudRegisterButton" data-cloud="register" style="display:none">发送注册验证码</button>'+
-     '<button class="btn full" id="cloudVerifyButton" data-cloud="verify" style="display:none;margin-top:8px">完成注册并登录</button></div>'+
+     '<button class="btn primary full" id="cloudRegisterButton" data-cloud="register" style="display:none">邀请码注册（无需邮箱）</button>'+
+     '</div>'+
      '<div class="divider"></div><div class="grid-2"><button class="btn secondary" data-cloud="pull">↓ 重新获取参考图</button><button class="btn" data-cloud="push">↑ 回传完成状态</button></div>'+
      '<div class="grid-2 wide-gap"><button class="btn" data-cloud="logout">退出账号</button><button class="btn" data-cloud="clear">清除旧云缓存</button></div>'+
      '<p class="tip" id="cloudMessage" role="status">检查 CloudBase 登录状态中…</p><button class="btn slim secondary wide-gap" data-cloud="probe">诊断网络连接</button>';
@@ -199,7 +193,6 @@
      else if(key==='mode-register')switchMode('register');
      else if(key==='login')await login();
      else if(key==='register')await register();
-     else if(key==='verify')await verify();
      else if(key==='pull')await download();
      else if(key==='push')await uploadStatuses();
      else if(key==='logout')await logout();
@@ -208,5 +201,5 @@
    }catch(e){msg('操作失败：'+diagnose(e));}
    finally{b.disabled=false;}
  });
- window.ManjuCloud={open,queueStatus,download,uploadStatuses,session,diagnose,normalize,reportProbe:msg,ensureReferences,catalog:()=>catalog.slice()};
+ window.ManjuCloud={open,queueStatus,download,uploadStatuses,session,diagnose,normalize,reportProbe:msg,reportRegistrationError:msg,registrationResult,ensureReferences,catalog:()=>catalog.slice()};
 })();
