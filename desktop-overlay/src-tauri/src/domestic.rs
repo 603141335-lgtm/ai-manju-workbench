@@ -35,6 +35,10 @@ pub async fn domestic_open_member(
     let slot = slot.unwrap_or(1);
     if !(1..=10).contains(&slot) { return Err("账号位只能是 1–10".into()); }
     let (name,url) = member(&provider).ok_or("不支持此会员网站")?;
+    // One WebView2 profile must not be opened concurrently in two native windows.
+    if app.get_webview(&dock_label(&provider,slot)).is_some() {
+        return Err("该账号已在主工作台内打开，请使用内嵌页顶部的“独立窗口”切换".into());
+    }
     // Preserve the original login and label for slot 1.
     let label = if slot == 1 {format!("domestic-{provider}")} else {format!("domestic-{provider}-{slot}")};
     if let Some(window) = app.get_webview_window(&label) {
