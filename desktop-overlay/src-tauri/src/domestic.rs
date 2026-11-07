@@ -133,3 +133,170 @@ mod tests {
         assert!(response_text(&serde_json::json!({"choices":[{"message":{"content":"test"},"finish_reason":"length"}]})).is_err());
     }
 }
+
+
+#[derive(Deserialize)]
+pub struct DomesticDockBounds {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+fn dock_geometry(bounds: &DomesticDockBounds) -> Result<(tauri::PhysicalPosition<i32>,tauri::PhysicalSize<u32>),String> {
+    let values = [bounds.x,bounds.y,bounds.width,bounds.height];
+    if values.iter().any(|v| !v.is_finite()) ||
+        bounds.x < 0.0 || bounds.y < 0.0 ||
+        bounds.width < 240.0 || bounds.height < 180.0 ||
+        values.iter().any(|v| *v > 32768.0) {
+        return Err("内嵌网页位置或尺寸无效".into());
+    }
+    Ok((
+        tauri::PhysicalPosition::new(bounds.x.round() as i32,bounds.y.round() as i32),
+        tauri::PhysicalSize::new(bounds.width.round() as u32,bounds.height.round() as u32)
+    ))
+}
+
+fn dock_label(provider: &str, slot:u8) -> String {
+    format!("domestic-dock-{provider}-{slot}")
+}
+
+fn account_slot(slot:u8) -> Result<(),String> {
+    if (1..=10).contains(&slot) {Ok(())} else {Err("账号位只能是 1–10".into())}
+}
+
+fn independent_window_label(provider:&str,slot:u8)->String {
+    if slot==1 {format!("domestic-{provider}")} else {format!("domestic-{provider}-{slot}")}
+}
+
+fn dock_profile(app:&AppHandle,provider:&str,slot:u8)->Result<Option<std::path::PathBuf>,String>{
+    if slot==1 {return Ok(None);}
+    let directory=app.path().app_local_data_dir().map_err(|e|e.to_string())?
+        .join("domestic-profiles-v4").join(provider).join(format!("slot-{slot}"));
+    std::fs::create_dir_all(&directory).map_err(|_|"无法创建账号数据目录")?;
+    Ok(Some(directory))
+}
+
+// The real official webpage lives in the existing main window as a Tauri native child WebView.
+// No remote page is given any Tauri permission, script bridge, Cookie, or API Key.
+#[tauri::command]
+pub async fn domestic_dock_open(
+    app:AppHandle,
+    webview:tauri::Webview,
+    provider:String,
+    slot:u8,
+    bounds:DomesticDockBounds,
+)->Result<(),String>{
+    crate::webviews::ensure_control_webview(&webview)?;
+    account_slot(slot)?;
+    let (_,url)=member(&provider).ok_or("不支持此会员网站")?;
+    let (position,size)=dock_geometry(&bounds)?;
+    if app.get_webview_window(&independent_window_label(&provider,slot)).is_some() {
+        return Err("该账号的独立官网窗口仍然打开，请先关闭独立窗口，再使用内嵌模式".into());
+    }
+    let label=dock_label(&provider,slot);
+    for id in ["doubao","deepseek","kimi","qwen","yuanbao"] {
+        for n in 1..=10 {
+            let other=dock_label(id,n);
+            if other!=label {
+                if let Some(view)=app.get_webview(&other) {
+                    view.hide().map_err(|e|e.to_string())?;
+                }
+            }
+        }
+    }
+    if let Some(view)=app.get_webview(&label) {
+        view.set_bounds(tauri::Rect {
+            position:tauri::Position::Physical(position),
+            size:tauri::Size::Physical(size),
+        }).map_err(|e|e.to_string())?;
+        view.show().map_err(|e|e.to_string())?;
+        return Ok(());
+    }
+    let window=app.get_window("main").ok_or("主工作台窗口不存在")?;
+    let remote=tauri::Url::parse(url).map_err(|e|e.to_string())?;
+    let mut builder=tauri::webview::WebviewBuilder::new(&label,WebviewUrl::External(remote))
+        .disable_drag_drop_handler();
+    if let Some(profile)=dock_profile(&app,&provider,slot)? {
+        builder=builder.data_directory(profile);
+    }
+    let view=window.add_child(builder,position,size).map_err(|e|e.to_string())?;
+    view.show().map_err(|e|e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn domestic_dock_bounds(
+    app:AppHandle,
+    webview:tauri::Webview,
+    provider:String,
+    slot:u8,
+    bounds:DomesticDockBounds,
+)->Result<(),String>{
+    crate::webviews::ensure_control_webview(&webview)?;
+    account_slot(slot)?;
+    member(&provider).ok_or("不支持此会员网站")?;
+    let (position,size)=dock_geometry(&bounds)?;
+    let label=dock_label(&provider,slot);
+    let view=app.get_webview(&label).ok_or("内嵌网页尚未打开")?;
+    view.set_bounds(tauri::Rect {
+        position:tauri::Position::Physical(position),
+        size:tauri::Size::Physical(size),
+    }).map_err(|e|e.to_string())
+}
+
+#[tauri::command]
+pub async fn domestic_dock_hide(
+    app:AppHandle,
+    webview:tauri::Webview,
+    provider:String,
+    slot:u8,
+)->Result<(),String>{
+    crate::webviews::ensure_control_webview(&webview)?;
+    account_slot(slot)?;
+    member(&provider).ok_or("不支持此会员网站")?;
+    if let Some(view)=app.get_webview(&dock_label(&provider,slot)) {
+        view.hide().map_err(|e|e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn domestic_dock_close(
+    app:AppHandle,
+    webview:tauri::Webview,
+    provider:String,
+    slot:u8,
+)->Result<(),String>{
+    crate::webviews::ensure_control_webview(&webview)?;
+    account_slot(slot)?;
+    member(&provider).ok_or("不支持此会员网站")?;
+    if let Some(view)=app.get_webview(&dock_label(&provider,slot)) {
+        view.close().map_err(|e|e.to_string())?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod dock_tests {
+    use super::*;
+    #[test]
+    fn reject_untrusted_bounds_or_bad_account() {
+        assert!(account_slot(0).is_err());
+        assert!(account_slot(11).is_err());
+        assert!(account_slot(1).is_ok());
+        let good=DomesticDockBounds{x:0.0,y:56.0,width:1400.0,height:800.0};
+        assert!(dock_geometry(&good).is_ok());
+        let nan=DomesticDockBounds{x:f64::NAN,..good};
+        assert!(dock_geometry(&nan).is_err());
+        let tiny=DomesticDockBounds{x:0.0,y:10.0,width:80.0,height:100.0};
+        assert!(dock_geometry(&tiny).is_err());
+    }
+    #[test]
+    fn whitelist_and_labels_are_bounded(){
+        assert!(member("file:///windows/system32").is_none());
+        assert_eq!(independent_window_label("doubao",1),"domestic-doubao");
+        assert_eq!(independent_window_label("doubao",2),"domestic-doubao-2");
+        assert_eq!(dock_label("doubao",2),"domestic-dock-doubao-2");
+    }
+}
