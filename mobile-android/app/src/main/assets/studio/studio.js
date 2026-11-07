@@ -250,6 +250,8 @@ function startSave(items){
 function receive(m){
  if(!m||!m.type)return;
  if(m.type==='cloudProbe'){if(window.ManjuCloud)window.ManjuCloud.reportProbe(m.message);else notify(m.message);return;}
+ if(m.type==='inviteRegister'){if(window.ManjuCloud)window.ManjuCloud.registrationResult(!!m.ok,m.message);return;}
+ if(m.type==='inviteRegisterError'){if(window.ManjuCloud)window.ManjuCloud.reportRegistrationError(m.message);return;}
  if(m.type==='desktopWorkspace'){try{setDesktopProject(m.workspace,true);notify('已导入电脑版项目：'+episodes.length+'集 '+segments.length+'段')}catch(e){notify(e.message)}}
  else if(m.type==='assets'){files=json(N.getAssets(),[]);render();notify(m.message)}
  else if(m.type==='prompts'){ui.projectName=(m.filename||'AI漫剧项目').replace(/\.(txt|md)$/i,'').slice(0,100);setPrompts(m.text,true);notify('导入成功：'+segments.length+'段')}
