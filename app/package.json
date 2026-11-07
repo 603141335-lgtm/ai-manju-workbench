@@ -1,8 +1,0 @@
-{
-  "name": "ai-manju-workbench",
-  "version": "4.4.0",
-  "private": true,
-  "description": "纯文档版：左侧三点菜单、可拖宽度、提示词与参考图整体同步缩放",
-  "main": "main.js",
-  "license": "UNLICENSED"
-}
