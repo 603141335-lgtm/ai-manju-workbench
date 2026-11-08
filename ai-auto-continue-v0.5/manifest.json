@@ -4,27 +4,52 @@
   "short_name": "自动续聊",
   "version": "0.5.0",
   "description": "v0.5 薄荷绿视觉主题：保留四平台自动续聊、Skill库、自定义轮次与严格完成检查。",
-  "permissions": ["storage", "tabs", "downloads", "unlimitedStorage", "scripting"],
-  "host_permissions": [
-    "https://chatgpt.com/*", "https://chat.openai.com/*",
-    "https://gemini.google.com/*", "https://doubao.com/*",
-    "https://www.doubao.com/*", "https://chat.deepseek.com/*"
+  "permissions": [
+    "storage",
+    "tabs",
+    "downloads",
+    "unlimitedStorage",
+    "scripting"
   ],
-  "background": {"service_worker": "background.js"},
-  "content_scripts": [{
-    "matches": [
-      "https://chatgpt.com/*", "https://chat.openai.com/*",
-      "https://gemini.google.com/*", "https://doubao.com/*",
-      "https://www.doubao.com/*", "https://chat.deepseek.com/*"
-    ],
-    "js": ["runner.js"], "run_at": "document_idle"
-  }],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*",
+    "https://doubao.com/*",
+    "https://www.doubao.com/*",
+    "https://chat.deepseek.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://doubao.com/*",
+        "https://www.doubao.com/*",
+        "https://chat.deepseek.com/*"
+      ],
+      "js": [
+        "runner.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_title": "打开AI自动续聊助手",
-    "default_icon": {"16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png"}
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
   },
   "icons": {
-    "16": "icons/icon16.png", "32": "icons/icon32.png",
-    "48": "icons/icon48.png", "128": "icons/icon128.png"
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   }
 }
