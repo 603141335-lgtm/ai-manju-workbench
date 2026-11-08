@@ -51,8 +51,11 @@ test('升级持久化：已完成状态和剧集折叠设置不丢，原hidden/l
 });
 test('UI：剧集树行与已完成小卡存在；旧锁定隐藏位于高级管理',()=>{
  const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');
- const renderer=fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8');
- assert.match(html,/id="draftPreviewText"/);assert.match(html,/id="episodeTreeList"/);
- assert.match(html,/<details class="advancedLegacy">/);assert.match(renderer,/doneCompact/);
- assert.match(renderer,/importSyncText/);assert.match(renderer,/wsSetStatus\(eid,sid,next/);
+ // Assert stable DOM contracts, not unobfuscated JavaScript identifiers.
+ // The actual completed-card behavior is covered by the browser UI test.
+ assert.match(html,/id="draftPreviewText"/);
+ assert.match(html,/id="btnSyncDraft"/);
+ assert.match(html,/id="episodeTreeList"/);
+ assert.match(html,/<details class="advancedLegacy">/);
+ assert.match(html,/id="segmentStrip" hidden/);
 });
