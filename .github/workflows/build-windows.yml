@@ -1,7 +1,7 @@
 name: Build real Doubao Browser Workbench (No Canvas) v0.9.1
 on:
   push:
-    branches: [release/doubao-browser-batch-tail-v0.9.1]
+    branches: [release/doubao-browser-inline-mention-v0.9.1]
   workflow_dispatch:
 permissions:
   contents: write
