@@ -10,7 +10,7 @@ const id=()=>randomUUID();
 const MAX_SEGMENTS=20000;
 const unique=a=>[...new Set(a)];
 const isImage=p=>typeof p==='string'&&EXTS.has(path.extname(p).toLowerCase());
-const fresh=()=>({version:2,title:'我的AI漫剧项目',assetFolder:'',episodes:[],chosenPaths:{},activeEpisodeId:null,activeSegmentId:null,showHidden:false,treeExpandedEpisodeId:null,layout:{bottomHeight:245,bottomCollapsed:false,rightWidth:450}});
+const fresh=()=>({version:2,title:'我的AI漫剧项目',assetFolder:'',episodes:[],chosenPaths:{},activeEpisodeId:null,activeSegmentId:null,showHidden:false,treeExpandedEpisodeId:null,layout:{bottomHeight:315,bottomCollapsed:false,rightWidth:450,foldActiveEpisode:false}});
 function scrub(input){
   const o=fresh();if(!input||typeof input!=='object')return o;
   o.title=String(input.title||o.title).slice(0,150);
@@ -18,7 +18,7 @@ function scrub(input){
   o.showHidden=!!input.showHidden;
   o.treeExpandedEpisodeId=typeof input.treeExpandedEpisodeId==='string'?input.treeExpandedEpisodeId:null;
   if(input.chosenPaths&&typeof input.chosenPaths==='object')for(const [key,v] of Object.entries(input.chosenPaths)){if(typeof v==='string'&&v.length<4096)o.chosenPaths[normCode(key)]=v;}
-  if(input.layout&&typeof input.layout==='object')o.layout={bottomHeight:Math.max(180,Math.min(500,Number(input.layout.bottomHeight)||245)),bottomCollapsed:!!input.layout.bottomCollapsed,rightWidth:Math.max(300,Math.min(750,Number(input.layout.rightWidth)||450))};
+  if(input.layout&&typeof input.layout==='object')o.layout={bottomHeight:Math.max(180,Math.min(500,Number(input.layout.bottomHeight)||245)),bottomCollapsed:!!input.layout.bottomCollapsed,rightWidth:Math.max(300,Math.min(750,Number(input.layout.rightWidth)||450)),foldActiveEpisode:!!input.layout.foldActiveEpisode};
   let budget=MAX_SEGMENTS;
   if(Array.isArray(input.episodes))for(const e of input.episodes.slice(0,1000)){
     if(budget<=0)break;

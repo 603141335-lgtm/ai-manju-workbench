@@ -11,7 +11,7 @@
 <body>
 <div class="app" id="app">
   <header class="topbar">
-    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge">v0.9.2 人物声音绑定版</span></div>
+    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge">v0.9.3 剧集与导入优化版</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
     <div class="topactions"><button class="ghost" id="btnCheckUpdate">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="ghost" id="btnData">数据目录</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
@@ -39,8 +39,11 @@
           <div class="panelhead tight"><div><div class="section-kicker">CREATIVE ASSETS</div><h2>提示词与参考图</h2></div><button class="smallBtn" id="btnToggleBottom">收起底栏</button></div>
           <div class="selectorRow"><select id="rightEpisode" aria-label="右栏剧集选择"></select><select id="rightSegment" aria-label="右栏分段选择"></select></div>
           <div class="promptActions"><button class="primary" id="btnPull">⚡ 拉取本段</button><button class="ghost" id="btnCopyText">复制完整提示词</button><button class="ghost" id="btnPullImages">刷新参考图</button></div>
+          <div class="draftTabRow" role="group" aria-label="提示词视图"><button class="draftTab active" id="btnShowOriginal">原始提示词</button><button class="draftTab" id="btnShowDraft">发送稿预览</button><span id="draftSyncStatus">发送稿待生成</span></div>
           <div class="assetLabel"><strong>本段提示词（可编辑）</strong><span id="wordCount">0 字</span></div>
           <textarea id="promptText" spellcheck="false" placeholder="请在下方导入 TXT/MD 剧集，或粘贴多集提示词；本段原文会完整显示在这里。"></textarea>
+          <textarea id="draftPreviewText" spellcheck="false" readonly hidden aria-label="发送稿预览"></textarea>
+          <div class="draftActions" id="draftActions" hidden><span id="draftPreviewInfo">发送稿只用于导入，不修改原始剧本</span><button class="smallBtn" id="btnCopyDraft">复制发送稿</button><button class="smallBtn" id="btnSyncDraft">仅同步文字到豆包</button></div>
           <div class="promptFooter"><span id="promptSaveStatus">原文按段保存，不自动改写</span><button class="textBtn" id="btnEditCodes">校正参考图编号</button></div>
           <section class="mentionWidget" id="importWidget" aria-label="一键导入提示词和图片">
             <div class="mentionRow"><button class="mentionPrimary" id="btnOneClickImport" title="从本段自动上传参考图，完整填写提示词与图号表，再尝试真实@">⚡ 一键导入：提示词＋参考图＋@</button><button class="smallBtn" id="btnImportPreflight">预检</button><button class="smallBtn" id="btnImportConfirm" hidden>确认当前图片</button><button class="smallBtn" id="btnImportCancel" hidden>取消</button></div>
@@ -91,25 +94,17 @@
         <div class="timelineTop"><div class="projectName">▣ <span id="projectName">我的AI漫剧项目</span></div><span class="timelineInfo" id="timelineInfo">请先导入剧集</span>
           <div class="projectTools"><button id="btnImportFiles" class="smallBtn actionPriority">＋ 批量导入文档</button><button id="btnAutoSplit" class="smallBtn actionPriority">⚡ 自动分段</button><button id="btnPaste" class="smallBtn">粘贴整集</button><button id="btnImportOld" class="smallBtn">迁入旧项目</button><button id="btnChooseFolder" class="smallBtn actionPriority">▧ 参考图文件夹</button><button id="btnMoreTools" class="smallBtn">更多 ▾</button></div>
         </div>
-        <div class="episodeLine">
-          <button id="btnEpisodeTree" class="episodePicker" aria-haspopup="true" aria-expanded="false">▣ 选择剧集 ▾</button>
-          <span id="episodeMiniStat" class="tiny"></span>
-          <button id="btnHideDone" class="smallBtn">隐藏已完成</button>
-          <button id="btnShowHidden" class="smallBtn">显示已隐藏</button>
-          <button id="btnHideEpisode" class="smallBtn">隐藏本集</button>
-          <button id="btnLockEpisode" class="smallBtn">锁定本集</button>
-          <div class="segmentStatus">本段状态：<select id="statusSelect"><option value="pending">待制作</option><option value="done">已完成</option><option value="redo">待重做</option></select></div>
-        </div>
-        <div id="episodeTreePanel" class="episodeTreePanel" hidden><div class="treePanelTitle">剧集目录 · 点击一集展开分段，点击段落直接跳转</div><div class="treeScroll" id="episodeTreeList"></div></div>
-        <div class="segmentStrip" id="segmentStrip"><div class="emptySeg">导入剧集后，这里会显示每一段</div></div>
-        <div class="timelineFooter"><div class="stats" id="projectStats">0 集 · 0 段</div><div class="segmentEditActions"><button id="btnHideSegment" class="smallBtn">隐藏本段</button><button id="btnLockSegment" class="smallBtn">锁定本段</button></div><div class="segmentNavigation"><button id="btnPrevEp" class="ghost compact">← 上一集</button><button id="btnNextEp" class="ghost compact">下一集 →</button><button id="btnPrevSeg" class="ghost compact">← 上一段</button><button id="btnNextSeg" class="primary compact">下一段 →</button></div></div>
+        <div id="episodeTreePanel" class="episodeTreePanel"><div class="treeScroll" id="episodeTreeList" aria-label="剧集与段落目录"><div class="emptySeg">导入剧集后，在这里逐集展开段落。</div></div></div>
+        <!-- legacy strip retained as a hidden compatibility target for installed workspaces -->
+        <div class="segmentStrip" id="segmentStrip" hidden></div>
+        <div class="timelineFooter"><div class="stats" id="projectStats">0 集 · 0 段</div><div class="segmentEditActions" hidden></div><div class="segmentNavigation"><button id="btnPrevEp" class="ghost compact">← 上一集</button><button id="btnNextEp" class="ghost compact">下一集 →</button><button id="btnPrevSeg" class="ghost compact">← 上一段</button><button id="btnNextSeg" class="primary compact">下一段 →</button></div></div>
       </section>
     </section>
   </main>
   <footer class="statusbar"><span>● 本地桌面版 · 不需要 127.0.0.1 网页服务</span><span id="bottomSummary">账号隔离 · 提示词原文不压缩 · 图片按编号绑定</span></footer>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
-<dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>豆包创作舱｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 下方点击「第X集」展开分层剧集目录，隐藏/锁定只影响导航和编辑权限，不删除原文。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
+<dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>豆包创作舱｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 底部每集单独一整行，点击集名展开分段，点击段落切换；点右上角「已完成」自动缩成小卡。高级隐藏/锁定在「更多」菜单。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
 <dialog id="voiceDialog"><div class="dialogbody"><div class="dialoghead"><h2>绑定人物声音到参考图</h2><button id="btnVoiceClose" class="iconBtn">×</button></div>
     <p>先选择人物图号、填写角色名，再选择本机 WAV/MP3 声音样本。每个人物可以有多个样本，默认仅自动使用选定的一个。</p>
     <label for="voiceCodeSelect">对应人物图片</label><select id="voiceCodeSelect" class="voiceSelect"></select>
@@ -117,6 +112,12 @@
     <p class="tiny">Seedance 2.0 参考音频：每段2—15秒、同一任务最多3段、总长最多15秒；模型限制不等于豆包聊天框已经支持音频上传。</p>
     <div class="dialogActions"><button class="ghost" id="btnVoiceCancel">取消</button><button class="primary" id="btnVoiceChoose">选择音频并绑定</button></div></div></dialog>
 <dialog id="pasteDialog"><div class="dialogbody"><div class="dialoghead"><h2>粘贴完整多集提示词</h2><button id="closePaste" class="iconBtn">×</button></div><p>按“第X集｜标题”“第X段｜标题”识别，每段原文存储；导入不影响旧项目。</p><textarea id="pasteText" placeholder="将一集或多集完整提示词粘贴到这里" spellcheck="false"></textarea><div class="dialogActions"><button id="submitPaste" class="primary">解析并加入项目</button></div></div></dialog>
-<dialog id="toolsDialog"><div class="dialogbody"><div class="dialoghead"><h2>项目管理</h2><button id="closeTools" class="iconBtn">×</button></div><div class="toolGrid"><button id="btnRescan" class="ghost">重扫参考图目录</button><button id="btnProjectBackup" class="ghost">备份漫剧项目</button><button id="btnProjectRestore" class="ghost">恢复漫剧项目</button><button id="btnExportSegment" class="ghost">导出当前段</button><button id="btnProjectName" class="ghost">重命名当前项目</button><button id="btnShowPaths" class="ghost">查看素材统计</button></div><pre id="assetStats" class="assetStats"></pre></div></dialog>
+<dialog id="toolsDialog"><div class="dialogbody"><div class="dialoghead"><h2>项目管理</h2><button id="closeTools" class="iconBtn">×</button></div><div class="toolGrid"><button id="btnRescan" class="ghost">重扫参考图目录</button><button id="btnProjectBackup" class="ghost">备份漫剧项目</button><button id="btnProjectRestore" class="ghost">恢复漫剧项目</button><button id="btnExportSegment" class="ghost">导出当前段</button><button id="btnProjectName" class="ghost">重命名当前项目</button><button id="btnShowPaths" class="ghost">查看素材统计</button></div><details class="advancedLegacy"><summary>高级项目管理：隐藏、锁定及旧数据兼容</summary>
+<div class="legacyActions"><button id="btnEpisodeTree" class="smallBtn" hidden>剧集目录</button><span id="episodeMiniStat" class="tiny"></span>
+<button id="btnHideDone" class="smallBtn">批量隐藏已完成（旧版）</button><button id="btnShowHidden" class="smallBtn">显示已隐藏</button>
+<button id="btnHideEpisode" class="smallBtn">隐藏本集</button><button id="btnLockEpisode" class="smallBtn">锁定本集</button>
+<button id="btnHideSegment" class="smallBtn">隐藏本段</button><button id="btnLockSegment" class="smallBtn">锁定本段</button>
+<div class="segmentStatus">当前段状态：<select id="statusSelect"><option value="pending">待制作</option><option value="done">已完成</option><option value="redo">待重做</option></select></div></div></details>
+<pre id="assetStats" class="assetStats"></pre></div></dialog>
 </body>
 </html>

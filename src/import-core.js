@@ -52,7 +52,7 @@
   }
   function makeMapping(items,initialIndex=0){
     return items.map((r,i)=>{const tail=r.kind==='tail'||r.code==='尾帧';
-      return tail?`图${initialIndex+i+1} = 上一段尾帧（${r.file?.name||'尾帧.png'}，跨段衔接）`:`图${initialIndex+i+1} = ${r.code}（${r.file?.name||'文件未确认'}）`;
+      return tail?`图${initialIndex+i+1} = 上一段尾帧（${r.file?.name||'尾帧.png'}，跨段衔接）`:`图${initialIndex+i+1} = ${r.code}${r.label?' '+r.label:''}（${r.file?.name||'文件未确认'}）`;
     }).join('\n');
   }
   /** Insert mapping at the reference image section without mutating original text.
@@ -61,7 +61,7 @@
    */
   function composeText(prompt,items,offset=0,voices=[]){
     const raw=String(prompt||'');
-    const voiceText=voices.length?'\n【人物音色绑定｜参考音频】\n'+voices.map((v,i)=>`音频${i+1} = ${v.code}（${String(v.label||'人物声音').replace(/[\r\n]/g,' ')}：${v.filename||v.path?.split(/[\\/]/).pop()||'未命名音频'}）`).join('\n')+'\n'+voices.map((v,i)=>`图${v.imageIndex}（${v.code}）中的人物使用音频${i+1}作为声音/音色参考；说话人对口型，台词依照本段分镜。`).join('\n'):'';
+    const voiceText=voices.length?'\n【人物音色绑定｜参考音频】\n'+voices.map((v,i)=>`音频${i+1} = ${v.code}${v.characterName?' '+v.characterName:''}（${String(v.label||'人物声音').replace(/[\r\n]/g,' ')}：${v.filename||v.path?.split(/[\\/]/).pop()||'未命名音频'}）`).join('\n')+'\n'+voices.map((v,i)=>`图${v.imageIndex}（${v.code}）中的人物使用音频${i+1}作为声音/音色参考；说话人对口型，台词依照本段分镜。`).join('\n'):'';
     const mapping=`【图片顺序对应｜实际上传顺序】\n${makeMapping(items,offset)}${voiceText}`;
     const lines=raw.match(/[^\n]*\n|[^\n]+$/g)||[];
     const head=lines.findIndex(line=>/(?:需要参考图|参考图(?:编号|列表)?|所需参考图|引用参考图)\s*[:：]?/i.test(line));

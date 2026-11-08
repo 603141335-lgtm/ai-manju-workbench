@@ -1,15 +1,19 @@
 'use strict';
+/** Pure matching, no network calls and no modification of user's original prompt. */
 const path=require('node:path');
 const {detectSegmentCodes,normCode,extractCodes}=require('./parser');
 const SUPPORTED=new Set(['.png','.jpg','.jpeg','.webp','.gif']);
+const DEFAULT_LIMIT=9;
 function unique(items){return [...new Set(items)];}
 function codeInName(name){return extractCodes(path.basename(String(name||''))).map(normCode);}
 function matchVisibleAttachment(code,attachments){
  const matches=(attachments||[]).filter(a=>codeInName(a.name||a.label).includes(code));
  return matches.length===1?'visible':matches.length>1?'ambiguous':'unknown';
 }
-function buildPlan({prompt='',segmentCodes=[],rows=[],accountId='',conversation='',limit=9,chosenPaths={}}={}){
+function buildPlan({prompt='',segmentCodes=[],rows=[],accountId='',conversation='',limit=DEFAULT_LIMIT,chosenPaths={}}={}){
  const parsed=detectSegmentCodes(prompt);
+ // Text that the user typed in the real browser takes precedence. If it has no
+ // reference labels, the active segment's explicitly maintained codes are used.
  const codes=unique((parsed.codes.length?parsed.codes:segmentCodes).map(normCode));
  const rowByCode=new Map(rows.filter(r=>r.code).map(r=>[normCode(r.code),r]));
  const list=codes.map(code=>{
@@ -27,4 +31,5 @@ function buildPlan({prompt='',segmentCodes=[],rows=[],accountId='',conversation=
 function isAllowedDoubaoUrl(raw){
  try {const url=new URL(raw);return url.protocol==='https:'&&['doubao.com','www.doubao.com'].includes(url.hostname)&&url.pathname.startsWith('/chat');}catch{return false;}
 }
-module.exports={buildPlan,codeInName,matchVisibleAttachment,isAllowedDoubaoUrl};
+function safeAttachmentCount(snapshot){return Array.isArray(snapshot?.attachments)?snapshot.attachments.length:0;}
+module.exports={buildPlan,codeInName,matchVisibleAttachment,isAllowedDoubaoUrl,safeAttachmentCount};

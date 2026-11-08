@@ -38,7 +38,7 @@ function selectVoices(bindings,imageItems,{maxClips=LIMIT.maxClips,maxSeconds=LI
  if(duration>maxSeconds+0.01)errors.push('本段音频总长 '+duration.toFixed(2)+'秒，超过 '+maxSeconds+'秒');
  return {items,totalSeconds:toDuration(duration),maxClips,maxSeconds,blocked:errors.length>0,errors};
 }
-function audioLine(row,index){return `音频${index+1} = ${row.code}（${cleanLabel(row.label)}：${audioName(row.path)}）`}
+function audioLine(row,index){return `音频${index+1} = ${row.code}${row.characterName?' '+row.characterName:''}（${cleanLabel(row.label)}：${audioName(row.path)}）`}
 class VoiceBindingsStore{
  constructor(file,{ffprobe='ffprobe',probe=probeDuration}={}){this.file=file;this.ffprobe=ffprobe;this.probe=probe;this.data={version:1,bindings:{}}}
  async load(){try{const obj=JSON.parse(await fs.promises.readFile(this.file,'utf8'));if(obj&&obj.version===1&&obj.bindings&&typeof obj.bindings==='object'){
