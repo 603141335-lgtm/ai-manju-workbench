@@ -1,13 +1,13 @@
 {
   "name": "doubao-creative-hub",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
-  "description": "豆包创作舱：内嵌豆包浏览器、多账号独立登录与AI漫剧文档工作台（无画布）",
+  "description": "豆包创作舱：内嵌浏览器、本地参考图库一键上传与原生@校验（无画布）",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/*.test.js",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/mention-core.js && node --check src/mention-page.js && node --check src/mention-runner.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
     "dist:win": "node scripts/prepare-feed.js && electron-builder --win nsis --x64 --config release-build.json --publish never"
   },
   "devDependencies": {

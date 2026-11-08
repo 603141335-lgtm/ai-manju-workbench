@@ -13,3 +13,16 @@
 .segCardCompact{display:flex;flex-direction:column;gap:4px;font-size:10px;color:#aac0de}
 .segmentCard:focus-visible{outline:2px solid #8b9bff}.segmentEditActions{display:none!important}.actionPriority{border-color:#6b8bdf!important;background:#284c92!important;color:#eef5ff!important;font-weight:700}
 .episodeLine #btnHideEpisode,.episodeLine #btnLockEpisode{font-size:17px;width:31px;padding:4px;height:30px}.timelineInfo{display:none!important}.projectName{max-width:24%}.projectTools{margin-left:auto}.timelineTop .projectTools{overflow-x:auto}
+
+/* v0.7 Doubao reference upload / native @ attempt */
+.mentionWidget{border:1px solid #4f75bc;background:linear-gradient(125deg,#1a3153,#172740);border-radius:11px;padding:10px;display:flex;flex-direction:column;gap:7px;margin:6px 0 12px}
+.mentionRow{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
+.mentionPrimary{flex:1;min-width:155px;border-radius:8px;border:1px solid #94b0ff;background:#3c65bd;color:#fff;padding:11px 10px;font-size:12px;font-weight:750;cursor:pointer}
+.mentionPrimary:disabled{opacity:.6;cursor:progress}
+.mentionNote{font-size:11px;line-height:1.5;color:#b8cdef}
+.mentionProgress{font-size:11px;color:#ffdfa2;background:#2e3650;border-radius:6px;padding:7px 9px}
+.mentionDetails{max-height:170px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.mentionDetails[hidden],.mentionProgress[hidden]{display:none}
+.mentionItem{display:grid;grid-template-columns:64px 80px minmax(0,1fr);align-items:center;gap:5px;background:#13243c;padding:6px;border-radius:7px;font-size:10px}
+.mentionItem strong{color:#e6efff}.mentionItem small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#a9bfdf}
+.mentionState{color:#ffdbac}.mentionState.ready,.mentionState.verified{color:#79d9af}.mentionState.missing,.mentionState.conflict,.mentionState.error{color:#ff9d9d}

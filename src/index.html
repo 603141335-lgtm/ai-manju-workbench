@@ -11,7 +11,7 @@
 <body>
 <div class="app" id="app">
   <header class="topbar">
-    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge">v0.6 文档工作台</span></div>
+    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge">v0.7 一键艾特</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
     <div class="topactions"><button class="ghost" id="btnCheckUpdate">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="ghost" id="btnData">数据目录</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
@@ -42,6 +42,12 @@
           <div class="assetLabel"><strong>本段提示词（可编辑）</strong><span id="wordCount">0 字</span></div>
           <textarea id="promptText" spellcheck="false" placeholder="请在下方导入 TXT/MD 剧集，或粘贴多集提示词；本段原文会完整显示在这里。"></textarea>
           <div class="promptFooter"><span id="promptSaveStatus">原文按段保存，不自动改写</span><button class="textBtn" id="btnEditCodes">校正参考图编号</button></div>
+          <section class="mentionWidget" id="mentionWidget" aria-label="一键上传并艾特">
+            <div class="mentionRow"><button class="mentionPrimary" id="btnMention" title="识别聊天框的参考图编号，从本地图库上传并尝试豆包原生艾特">@ 一键上传并艾特</button><button class="smallBtn" id="btnMentionCheck">预检</button><button class="smallBtn" id="btnMentionCancel" hidden>取消</button></div>
+            <div class="mentionNote" id="mentionNote">先把提示词输入豆包网页聊天框；点击后自动匹配本地参考图。不会自动发送。</div>
+            <div class="mentionProgress" id="mentionProgress" aria-live="polite" hidden></div>
+            <div class="mentionDetails" id="mentionDetails" hidden></div>
+          </section>
           <div class="assetHeader"><div><strong>参考图片</strong><span class="tiny" id="imgCount">0/0 张</span></div><button class="smallBtn" id="btnAddImages">＋ 补充图片</button></div>
           <div class="imageGuide" id="imageGuide">点击选图，Ctrl 多选、Shift 连选；按住图片或蓝色拖动条可拖到豆包网页。</div>
           <div class="imageGrid" id="imageGrid"></div>

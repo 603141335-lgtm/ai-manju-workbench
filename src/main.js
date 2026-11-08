@@ -10,12 +10,15 @@ const {createInitialData,normalizeName,safeBounds,allowedImage,allowedEdgeProfil
 const {WorkspaceStore} = require('./workspace');
 const {parseMultiEpisode} = require('./parser');
 const {DownloadManager,inspectManifest}=require('./downloads');
+const {createMentionRunner}=require('./mention-runner');
+const {detectSegmentCodes}=require('./parser');
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
 const MAX_LIVE_VIEWS=3;
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
 const loadedExtensions=new Map();
 const views=new Map(); // account ID -> {view,lastUsed}
+let mentionRunner=null;
 const now=()=>Date.now();
 const exists=(p)=>{try{return fs.statSync(p).isFile()}catch{return false}};
 function log(err){try{fs.appendFileSync(path.join(app.getPath('userData'),'diagnostic.log'),`\n${new Date().toISOString()} ${String(err?.stack||err)}\n`)}catch{}}
@@ -96,6 +99,7 @@ function prune(){
 }
 function selectAccount(id){
   account(id);
+  if(activeId&&id!==activeId)mentionRunner?.cancel();
   if(activeId&&views.has(activeId)){
     const old=views.get(activeId);
     try{win.contentView.removeChildView(old.view)}catch(e){log(e)}
@@ -307,6 +311,9 @@ function registerHandlers(){
   ipcMain.handle('ws:version',async(_e,code,p)=>{await workspace.chooseVersion(code,p);return workspace.snapshot()});
   ipcMain.handle('ws:layout',async(_e,patch)=>{await workspace.setLayout(patch);return true});
   ipcMain.handle('ws:rename',async(_e,name)=>{if(typeof name!=='string'||!name.trim())throw Error('项目名称不能为空');workspace.data.title=name.trim().slice(0,150);await workspace.save();return workspace.snapshot()});
+  ipcMain.handle('mention:preflight',(_e,eid,sid)=>mentionRunner.preflight({episodeId:eid,segmentId:sid}));
+  ipcMain.handle('mention:execute',(_e,eid,sid)=>mentionRunner.execute({episodeId:eid,segmentId:sid}));
+  ipcMain.handle('mention:cancel',()=>mentionRunner.cancel());
   ipcMain.handle('ws:images',(_e,eid,sid)=>workspace.resolveSegment(eid,sid).map(r=>({
     code:r.code,file:r.file?{...r.file,url:exists(r.file.path)?pathToFileURL(r.file.path).toString():null}:null,
     versions:r.versions.map(v=>({...v,url:exists(v.path)?pathToFileURL(v.path).toString():null})),
@@ -375,6 +382,6 @@ if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus()}});
   process.on('uncaughtException',log);process.on('unhandledRejection',log);
-  app.whenReady().then(async()=>{cfg=readCfg();workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();registerHandlers();initializeUpdater();createWindow()}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
+  app.whenReady().then(async()=>{cfg=readCfg();workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});registerHandlers();initializeUpdater();createWindow()}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
   app.on('window-all-closed',()=>app.quit());
 }

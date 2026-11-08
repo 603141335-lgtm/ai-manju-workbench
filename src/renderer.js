@@ -207,6 +207,48 @@ function initWorkspace(){
   $('btnExtUnload').onclick=()=>safe(async()=>{await B.extensionUnload();await refreshExtension();toast('已卸载当前账号测试扩展')});
   $('btnEdgeDownload').onclick=()=>safe(async()=>{await B.openEdge(getGroup().id);toast('已打开 Edge 的对应配置文件；扩展是否可用取决于你的 Edge 安装状态')});
 }
+
+let mentionBusy=false;
+function mentionStatusView(r){
+ const label=$('mentionNote'),box=$('mentionDetails'),progress=$('mentionProgress');
+ if(!r)return;
+ label.textContent=r.message||r.error||'预检完成';
+ const rows=r.rows||r.results||[];
+ if(rows.length){
+  box.hidden=false;
+  box.innerHTML=rows.map(x=>{const state=x.state||'pending',txt=x.reason||x.message||x.webState||'待检查';
+   return '<div class="mentionItem"><strong>'+enc(x.code)+'</strong><span class="mentionState '+enc(state)+'">'+enc(state==='ready'?'已匹配':state==='verified'?'已验证引用':state==='missing'?'缺图':state==='conflict'?'图片重名':state==='uploaded'?'网页可见':state==='pending'?'等待确认':state==='manual'?'需手动上传':state==='error'?'失败':state==='unsupported'?'格式不支持':'待确认')+'</span><small title="'+enc(txt)+'">'+enc(txt)+'</small></div>';
+  }).join('');
+ }
+ if(r.state==='running'){progress.hidden=false;progress.textContent=r.message||'执行中…'}
+ if(['done','error','cancelled'].includes(r.state)){progress.hidden=false;progress.textContent=r.message||'执行结束'}
+}
+async function runMention(checkOnly=false){
+ if(mentionBusy)return;
+ const ep=getEp(),seg=getSeg();if(!ep||!seg){toast('请先选择集和段');return}
+ await flushPrompt();
+ const btn=$('btnMention');btn.disabled=true;
+ try{
+  const plan=await B.mentionPreflight(ep.id,seg.id);
+  mentionStatusView(plan);
+  if(!plan.ready){toast(plan.error||'网页预检失败');return}
+  if(!plan.rows?.length){toast('未识别到需要参考图编号');return}
+  if(plan.blocked){toast('存在缺图、重名、格式问题或超过9张，先检查下方异常');return}
+  if(checkOnly){toast('预检通过，点击「一键上传并艾特」开始');return}
+  mentionBusy=true;$('btnMentionCancel').hidden=false;
+  mentionStatusView({state:'running',message:'正在从本地参考图库选图并检查豆包网页…'});
+  const out=await B.mentionExecute(ep.id,seg.id);
+  mentionStatusView(out);toast(out.message||'一键艾特处理结束');
+ }catch(e){mentionStatusView({state:'error',message:e.message});toast(e.message)}
+ finally{mentionBusy=false;btn.disabled=false;$('btnMentionCancel').hidden=true}
+}
+function initMention(){
+ $('btnMention').onclick=()=>runMention(false);
+ $('btnMentionCheck').onclick=()=>runMention(true);
+ $('btnMentionCancel').onclick=()=>B.mentionCancel();
+ B.onMentionStatus(mentionStatusView);
+}
+
 function initGlobal(){const help=$('helpDialog');$('btnHelp').onclick=()=>modal(help);$('closeHelp').onclick=$('closeHelpBottom').onclick=()=>dialogClose(help);
   for(const id of ['helpDialog','pasteDialog','toolsDialog'])$(id).addEventListener('cancel',e=>{e.preventDefault();dialogClose($(id))});
   setupResize($('leftResizer'),'left');setupResize($('rightResizer'),'right');setupResize($('bottomResizer'),'bottom');
@@ -219,7 +261,7 @@ async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Elec
   try{
     cfg=await B.getCfg();ws=await B.wsState();expandGroups=new Set(cfg.groups.map(g=>g.id));
     renderGroups();renderWorkspaceShell();applyLayout();await renderImages();refreshHeader();
-    initAccounts();initWorkspace();initGlobal();await refreshDownloads();await refreshExtension();
+    initAccounts();initWorkspace();initGlobal();initMention();await refreshDownloads();await refreshExtension();
     if(cfg.activeAccountId)await switchAccount(cfg.activeAccountId);setTimeout(bounds,250);
     if(ws.warning)toast(ws.warning);
   }catch(e){error(e);$('webStatus').textContent='初始化失败：'+e.message+'。打开数据目录检查 diagnostic.log'}
