@@ -1,4 +1,4 @@
-# 豆包创作舱 v0.6.0 —— 内嵌豆包网页版工作台（无画布）
+# 豆包创作舱 v0.7.1 —— 内嵌豆包网页版、一键上传与艾特修复测试版（无画布）
 
 本版本**真正基于** `01_豆包创作舱_v0.5_单独包.zip` 里的 Electron 源码修改，并非仓库此前误认的 `ai-manju-workbench/app/` 文档程序。
 
@@ -18,7 +18,7 @@ Windows x64 NSIS 安装包采用 Electron ASAR、Fuses + 完整性验证，并�
 本版固定：`name = doubao-creative-hub`、`productName = 豆包创作舱`、`appId = com.manju.doubao.creativehub`。因此与以前误做的 `com.manju.workbench.desktop` 文档程序互不覆盖。原版为 portable 可执行文件，没有 Windows NSIS 卸载注册项；新版本是同一产品的**首次正式安装**。后续同 appId 的新版 NSIS 可覆盖升级。
 
 ## Windows 本机一键打包
-双击仓库根目录 `一键打包Windows安装版.cmd`（需 Windows 网络可访问 npm / Electron 下载源）。第一次构建会安装依赖、运行测试、混淆代码并在 `release/` 产出 `Doubao-Creative-Hub-Setup-v0.6.0-x64.exe`。程序无法在此聊天环境中进行 Windows 真机账号扫码登录验证。
+双击仓库根目录 `一键打包Windows安装版.cmd`（需 Windows 网络可访问 npm / Electron 下载源）。第一次构建会安装依赖、运行测试、混淆代码并在 `release/` 产出 `Doubao-Creative-Hub-Setup-v0.7.1-x64.exe`。程序无法在此聊天环境中进行 Windows 真机账号扫码登录验证。
 
 如果配置官方可用的 `DOUBAO_UPDATE_URL`（末尾 `/` 的 HTTPS 静态文件目录）并通过版本发布流程同时上传 exe、`latest.yml` 和 blockmap，则程序内的“检查更新”才会启用。未配置时只支持手动安装新版覆盖。
 
@@ -27,3 +27,6 @@ Windows x64 NSIS 安装包采用 Electron ASAR、Fuses + 完整性验证，并�
 `npm run check`：代码语法检查和 Node 回归测试。
 `node scripts/harden.js`：在独立副本里进行构建混淆，不要在原版可维护源码中直接运行。
 详见 `docs/RELEASE_SECURITY.md`。
+
+## v0.7.1 一键上传并艾特
+修复把“文件选择成功”误显示为上传成功的问题。现在预检后从当前豆包网页版上传文件，并分别统计文件选择、网页附件确认、原生@引用。对于仅在网页看到缩略图而没有可验证文件名的情况，按“待确认”处理；没有原生引用组件证明的 @ 不算成功。单文件输入框支持逐张自动上传（每张必须先网页确认）。不自动发送消息，不获取Cookie。**未在用户已登录的豆包网页上完成实际端到端测试，不能承诺所有模式一次点击即可引用成功。** 查看 `docs/V071_FIX_TEST_REPORT.md`。

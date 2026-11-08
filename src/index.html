@@ -11,7 +11,7 @@
 <body>
 <div class="app" id="app">
   <header class="topbar">
-    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge">v0.7 一键艾特</span></div>
+    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge">v0.7.1 引用修复测试版</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
     <div class="topactions"><button class="ghost" id="btnCheckUpdate">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="ghost" id="btnData">数据目录</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
@@ -43,8 +43,8 @@
           <textarea id="promptText" spellcheck="false" placeholder="请在下方导入 TXT/MD 剧集，或粘贴多集提示词；本段原文会完整显示在这里。"></textarea>
           <div class="promptFooter"><span id="promptSaveStatus">原文按段保存，不自动改写</span><button class="textBtn" id="btnEditCodes">校正参考图编号</button></div>
           <section class="mentionWidget" id="mentionWidget" aria-label="一键上传并艾特">
-            <div class="mentionRow"><button class="mentionPrimary" id="btnMention" title="识别聊天框的参考图编号，从本地图库上传并尝试豆包原生艾特">@ 一键上传并艾特</button><button class="smallBtn" id="btnMentionCheck">预检</button><button class="smallBtn" id="btnMentionCancel" hidden>取消</button></div>
-            <div class="mentionNote" id="mentionNote">先把提示词输入豆包网页聊天框；点击后自动匹配本地参考图。不会自动发送。</div>
+            <div class="mentionRow"><button class="mentionPrimary" id="btnMention" title="识别聊天框的参考图编号，从本地图库上传，并尝试豆包原生艾特">@ 一键上传并艾特</button><button class="smallBtn" id="btnMentionCheck">重新检查</button><button class="smallBtn" id="btnMentionCancel" hidden>取消</button></div>
+            <div class="mentionNote" id="mentionNote">先把提示词输入豆包聊天框；自动选择文件≠网页上传成功，只有确认附件与原生引用才标记通过。不会自动发送。</div>
             <div class="mentionProgress" id="mentionProgress" aria-live="polite" hidden></div>
             <div class="mentionDetails" id="mentionDetails" hidden></div>
           </section>

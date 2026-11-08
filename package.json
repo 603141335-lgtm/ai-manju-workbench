@@ -1,8 +1,8 @@
 {
   "name": "doubao-creative-hub",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
-  "description": "豆包创作舱：内嵌浏览器、本地参考图库一键上传与原生@校验（无画布）",
+  "description": "豆包创作舱浏览器工作台：图片文件选择、网页上传状态、原生@ 分开验收（修复测试版）",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",

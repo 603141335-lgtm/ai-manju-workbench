@@ -208,6 +208,8 @@ function initWorkspace(){
   $('btnEdgeDownload').onclick=()=>safe(async()=>{await B.openEdge(getGroup().id);toast('已打开 Edge 的对应配置文件；扩展是否可用取决于你的 Edge 安装状态')});
 }
 
+// Doubao browser attachment automation. Do not mark as successful without a
+// platform-owned native @ token; never edit the original episode prompt.
 let mentionBusy=false;
 function mentionStatusView(r){
  const label=$('mentionNote'),box=$('mentionDetails'),progress=$('mentionProgress');
@@ -217,7 +219,7 @@ function mentionStatusView(r){
  if(rows.length){
   box.hidden=false;
   box.innerHTML=rows.map(x=>{const state=x.state||'pending',txt=x.reason||x.message||x.webState||'待检查';
-   return '<div class="mentionItem"><strong>'+enc(x.code)+'</strong><span class="mentionState '+enc(state)+'">'+enc(state==='ready'?'已匹配':state==='verified'?'已验证引用':state==='missing'?'缺图':state==='conflict'?'图片重名':state==='uploaded'?'网页可见':state==='pending'?'等待确认':state==='manual'?'需手动上传':state==='error'?'失败':state==='unsupported'?'格式不支持':'待确认')+'</span><small title="'+enc(txt)+'">'+enc(txt)+'</small></div>';
+   return `<div class="mentionItem"><strong>${enc(x.code)}</strong><span class="mentionState ${enc(state)}">${enc(state==='ready'?'已匹配':state==='verified'?'已验证引用':state==='missing'?'缺图':state==='conflict'?'图片重名':state==='uploaded'?'网页上传确认':state==='attachment-visible'?'附件可见待确认':state==='file-selected'?'文件已选择':state==='matched'?'本地已匹配':state==='pending'?'网页未确认':state==='manual'?'需手动上传':state==='error'?'失败':state==='unsupported'?'格式不支持':'待确认')}</span><small title="${enc(txt)}">${enc(txt)}</small></div>`;
   }).join('');
  }
  if(r.state==='running'){progress.hidden=false;progress.textContent=r.message||'执行中…'}
