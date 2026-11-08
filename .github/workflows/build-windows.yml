@@ -1,7 +1,7 @@
-name: Build real Doubao Browser Workbench (No Canvas) v0.9.1
+name: Build real Doubao Browser Workbench (No Canvas) v0.9.2
 on:
   push:
-    branches: [release/doubao-browser-inline-mention-v0.9.1]
+    branches: [release/doubao-browser-inline-mention-v0.9.2]
   workflow_dispatch:
 permissions:
   contents: write
@@ -53,7 +53,7 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Setup-v0.9.1-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Setup-v0.9.2-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
@@ -61,14 +61,14 @@ jobs:
       - name: Publish private GitHub Release (avoids Actions artifact quota)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: doubao-browser-v0.9.1
+          tag_name: doubao-browser-v0.9.2
           target_commitish: ${{ github.sha }}
-          name: 豆包创作舱 v0.9.1（浏览器登录·批量上传·跨段尾帧）
+          name: 豆包创作舱 v0.9.2（浏览器登录·批量上传·跨段尾帧）
           prerelease: true
           body: |
-            正确基于 01_豆包创作舱_v0.5_单独包.zip 的浏览器工作台，支持 WebContentsView 豆包网页版登录、账号独立持久化分区，去除画布。增加参考图列表内联原生@尝试、一次批量上传参考图、自动提取上一段下载成片尾帧并加入下一段图1。内置 LGPL FFmpeg 独立可执行程序，见许可证说明。未应用商业 Themida/VMProtect 加壳；原生 @ 及批量上传尚未在用户已登录的真实豆包页面完成验收。
+            正确基于 01_豆包创作舱_v0.5_单独包.zip 的浏览器工作台，支持 WebContentsView 豆包网页版登录、账号独立持久化分区，去除画布。增加参考图列表人物音色图片绑定、音频参考自动选取和上传尝试、内联原生@尝试、一次批量上传参考图、自动提取上一段下载成片尾帧并加入下一段图1。内置 LGPL FFmpeg 独立可执行程序，见许可证说明。未应用商业 Themida/VMProtect 加壳；原生 @ 及批量上传尚未在用户已登录的真实豆包页面完成验收。
           files: |
-            release/Doubao-Creative-Hub-Setup-v0.9.1-x64.exe
+            release/Doubao-Creative-Hub-Setup-v0.9.2-x64.exe
             release/SHA256SUMS.txt
             release/latest.yml
             release/*.blockmap

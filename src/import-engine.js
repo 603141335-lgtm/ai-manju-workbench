@@ -10,6 +10,8 @@ const oldPage=require('./mention-page');
 const inlinePage=require('./inline-mention-page');
 const {makeMapping}=require('./import-core');
 const page=require('./import-page');
+const voicePage=require('./voice-page');
+const {audioLine}=require('./voice-bindings');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const EXTS=new Map([['.png','image/png'],['.jpg','image/jpeg'],['.jpeg','image/jpeg'],['.webp','image/webp']]);
 function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null}={}){
@@ -33,7 +35,7 @@ function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null}={}){
  }
  return {codes,items,tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing','extracting'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
 }
-function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,notify=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
+function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
  let running=null;
  const emit=(state,message,ctx,extra={})=>notify({state,message,rows:ctx?.rows?.map(x=>({...x}))||[],...extra});
  function currentActive(){const a=getActive();if(!a||!a.webContents||a.webContents.isDestroyed?.()||!isAllowedDoubaoUrl(a.webContents.getURL()))throw Error('请先在工作台内打开并登录豆包聊天网页');return a;}
@@ -47,6 +49,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   const a=currentActive();const seg=getSegment(episodeId,segmentId);
   if(!seg||!String(seg.text||'').trim())throw Error('请先在当前段填写完整提示词');
   const rows=resolveRows(episodeId,segmentId);const tail=getTailForSegment(episodeId,segmentId);const plan=createPlan({prompt:seg.text,rows,chosenPaths:getChosenPaths(),tail});
+  plan.voicePlan=getVoiceForImages(plan.items);if(plan.voicePlan.blocked){plan.blocked=true;plan.voiceErrors=plan.voicePlan.errors;}
   const snap=await probe(a.webContents);if(!snap.ready)return {...plan,ready:false,error:'豆包网页暂未找到可用的聊天输入框'};
   return {...plan,ready:true,currentDraftChars:(snap.prompt||'').length,differentDraft:!!snap.prompt?.trim()&&snap.prompt.trim()!==seg.text.trim(),accountId:a.accountId,conversation:a.webContents.getURL()};
  }
@@ -98,14 +101,14 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   const verified=await waitBatch(ctx,items,before);
   return verified;
  }
- async function tryNative(ctx,item,index){
+ async function tryNative(ctx,item,index,customAnchor=null){
   ensure(ctx);const wc=ctx.wc;
   // The anchor must be the exact text emitted by composeText. The page
   // refuses ambiguous matches instead of falling back to the editor end.
-  const anchor=makeMapping([item],index);
+  const anchor=customAnchor||makeMapping([item],index);
   const params={anchor,code:item.code,filename:item.file.name,index:index+1};
   const before=await evalFn(wc,inlinePage.inspectInlineReference,params);
-  if(before.verified)return {state:'native',message:'图'+(index+1)+'已存在正确的内联原生 @ 标签'};
+  if(before.verified)return {state:'native',message:'已存在正确的内联原生 @ 标签'};
   const caret=await evalFn(wc,inlinePage.focusReferenceSlot,params);
   if(!caret.ok)return {state:'mapping',message:caret.message};
   // A leading space is needed for TipTap's mention suggestion trigger.
@@ -131,11 +134,44 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   await evalFn(wc,inlinePage.clearPendingInlineAt,params);
   return {state:'mapping',message:after.message+'；不会把末尾其他 @ 误判为成功'};
  }
+
+ async function importVoices(ctx,voiceRows){
+  if(!voiceRows.length)return [];
+  const files=[];for(const item of voiceRows){
+   const data=await fs.promises.readFile(item.path);
+   if(data.length>15*1024*1024)throw Error(item.code+' 音频超过15MB');
+   files.push({name:item.filename,mime:path.extname(item.path).toLowerCase()==='.mp3'?'audio/mpeg':'audio/wav',base64:data.toString('base64')});
+  }
+  const state=async()=>evalFn(ctx.wc,voicePage.probeAudio,null);
+  // The website may expose a single-only file input. Upload one by one inside
+  // the SAME user-triggered workflow, but never call an unrelated input.
+  const upload=async(group)=>{
+   ensure(ctx);const before=await state();let selected=await evalFn(ctx.wc,voicePage.selectAudioBatch,{files:group});
+   if(!selected.ok&&selected.unsupported){const menu=await evalFn(ctx.wc,voicePage.openAudioUploadMenu,null);if(menu.ok){await pause(250);ensure(ctx);selected=await evalFn(ctx.wc,voicePage.selectAudioBatch,{files:group});}}
+   if(!selected.ok)throw Error('音频上传未启动：'+selected.message+'。已上传的图片保留，原始提示词未改写');
+   emit('running',`已向豆包提交 ${group.length} 段音频，等待网页确认（不能视为成功）`,ctx,{voiceState:'selected'});
+   let last=null,stable=0,deadline=Date.now()+25000+group.length*2500;
+   while(Date.now()<deadline){await pause(500);ensure(ctx);last=await state();
+    if(last?.ready&&!last.busy&&group.every(x=>last.names.filter(n=>sameFilename(n,x.name)).length===1)){
+     if(++stable>=2)return group.length;
+    }else stable=0;
+   }
+   throw Error('豆包未确认音频附件 '+group.map(x=>x.name).join('、')+'；已停止。不要把本地绑定误认为网页版上传成功');
+  };
+  try{await upload(files)}catch(e){
+   if(files.length>1&&/仅支持单文件|切换至兼容模式/.test(e.message)){
+    for(const file of files)await upload([file]);
+   }else throw e;
+  }
+  emit('running',`网页已确认 ${files.length} 段音频附件`,ctx,{audioConfirmed:files.length});
+  return voiceRows;
+ }
+
  async function execute({episodeId,segmentId,replaceDraft=false,attemptNative=true}={}){
   if(running)throw Error('另一个一键导入任务正在执行');
   const pre=await getPlan({episodeId,segmentId});
   if(!pre.ready)throw Error(pre.error||'网页不可用');
-  if(pre.blocked)throw Error(pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对': '存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
+  if(pre.blocked)throw Error(pre.voiceErrors?.length?'声音绑定异常：'+pre.voiceErrors.join('；'):pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对':'存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
   const a=currentActive(),seg=getSegment(episodeId,segmentId),ctx={episodeId,segmentId,accountId:a.accountId,wc:a.webContents,url:a.webContents.getURL(),cancelled:false,rows:pre.items.map(x=>({code:x.code,state:'matched',message:'本地参考图已匹配'}))};
   const before=await probe(ctx.wc);
   if(before.prompt?.trim()&&before.prompt.trim()!==seg.text.trim()&&!replaceDraft)throw Error('豆包聊天框有不同草稿，须先确认是否覆盖');
@@ -204,7 +240,9 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
    ensure(ctx);
    // User's original segment is never modified. Mapping is appended to the
    // draft only after every file is confirmed in the current Doubao chat.
-   const composed=composeText(seg.text,finished.map(x=>({code:x.code,file:x.file})));
+   const voiceRows=await importVoices(ctx,pre.voicePlan?.items||[]);
+   ensure(ctx);
+   const composed=composeText(seg.text,finished.map(x=>({code:x.code,file:x.file})),0,voiceRows);
    const result=await evalFn(ctx.wc,page.setPrompt,{text:composed,allowedExisting:seg.text,replace:replaceDraft||!before.prompt?.trim()});
    ensure(ctx);
    if(!result.ok)throw Error(result.message+'；图片已上传，原始段落未修改');
@@ -216,7 +254,13 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
     r.state=native.state;r.message=native.message;if(native.state==='native')natives++;
     emit('running',`${r.code}: ${native.message}`,ctx,{textFilled:true,nativeVerified:natives});
    }
-   const end={state:'done',message:`网页自动核验 ${autoConfirmed} 张、人工确认 ${manualConfirmed} 张｜提示词已填写｜原生@核验 ${natives}/${pre.items.length}；其余使用图号对应表`,rows:ctx.rows,uploaded:finished.length,autoConfirmed,manualConfirmed,textFilled:true,nativeVerified:natives,total:pre.items.length};
+   let nativeAudio=0;
+   for(let i=0;i<voiceRows.length;i++){
+    const voice=voiceRows[i],anchor=audioLine(voice,i);
+    ensure(ctx);
+    if(attemptNative){const result=await tryNative(ctx,{code:voice.code,file:{name:voice.filename}},i,anchor);if(result.state==='native')nativeAudio++;emit('running',`音频${i+1}：${result.message}`,ctx,{nativeAudioVerified:nativeAudio});}
+   }
+   const end={state:'done',message:`图片 ${autoConfirmed} 张自动确认、${manualConfirmed} 张人工确认｜音频 ${voiceRows.length} 段已核验上传｜图片原生@ ${natives}/${pre.items.length}｜音频原生@ ${nativeAudio}/${voiceRows.length}；未验证项只保留明确对应说明`,rows:ctx.rows,uploaded:finished.length,autoConfirmed,manualConfirmed,textFilled:true,nativeVerified:natives,nativeAudioVerified:nativeAudio,audioConfirmed:voiceRows.length,total:pre.items.length};
    emit('done',end.message,ctx,end);return end;
   }catch(e){const end={state:'error',message:e.message,rows:ctx.rows,uploaded:finished.length,textFilled:false,total:pre.items.length};emit('error',e.message,ctx,end);return end;}
   finally{running=null;}

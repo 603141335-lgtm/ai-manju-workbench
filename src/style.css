@@ -40,3 +40,14 @@
 .tailframeContent{display:flex;align-items:center;gap:9px;min-height:28px;font-size:11px;color:#b8d2f1}
 .tailframeContent img{width:78px;height:54px;object-fit:cover;border-radius:5px;border:1px solid #5279aa}
 .tailframeContent strong{color:#a8ebd0}
+
+/* Voice/image bindings — scoped only to the right asset panel. */
+.voicePanel{border:1px solid #304665;border-radius:12px;padding:10px;margin:9px 5px;background:#0c1b30}
+.voiceHint{font-size:11px;line-height:1.5;color:#8da8c7;margin:6px 0}
+.voiceList{display:grid;gap:6px;max-height:250px;overflow:auto}
+.voiceRow{display:flex;align-items:center;gap:8px;padding:8px;background:#13263e;border:1px solid #28405e;border-radius:8px}
+.voiceAvatar{border:1px solid #34516d;border-radius:6px;min-width:47px;text-align:center;padding:5px;font-size:12px;color:#e7efff}
+.voiceDetails{min-width:0;flex:1;display:grid;gap:3px;font-size:12px}
+.voiceDetails small{color:#90a9c7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.voiceActions{display:flex;flex-wrap:wrap;gap:3px}.voiceActions button{padding:4px 6px;font-size:10px;border-radius:6px}
+.voiceSelect,#voiceNameInput{width:100%;background:#0c1b30;color:#e9f3ff;border:1px solid #34567c;padding:10px;border-radius:7px;margin:6px 0 14px}

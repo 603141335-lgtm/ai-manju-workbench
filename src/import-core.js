@@ -59,9 +59,10 @@
    * No duplicate footer and no modifications to any dialogue, timing or limitations.
    * Return a new draft only; never persist it to the original segment.
    */
-  function composeText(prompt,items,offset=0){
+  function composeText(prompt,items,offset=0,voices=[]){
     const raw=String(prompt||'');
-    const mapping=`【图片顺序对应｜实际上传顺序】\n${makeMapping(items,offset)}`;
+    const voiceText=voices.length?'\n【人物音色绑定｜参考音频】\n'+voices.map((v,i)=>`音频${i+1} = ${v.code}（${String(v.label||'人物声音').replace(/[\r\n]/g,' ')}：${v.filename||v.path?.split(/[\\/]/).pop()||'未命名音频'}）`).join('\n')+'\n'+voices.map((v,i)=>`图${v.imageIndex}（${v.code}）中的人物使用音频${i+1}作为声音/音色参考；说话人对口型，台词依照本段分镜。`).join('\n'):'';
+    const mapping=`【图片顺序对应｜实际上传顺序】\n${makeMapping(items,offset)}${voiceText}`;
     const lines=raw.match(/[^\n]*\n|[^\n]+$/g)||[];
     const head=lines.findIndex(line=>/(?:需要参考图|参考图(?:编号|列表)?|所需参考图|引用参考图)\s*[:：]?/i.test(line));
     let insertAt=0;

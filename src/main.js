@@ -12,6 +12,7 @@ const {parseMultiEpisode} = require('./parser');
 const {DownloadManager,inspectManifest}=require('./downloads');
 const {createMentionRunner}=require('./mention-runner');
 const {createImportEngine}=require('./import-engine');
+const {VoiceBindingsStore}=require('./voice-bindings');
 const {TailFrameStore,binaries,findPredecessor}=require('./tailframe');
 const {detectSegmentCodes}=require('./parser');
 
@@ -20,7 +21,7 @@ const MAX_LIVE_VIEWS=3;
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
 const loadedExtensions=new Map();
 const views=new Map(); // account ID -> {view,lastUsed}
-let mentionRunner=null,importEngine=null,tailframes=null;
+let mentionRunner=null,importEngine=null,tailframes=null,voiceBindings=null;
 const now=()=>Date.now();
 const exists=(p)=>{try{return fs.statSync(p).isFile()}catch{return false}};
 function log(err){try{fs.appendFileSync(path.join(app.getPath('userData'),'diagnostic.log'),`\n${new Date().toISOString()} ${String(err?.stack||err)}\n`)}catch{}}
@@ -335,6 +336,19 @@ function registerHandlers(){
     tell('tail:updated',{episodeId:eid,segmentId:previous.seg.id,...result});
     return result;
   });
+  ipcMain.handle('voice:list',()=>voiceBindings.snapshot());
+  ipcMain.handle('voice:add',async(_e,code,label)=>{
+    const pick=await dialog.showOpenDialog(win,{title:'为参考图 '+code+' 绑定人物音频（WAV/MP3，单段2-15秒）',properties:['openFile','multiSelections'],filters:[{name:'人物声音',extensions:['wav','mp3']}]});
+    if(pick.canceled||!pick.filePaths.length)return {cancelled:true,...voiceBindings.snapshot()};
+    return voiceBindings.add(code,pick.filePaths,label||'人物声音');
+  });
+  ipcMain.handle('voice:default',(_e,code,id)=>voiceBindings.setDefault(code,id));
+  ipcMain.handle('voice:remove',(_e,code,id)=>voiceBindings.remove(code,id));
+  ipcMain.handle('voice:play',async(_e,code,id)=>{
+    const file=(voiceBindings.data.bindings[code]||[]).find(x=>x.id===id)?.path;
+    if(!file||!exists(file))throw Error('声音文件已失效');
+    const result=await shell.openPath(file);if(result)throw Error(result);return true;
+  });
   ipcMain.handle('import:preflight',(_e,eid,sid)=>importEngine.getPlan({episodeId:eid,segmentId:sid}));
   ipcMain.handle('import:execute',(_e,eid,sid,options)=>importEngine.execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false}));
   ipcMain.handle('import:cancel',()=>importEngine.cancel());
@@ -410,6 +424,6 @@ if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus()}});
   process.on('uncaughtException',log);process.on('unhandledRejection',log);
-  app.whenReady().then(async()=>{cfg=readCfg();workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});importEngine=createImportEngine({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},getSegment:(eid,sid)=>workspace.findSegment(eid,sid).seg,resolveRows:(eid,sid)=>workspace.resolveSegment(eid,sid),getChosenPaths:()=>workspace.data.chosenPaths,getCurrentSelection:()=>({episodeId:workspace.data.activeEpisodeId,segmentId:workspace.data.activeSegmentId}),getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),notify:info=>tell('import:status',info)});registerHandlers();initializeUpdater();createWindow()}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
+  app.whenReady().then(async()=>{cfg=readCfg();workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();voiceBindings=await new VoiceBindingsStore(path.join(app.getPath('userData'),'voice-bindings.json'),{ffprobe:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath}).ffprobe}).load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});importEngine=createImportEngine({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},getSegment:(eid,sid)=>workspace.findSegment(eid,sid).seg,resolveRows:(eid,sid)=>workspace.resolveSegment(eid,sid),getChosenPaths:()=>workspace.data.chosenPaths,getCurrentSelection:()=>({episodeId:workspace.data.activeEpisodeId,segmentId:workspace.data.activeSegmentId}),getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),getVoiceForImages:items=>voiceBindings.plan(items),notify:info=>tell('import:status',info)});registerHandlers();initializeUpdater();createWindow()}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
   app.on('window-all-closed',()=>app.quit());
 }

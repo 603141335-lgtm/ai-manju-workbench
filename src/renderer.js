@@ -116,6 +116,7 @@ async function renderImages(){const ep=getEp(),seg=getSeg(),seq=++renderSeq;
   if(seq!==renderSeq)return;
   const present=imageRows.filter(r=>r.file&&!r.missing).length,missing=imageRows.filter(r=>r.missing),dups=imageRows.filter(r=>r.duplicate);
   await renderTailFrame();
+  await refreshVoiceBindings();
   $('imgCount').textContent=`${present}/${imageRows.length} 张`;
   const safePaths=new Set(imageRows.filter(r=>r.file&&!r.missing).map(r=>r.file.path));selected=new Set([...selected].filter(p=>safePaths.has(p)));
   $('imageGrid').innerHTML=imageRows.map((r,i)=>{
@@ -252,8 +253,8 @@ async function runOneClickImport(checkOnly=false){
  try{
   const plan=await B.importPreflight(ep.id,seg.id);showImportStatus(plan);
   if(!plan.ready){toast(plan.error||'豆包网页当前不可用');return;}
-  if(plan.blocked){toast(plan.overLimit?'加上上一段尾帧超过9张，请先调整':'缺图、重复编号、图片格式或尾帧存在异常，请先处理');return;}
-  if(checkOnly){toast('已预检 '+plan.items.length+' 张图片；原文不改变');return;}
+  if(plan.blocked){toast(plan.voiceErrors?.length?plan.voiceErrors.join('；'):plan.overLimit?'加上上一段尾帧超过9张，请先调整':'缺图、重复编号、图片格式或尾帧存在异常，请先处理');return;}
+  if(checkOnly){toast('预检：'+plan.items.length+'张图片、'+(plan.voicePlan?.items.length||0)+'段已绑定声音；原文不改变');return;}
   let replaceDraft=false;
   if(plan.differentDraft){replaceDraft=await confirmAction('豆包已有不同草稿','一键导入会用本段完整提示词替换当前豆包聊天输入框文字。若已有未发送内容，请先保存。是否确认？');if(!replaceDraft)return;}
   importBusy=true;$('btnImportCancel').hidden=false;
@@ -322,11 +323,47 @@ function initGlobal(){const help=$('helpDialog');$('btnHelp').onclick=()=>modal(
   window.addEventListener('beforeunload',()=>{if(promptTimer){const e=getEp(),s=getSeg();if(s){s.text=$('promptText').value;B.wsEditText(e.id,s.id,s.text)}}});
   document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='PageDown'){e.preventDefault();safe(nextAccount)}if(e.altKey&&e.key==='ArrowRight'){e.preventDefault();safe(()=>moveSegment(1))}if(e.altKey&&e.key==='ArrowLeft'){e.preventDefault();safe(()=>moveSegment(-1))}if(e.key==='Escape'&&focus){focus=false;$('layout').classList.remove('focus');$('btnMaxBrowser').textContent='专注';bounds()}});
 }
+
+let voiceCache={bindings:{}};
+async function refreshVoiceBindings(){
+ const ep=getEp(),seg=getSeg();const list=$('voiceList');
+ if(!ep||!seg){list.textContent='选择一个分镜后可绑定声音';$('voiceCount').textContent='本段 0 段';return;}
+ voiceCache=await B.voiceList();
+ if(getEp()?.id!==ep.id||getSeg()?.id!==seg.id)return;
+ const codes=[...new Set((seg.codes||[]).map(x=>String(x).toUpperCase()))];
+ const rows=codes.flatMap(code=>(voiceCache.bindings[code]||[]).map(a=>({code,...a})));
+ $('voiceCount').textContent='本段 '+codes.filter(x=>(voiceCache.bindings[x]||[]).length).length+' 人 / '+rows.length+' 段样本';
+ list.innerHTML=rows.map(a=>`<div class="voiceRow"><span class="voiceAvatar">${enc(a.code)}</span><div class="voiceDetails"><strong>${enc(a.label)}</strong><small title="${enc(a.path)}">${enc(a.path.split(/[\\/]/).pop())} · ${enc(a.duration)}秒 ${a.isDefault?'· 默认音色':''}</small></div><div class="voiceActions"><button data-voice="play" data-code="${enc(a.code)}" data-id="${enc(a.id)}" title="试听">▶</button>${!a.isDefault?`<button data-voice="default" data-code="${enc(a.code)}" data-id="${enc(a.id)}" title="设为默认">设默认</button>`:''}<button data-voice="remove" data-code="${enc(a.code)}" data-id="${enc(a.id)}" title="解除绑定">×</button></div></div>`).join('')||'<div class="voiceHint">本段人物图片暂未绑定音色。点击「＋ 绑定人物声音」。</div>';
+}
+function initVoiceBindings(){
+ $('btnBindVoice').onclick=()=>safe(async()=>{
+  const seg=getSeg();if(!seg)return toast('先选中分镜');
+  const choices=[...new Set((seg.codes||[]).filter(x=>/^A\d/.test(x)))];
+  if(!choices.length)return toast('本段没有可绑定的人物参考图编号');
+  $('voiceCodeSelect').innerHTML=choices.map(x=>`<option value="${enc(x)}">${enc(x)}</option>`).join('');
+  $('voiceNameInput').value='';modal($('voiceDialog'));
+ });
+ function close(){const d=$('voiceDialog');if(d.open)d.close();B.setOverlay(false)}
+ $('btnVoiceClose').onclick=close;$('btnVoiceCancel').onclick=close;
+ $('btnVoiceChoose').onclick=()=>safe(async()=>{
+  const code=$('voiceCodeSelect').value,label=$('voiceNameInput').value.trim()||'人物声音';
+  close();const res=await B.voiceAdd(code,label);
+  if(!res.cancelled){toast(`${code} 声音样本已绑定；一键导入将自动匹配默认音色`);await refreshVoiceBindings()}
+ });
+ $('voiceList').onclick=e=>safe(async()=>{
+  const b=e.target.closest('button[data-voice]');if(!b)return;
+  const {voice,code,id}=b.dataset;
+  if(voice==='play'){await B.voicePlay(code,id);return;}
+  if(voice==='remove'){if(!(await confirmAction('解除音色绑定',`确认将此声音样本从 ${code} 的绑定列表移除吗？原始音频文件不会被删除。`)))return;await B.voiceRemove(code,id)}
+  if(voice==='default')await B.voiceDefault(code,id);
+  await refreshVoiceBindings();
+ });
+}
 async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Electron Windows 桌面程序中操作真实豆包';return}
   try{
     cfg=await B.getCfg();ws=await B.wsState();expandGroups=new Set(cfg.groups.map(g=>g.id));
     renderGroups();renderWorkspaceShell();applyLayout();await renderImages();refreshHeader();
-    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();await refreshDownloads();await refreshExtension();
+    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();await refreshDownloads();await refreshExtension();
     if(cfg.activeAccountId)await switchAccount(cfg.activeAccountId);setTimeout(bounds,250);
     if(ws.warning)toast(ws.warning);
   }catch(e){error(e);$('webStatus').textContent='初始化失败：'+e.message+'。打开数据目录检查 diagnostic.log'}
