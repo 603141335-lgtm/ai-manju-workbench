@@ -1,13 +1,13 @@
 {
   "name": "doubao-creative-hub",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
-  "description": "豆包创作舱浏览器工作台：参考图顺序前置、批量上传、上一段成片尾帧自动承接",
+  "description": "豆包创作舱浏览器工作台：修复原生图片@标签按图号内联插入；保留批量上传与跨段尾帧",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/*.test.js",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/mention-core.js && node --check src/mention-page.js && node --check src/mention-runner.js && node --check src/import-page.js && node --check src/import-engine.js && node --check src/import-core.js && node --check src/tailframe.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/mention-core.js && node --check src/mention-page.js && node --check src/mention-runner.js && node --check src/inline-mention-page.js && node --check src/import-page.js && node --check src/import-engine.js && node --check src/import-core.js && node --check src/tailframe.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
     "dist:win": "node scripts/prepare-feed.js && electron-builder --win nsis --x64 --config release-build.json --publish never"
   },
   "devDependencies": {

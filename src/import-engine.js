@@ -7,6 +7,8 @@ const path=require('node:path');
 const {parseCodes,composeText}=require('./import-core');
 const {isAllowedDoubaoUrl,codeInName}=require('./mention-core');
 const oldPage=require('./mention-page');
+const inlinePage=require('./inline-mention-page');
+const {makeMapping}=require('./import-core');
 const page=require('./import-page');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const EXTS=new Map([['.png','image/png'],['.jpg','image/jpeg'],['.jpeg','image/jpeg'],['.webp','image/webp']]);
@@ -96,25 +98,38 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   const verified=await waitBatch(ctx,items,before);
   return verified;
  }
- async function tryNative(ctx,code){
+ async function tryNative(ctx,item,index){
   ensure(ctx);const wc=ctx.wc;
-  const before=await wc.executeJavaScript(oldPage.js(oldPage.inspectRichMentions),true);
-  if(before.some(x=>x.marked&&codeInName(x.text).includes(code)))return {state:'native',message:'网页已有可核对的原生 @ 引用'};
-  if(!(await wc.executeJavaScript(oldPage.js(oldPage.focusComposer),true)))return {state:'mapping',message:'未找到可用 @ 编辑器，保留图号表'};
-  wc.insertText('@');await pause(500);ensure(ctx);
-  const opts=await wc.executeJavaScript(oldPage.js(oldPage.inspectMentionOptions),true);
-  const same=opts.filter(o=>codeInName(o.text).includes(code));
-  if(same.length!==1){
-   if(await wc.executeJavaScript(oldPage.js(oldPage.trailingAt),true)){
-    wc.sendInputEvent({type:'keyDown',keyCode:'Backspace'});wc.sendInputEvent({type:'keyUp',keyCode:'Backspace'});
-   }
-   return {state:'mapping',message:same.length?'同编号 @ 候选冲突，未自动点选':'该聊天模式没有可核对的原生图片 @ 菜单，已保留图号表'};
-  }
-  const opt=same[0],evt={x:opt.x,y:opt.y,button:'left',clickCount:1};wc.sendInputEvent({type:'mouseDown',...evt});wc.sendInputEvent({type:'mouseUp',...evt});
+  // The anchor must be the exact text emitted by composeText. The page
+  // refuses ambiguous matches instead of falling back to the editor end.
+  const anchor=makeMapping([item],index);
+  const params={anchor,code:item.code,filename:item.file.name,index:index+1};
+  const before=await evalFn(wc,inlinePage.inspectInlineReference,params);
+  if(before.verified)return {state:'native',message:'图'+(index+1)+'已存在正确的内联原生 @ 标签'};
+  const caret=await evalFn(wc,inlinePage.focusReferenceSlot,params);
+  if(!caret.ok)return {state:'mapping',message:caret.message};
+  // A leading space is needed for TipTap's mention suggestion trigger.
+  // Both edits go through Electron's real text input channel.
+  await wc.insertText(' ');await wc.insertText('@');
   await pause(500);ensure(ctx);
-  const after=await wc.executeJavaScript(oldPage.js(oldPage.inspectRichMentions),true);
-  if(after.some(x=>x.marked&&codeInName(x.text).includes(code)))return {state:'native',message:'已在编辑器中检测到真实 @ 引用组件'};
-  return {state:'mapping',message:'点击 @ 后未观察到原生引用组件，请以图号表为准'};
+  const opts=await wc.executeJavaScript(oldPage.js(oldPage.inspectMentionOptions),true);
+  // Always match the actual full filename, never A01 as A01-01.
+  const matching=opts.filter(o=>{
+    const t=(o.text||'').toLowerCase(),name=item.file.name.toLowerCase();
+    const at=t.indexOf(name);
+    return at>=0&&!(at>0&&/[a-z0-9-]/.test(t[at-1]))&&!(at+name.length<t.length&&/[a-z0-9.-]/.test(t[at+name.length]));
+  });
+  if(matching.length!==1){
+   await evalFn(wc,inlinePage.clearPendingInlineAt,params);
+   return {state:'mapping',message:matching.length?'同名图片出现多个 @ 候选，已暂停':'豆包没有提供可识别的 @ 图片候选，图号行保留纯文字'};
+  }
+  const opt=matching[0],evt={x:opt.x,y:opt.y,button:'left',clickCount:1};
+  wc.sendInputEvent({type:'mouseDown',...evt});wc.sendInputEvent({type:'mouseUp',...evt});
+  await pause(650);ensure(ctx);
+  const after=await evalFn(wc,inlinePage.inspectInlineReference,params);
+  if(after.verified)return {state:'native',message:'已验证图'+(index+1)+'的蓝色原生 @ 标签就在对应图号行'};
+  await evalFn(wc,inlinePage.clearPendingInlineAt,params);
+  return {state:'mapping',message:after.message+'；不会把末尾其他 @ 误判为成功'};
  }
  async function execute({episodeId,segmentId,replaceDraft=false,attemptNative=true}={}){
   if(running)throw Error('另一个一键导入任务正在执行');
@@ -197,7 +212,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
    let natives=0;
    for(let i=0;i<ctx.rows.length;i++){
     if(!attemptNative){ctx.rows[i].state='mapping';ctx.rows[i].message='已附图号对应表（未尝试原生 @）';continue;}
-    ensure(ctx);const r=ctx.rows[i],native=await tryNative(ctx,r.code);
+    ensure(ctx);const r=ctx.rows[i],native=await tryNative(ctx,finished[i],i);
     r.state=native.state;r.message=native.message;if(native.state==='native')natives++;
     emit('running',`${r.code}: ${native.message}`,ctx,{textFilled:true,nativeVerified:natives});
    }

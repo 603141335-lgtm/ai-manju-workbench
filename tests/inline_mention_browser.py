@@ -1,0 +1,52 @@
+"""Offline Chromium DOM test for locating image mentions IN their reference lines.
+This is not a Doubao network/login test and never counts as site compatibility.
+"""
+import json
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+fn=json.loads(Path(__file__).with_name('inline_functions.json').read_text())
+with sync_playwright() as p:
+    browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
+    page=browser.new_page(viewport={'width':1250,'height':750})
+    page.set_content('''<style>.guidance-input-content{width:840px}.tiptap{width:800px;min-height:310px;border:1px solid #aaa}</style>
+<div class="guidance-input-content"><div class="tiptap ProseMirror" contenteditable="true">
+<p>需要参考图：A01、A01-01、A15、B02</p>
+<p>图1 = A01（A01.png）</p><p>图2 = A01-01（A01-01.png）</p>
+<p>图3 = A15（A15.png）</p><p>图4 = B02（B02.png）</p>
+<p>连续性参考：不修改原文。</p>
+</div></div>''')
+    for n,(code,file) in enumerate([('A01','A01.png'),('A01-01','A01-01.png'),('A15','A15.png'),('B02','B02.png')],1):
+        a=f'图{n} = {code}（{file}）'
+        args={'anchor':a,'code':code,'filename':file,'index':n}
+        result=page.evaluate('('+fn['focusReferenceSlot']+')',args)
+        assert result['ok'],(code,result)
+        # Real keyboard editing occurs at the selected caret, not at end.
+        page.keyboard.type(' @')
+        snap=page.locator('.tiptap p').all_text_contents()
+        assert snap[n].endswith(' @'),(code,snap)
+        assert not snap[-1].endswith(' @')
+        # Simulate website replacing the typed @ with a semantic rich mention.
+        page.evaluate('''({index,file})=>{
+           const p=document.querySelectorAll('.tiptap p')[index];
+           const text=p.textContent;if(!text.endsWith(' @'))throw Error('Cursor wrong');
+           p.lastChild.textContent=text.slice(0,-2)+' ';
+           const chip=document.createElement('span');chip.className='mention';chip.setAttribute('data-mention','true');chip.contentEditable='false';chip.style.color='blue';chip.textContent='@'+file;
+           p.appendChild(chip)
+        }''',{'index':n,'file':file})
+        check=page.evaluate('('+fn['inspectInlineReference']+')',args)
+        assert check['verified'],(code,check)
+    # Verify every inline rich tag is in its own reference line, not at end.
+    for i,c in enumerate(['A01','A01-01','A15','B02'],1):
+        assert page.locator('.tiptap p').nth(i).locator('[data-mention]').count()==1
+    assert page.locator('.tiptap p').last.locator('[data-mention]').count()==0
+    missing=page.evaluate('('+fn['focusReferenceSlot']+')',{'anchor':'图1 = A99（A99.png）'})
+    assert not missing['ok']
+    # Insert a dangling @ in a new reference and ensure rollback removes only that input.
+    page.evaluate('''()=>{const p=document.createElement('p');p.textContent='图5 = E11（E11.png）';document.querySelector('.tiptap').appendChild(p)}''')
+    args={'anchor':'图5 = E11（E11.png）','code':'E11','filename':'E11.png'}
+    assert page.evaluate('('+fn['focusReferenceSlot']+')',args)['ok']
+    page.keyboard.type(' @')
+    assert page.evaluate('('+fn['clearPendingInlineAt']+')',args)
+    assert page.locator('.tiptap p').last.inner_text()=='图5 = E11（E11.png）'
+    print('PASS Chromium: 4 inline rich mentions, A01/A01-01 independent, no mentions at bottom, failed @ rollback')
+    browser.close()
