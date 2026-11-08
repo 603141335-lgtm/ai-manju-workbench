@@ -1,7 +1,7 @@
-name: Build real Doubao Browser Workbench (No Canvas) v0.8.0
+name: Build real Doubao Browser Workbench (No Canvas) v0.9.0
 on:
   push:
-    branches: [release/doubao-browser-oneclick-import-v0.8.0]
+    branches: [release/doubao-browser-oneclick-import-v0.9.0]
   workflow_dispatch:
 permissions:
   contents: write
@@ -25,6 +25,23 @@ jobs:
         run: node scripts/harden.js
       - name: Verify obfuscated parser/renderer/workspace
         run: npm run check
+      - name: Fetch official-third-party LGPL FFmpeg Windows binaries for tailframes
+        run: |
+          New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
+          $url='https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip'
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP/ffmpeg-win64-lgpl.zip" -MaximumRedirection 10
+          Expand-Archive -Path "$env:RUNNER_TEMP/ffmpeg-win64-lgpl.zip" -DestinationPath "$env:RUNNER_TEMP/ffmpeg-bundle" -Force
+          foreach ($name in @('ffmpeg.exe','ffprobe.exe')) {
+            $match=Get-ChildItem "$env:RUNNER_TEMP/ffmpeg-bundle" -Filter $name -File -Recurse | Select-Object -First 1
+            if(-not $match){throw "Missing $name from LGPL FFmpeg build"}
+            Copy-Item $match.FullName "vendor/bin/$name" -Force
+          }
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv2.1' -OutFile vendor/bin/COPYING.LGPLv2.1
+          Copy-Item docs/FFMPEG_NOTICE.txt vendor/bin/FFMPEG_NOTICE.txt
+          & "$env:GITHUB_WORKSPACE/vendor/bin/ffmpeg.exe" -version | Select-Object -First 1
+          Add-Content $env:GITHUB_PATH "$env:GITHUB_WORKSPACE/vendor/bin"
+      - name: Verify actual tail-frame extraction (bundled FFmpeg)
+        run: node --test tests/v090.test.js
       - name: Prepare optional public update feed
         env:
           DOUBAO_UPDATE_URL: ${{ vars.DOUBAO_UPDATE_URL }}
@@ -36,7 +53,7 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Setup-v0.8.0-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Setup-v0.9.0-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
@@ -44,14 +61,14 @@ jobs:
       - name: Publish private GitHub Release (avoids Actions artifact quota)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: doubao-browser-v0.8.0
+          tag_name: doubao-browser-v0.9.0
           target_commitish: ${{ github.sha }}
-          name: 豆包创作舱 v0.8.0（内嵌浏览器·一键导入集成测试版·基础加固）
+          name: 豆包创作舱 v0.9.0（浏览器登录·批量上传·跨段尾帧）
           prerelease: true
           body: |
-            正确基于 01_豆包创作舱_v0.5_单独包.zip 的浏览器工作台，支持 WebContentsView 豆包网页版登录、账号独立持久化分区，去除画布。未应用商业 Themida/VMProtect 加壳；本版具备混淆与 Electron 安全开关，原生 @ 尚未在用户已登录的豆包会话完成端到端验收。
+            正确基于 01_豆包创作舱_v0.5_单独包.zip 的浏览器工作台，支持 WebContentsView 豆包网页版登录、账号独立持久化分区，去除画布。增加图号前置、一次批量上传参考图、自动提取上一段下载成片尾帧并加入下一段图1。内置 LGPL FFmpeg 独立可执行程序，见许可证说明。未应用商业 Themida/VMProtect 加壳；原生 @ 及批量上传尚未在用户已登录的真实豆包页面完成验收。
           files: |
-            release/Doubao-Creative-Hub-Setup-v0.8.0-x64.exe
+            release/Doubao-Creative-Hub-Setup-v0.9.0-x64.exe
             release/SHA256SUMS.txt
             release/latest.yml
             release/*.blockmap

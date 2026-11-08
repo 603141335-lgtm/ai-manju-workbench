@@ -12,6 +12,7 @@ const {parseMultiEpisode} = require('./parser');
 const {DownloadManager,inspectManifest}=require('./downloads');
 const {createMentionRunner}=require('./mention-runner');
 const {createImportEngine}=require('./import-engine');
+const {TailFrameStore,binaries,findPredecessor}=require('./tailframe');
 const {detectSegmentCodes}=require('./parser');
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
@@ -19,7 +20,7 @@ const MAX_LIVE_VIEWS=3;
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
 const loadedExtensions=new Map();
 const views=new Map(); // account ID -> {view,lastUsed}
-let mentionRunner=null,importEngine=null;
+let mentionRunner=null,importEngine=null,tailframes=null;
 const now=()=>Date.now();
 const exists=(p)=>{try{return fs.statSync(p).isFile()}catch{return false}};
 function log(err){try{fs.appendFileSync(path.join(app.getPath('userData'),'diagnostic.log'),`\n${new Date().toISOString()} ${String(err?.stack||err)}\n`)}catch{}}
@@ -54,7 +55,7 @@ function setupSession(sess,accountId){
     try{
       const ep=workspace.current().ep,seg=workspace.current().seg;
       const acc=cfg.accounts.find(a=>a.id===accountId);
-      const context={project:workspace.data.title,episode:ep?.title||'未分集',segment:seg?.title||'未分段',episodeNumber:ep?.number?`第${ep.number}集`:'未分集',segmentNumber:seg?`第${seg.n}段`:'未分段',account:acc?.name||'未知账号'};
+      const context={project:workspace.data.title,episode:ep?.title||'未分集',segment:seg?.title||'未分段',episodeNumber:ep?.number?`第${ep.number}集`:'未分集',segmentNumber:seg?`第${seg.n}段`:'未分段',episodeId:ep?.id||'',segmentId:seg?.id||'',account:acc?.name||'未知账号'};
       const record=downloads.begin(item.getFilename(),context,item.getURL());
       item.setSavePath(record.path);
       tell('app:toast',`开始下载：${record.file}`);
@@ -68,6 +69,12 @@ function setupSession(sess,accountId){
         downloads.update(record.id,state,item.getReceivedBytes(),item.getTotalBytes());
         tell('download:changed',downloads.snapshot());
         tell('app:toast',state==='completed'?`下载完成：${record.file}`:`下载${state==='cancelled'?'已取消':'中断'}：${record.file}`);
+        if(state==='completed'&&record.type==='视频'&&record.episodeId&&record.segmentId){
+          tailframes?.setFinal(workspace.data,record.episodeId,record.segmentId,record.path,{auto:true})
+            .then(info=>{tell('tail:updated',{episodeId:record.episodeId,segmentId:record.segmentId,...info});
+              if(info.state==='ready')tell('app:toast',info.message);})
+            .catch(e=>log(e));
+        }
       });
     }catch(e){log(e);tell('app:toast','下载保存目录异常：'+e.message)}
   });
@@ -313,6 +320,21 @@ function registerHandlers(){
   ipcMain.handle('ws:version',async(_e,code,p)=>{await workspace.chooseVersion(code,p);return workspace.snapshot()});
   ipcMain.handle('ws:layout',async(_e,patch)=>{await workspace.setLayout(patch);return true});
   ipcMain.handle('ws:rename',async(_e,name)=>{if(typeof name!=='string'||!name.trim())throw Error('项目名称不能为空');workspace.data.title=name.trim().slice(0,150);await workspace.save();return workspace.snapshot()});
+  ipcMain.handle('tail:status',(_e,eid,sid)=>{
+    workspace.findSegment(eid,sid);
+    const r=tailframes.status(workspace.data,eid,sid);
+    return {...r,file:r.file?{...r.file,url:pathToFileURL(r.file.path).toString()}:null};
+  });
+  ipcMain.handle('tail:choose',async(_e,eid,sid)=>{
+    workspace.findSegment(eid,sid);
+    const previous=findPredecessor(workspace.data,eid,sid);
+    if(!previous)return {state:'first',message:'本集第一段没有前一段成片'};
+    const pick=await dialog.showOpenDialog(win,{title:`选择第${previous.seg.n}段最终成片（提取尾帧用于当前段）`,properties:['openFile'],filters:[{name:'视频文件',extensions:['mp4','mov','mkv','webm','avi']}]});
+    if(pick.canceled)return {state:'cancelled'};
+    const result=await tailframes.setFinal(workspace.data,eid,previous.seg.id,pick.filePaths[0],{auto:false});
+    tell('tail:updated',{episodeId:eid,segmentId:previous.seg.id,...result});
+    return result;
+  });
   ipcMain.handle('import:preflight',(_e,eid,sid)=>importEngine.getPlan({episodeId:eid,segmentId:sid}));
   ipcMain.handle('import:execute',(_e,eid,sid,options)=>importEngine.execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false}));
   ipcMain.handle('import:cancel',()=>importEngine.cancel());
@@ -388,6 +410,6 @@ if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus()}});
   process.on('uncaughtException',log);process.on('unhandledRejection',log);
-  app.whenReady().then(async()=>{cfg=readCfg();workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});importEngine=createImportEngine({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},getSegment:(eid,sid)=>workspace.findSegment(eid,sid).seg,resolveRows:(eid,sid)=>workspace.resolveSegment(eid,sid),getChosenPaths:()=>workspace.data.chosenPaths,getCurrentSelection:()=>({episodeId:workspace.data.activeEpisodeId,segmentId:workspace.data.activeSegmentId}),notify:info=>tell('import:status',info)});registerHandlers();initializeUpdater();createWindow()}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
+  app.whenReady().then(async()=>{cfg=readCfg();workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});importEngine=createImportEngine({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},getSegment:(eid,sid)=>workspace.findSegment(eid,sid).seg,resolveRows:(eid,sid)=>workspace.resolveSegment(eid,sid),getChosenPaths:()=>workspace.data.chosenPaths,getCurrentSelection:()=>({episodeId:workspace.data.activeEpisodeId,segmentId:workspace.data.activeSegmentId}),getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),notify:info=>tell('import:status',info)});registerHandlers();initializeUpdater();createWindow()}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
   app.on('window-all-closed',()=>app.quit());
 }

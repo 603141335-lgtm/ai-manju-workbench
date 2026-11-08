@@ -33,3 +33,10 @@
 #importWidget .mentionPrimary{background:linear-gradient(105deg,#4d79f3,#2d5ad8);font-size:12px}
 .mentionState.uploaded,.mentionState.native{color:#73d7a7}
 .mentionState.needs-review,.mentionState.manual-confirmed,.mentionState.mapping{color:#ffd58b}
+
+/* v0.9: tailframe continuity is a reference, never an editor mutation. */
+.tailframePanel{border:1px solid #365a88;background:#14243a;border-radius:10px;padding:10px;margin:8px 0;display:flex;flex-direction:column;gap:8px}
+.tailframeTop{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:#ddeaff}
+.tailframeContent{display:flex;align-items:center;gap:9px;min-height:28px;font-size:11px;color:#b8d2f1}
+.tailframeContent img{width:78px;height:54px;object-fit:cover;border-radius:5px;border:1px solid #5279aa}
+.tailframeContent strong{color:#a8ebd0}

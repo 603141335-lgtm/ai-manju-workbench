@@ -47,6 +47,28 @@ function selectImageFile(payload){
  input.dispatchEvent(new Event('change',{bubbles:true}));
  return {ok:true,fileSelected:true,selectedName:file.name,message:'已触发豆包原生文件上传处理，请继续核验附件'};
 }
+function selectImageBatch(payload){
+ // One native input/change for the complete batch; never fabricate an upload confirmation.
+ const rows=Array.isArray(payload?.files)?payload.files:[];
+ if(rows.length<1||rows.length>9)return {ok:false,message:'批量上传只能选择1到9张参考图'};
+ const inputs=[...document.querySelectorAll('input[type="file"]')].filter(x=>!x.disabled);
+ const candidates=inputs.filter(x=>x.multiple&&(!x.accept||/image|png|jpe?g|webp/i.test(x.accept)));
+ const input=candidates.find(x=>/image|png|jpe?g|webp/i.test(x.accept))||candidates[0];
+ if(!input)return {ok:false,unsupported:true,message:'当前网页不支持一次多选文件，改用兼容上传'};
+ const transfer=new DataTransfer();
+ try{
+  for(const row of rows){
+   if(!/\.(?:png|jpe?g|webp)$/i.test(row.name||'')||!row.base64||row.base64.length>36_000_000)throw Error('文件无效或单张超出允许范围');
+   const raw=atob(row.base64),bytes=new Uint8Array(raw.length);
+   for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+   transfer.items.add(new File([bytes],row.name,{type:row.mime,lastModified:row.modified||Date.now()}));
+  }
+  input.files=transfer.files;
+  input.dispatchEvent(new Event('input',{bubbles:true}));
+  input.dispatchEvent(new Event('change',{bubbles:true}));
+  return {ok:true,selectedCount:transfer.files.length,message:'一次文件选择事件已触发；等待豆包网页验证实际附件'};
+ }catch(e){return {ok:false,message:'批量文件准备失败：'+e.message};}
+}
 function openUploadMenu(){
  const visible=el=>{const r=el.getBoundingClientRect();return r.width>10&&r.height>10&&r.top>=0&&r.bottom<=innerHeight};
  const controls=[...document.querySelectorAll('button,[role="button"],[role="menuitem"],label')].filter(visible);
@@ -77,4 +99,4 @@ function setPrompt(payload){
  return {ok:now.replace(/\r\n/g,'\n').trim()===payload.text.replace(/\r\n/g,'\n').trim(),length:now.length,expected:payload.text.length,message:'提示词写入后已回读'};
 }
 const call=(fn,arg)=>'('+fn.toString()+')('+JSON.stringify(arg===undefined?null:arg)+')';
-module.exports={probe,selectImageFile,openUploadMenu,setPrompt,call};
+module.exports={probe,selectImageFile,selectImageBatch,openUploadMenu,setPrompt,call};

@@ -10,7 +10,7 @@ const oldPage=require('./mention-page');
 const page=require('./import-page');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const EXTS=new Map([['.png','image/png'],['.jpg','image/jpeg'],['.jpeg','image/jpeg'],['.webp','image/webp']]);
-function createPlan({prompt='',rows=[],chosenPaths={},limit=9}={}){
+function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null}={}){
  const parsed=parseCodes(prompt);const codes=parsed.codes;
  const byCode=new Map(rows.filter(x=>x.code).map(x=>[String(x.code).toUpperCase(),x]));
  const items=codes.map(code=>{
@@ -25,9 +25,13 @@ function createPlan({prompt='',rows=[],chosenPaths={},limit=9}={}){
   catch{status='missing';message='本地路径不存在或已移动';}
   return {code,status,message,file:file?{path:file.path,name:path.basename(file.path)}:null,versions:versions.length};
  });
- return {codes,items,source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready'),overLimit:items.length>limit,originalChars:prompt.length};
+ if(tail?.state==='ready'&&tail.file){
+  if(items.some(x=>x.file?.path===tail.file.path))items.splice(items.findIndex(x=>x.file.path===tail.file.path),1);
+  items.unshift({code:'尾帧',kind:'tail',status:'ready',message:tail.message,file:{path:tail.file.path,name:tail.file.name},versions:1});
+ }
+ return {codes,items,tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing','extracting'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
 }
-function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,notify=()=>{},pause=sleep,uploadTimeoutMs=20000,intervalMs=450}={}){
+function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,notify=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
  let running=null;
  const emit=(state,message,ctx,extra={})=>notify({state,message,rows:ctx?.rows?.map(x=>({...x}))||[],...extra});
  function currentActive(){const a=getActive();if(!a||!a.webContents||a.webContents.isDestroyed?.()||!isAllowedDoubaoUrl(a.webContents.getURL()))throw Error('请先在工作台内打开并登录豆包聊天网页');return a;}
@@ -40,7 +44,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
  async function getPlan({episodeId,segmentId}){
   const a=currentActive();const seg=getSegment(episodeId,segmentId);
   if(!seg||!String(seg.text||'').trim())throw Error('请先在当前段填写完整提示词');
-  const rows=resolveRows(episodeId,segmentId);const plan=createPlan({prompt:seg.text,rows,chosenPaths:getChosenPaths()});
+  const rows=resolveRows(episodeId,segmentId);const tail=getTailForSegment(episodeId,segmentId);const plan=createPlan({prompt:seg.text,rows,chosenPaths:getChosenPaths(),tail});
   const snap=await probe(a.webContents);if(!snap.ready)return {...plan,ready:false,error:'豆包网页暂未找到可用的聊天输入框'};
   return {...plan,ready:true,currentDraftChars:(snap.prompt||'').length,differentDraft:!!snap.prompt?.trim()&&snap.prompt.trim()!==seg.text.trim(),accountId:a.accountId,conversation:a.webContents.getURL()};
  }
@@ -54,6 +58,43 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   }
   const count=last?newThumbCount(before,last):0;
   return {state:'uncertain',message:count>0?`检测到 ${count} 张新缩略图，但附件文件名无法核对，需要人工确认`:'上传控件已接收文件，但豆包没有确认附件，已停止后续上传'};
+ }
+ // Verify a single native multi-file change against the real web attachment state.
+ async function waitBatch(ctx,items,before){
+  let stable=0,last=null;
+  const deadline=Date.now()+uploadTimeoutMs+items.length*2500;
+  while(Date.now()<deadline){
+   ensure(ctx);await pause(intervalMs);ensure(ctx);
+   last=await probe(ctx.wc);if(!last?.ready)continue;
+   const matching=items.every(row=>nameMatches(last.names,row.file.name));
+   // Filename confirmation must also be stable and the site must not still be uploading.
+   if(matching&&!last.busy){stable++;if(stable>=2){
+    const observed=last.names.filter(name=>items.some(x=>sameFilename(x.file.name,name)));
+    const orderMatches=observed.length===items.length&&observed.every((name,i)=>sameFilename(name,items[i].file.name));
+    return {state:orderMatches?'uploaded':'needs-review',message:orderMatches?'全部附件及顺序已连续两次核对':'图片文件名齐全，但页面附件显示顺序需要核对'};
+   }}else stable=0;
+  }
+  const added=last?newThumbCount(before,last):0;
+  return {state:added>=items.length?'needs-review':'uncertain',message:added>=items.length?'附件数量已增加，但文件名或顺序无法核对；请在豆包聊天框核对整批图片后确认':'网页未确认全部附件，暂停批量操作以免错位'};
+ }
+ async function attemptBatch(ctx,items,before){
+  // Bound message size to avoid stressing Chromium/Electron IPC; huge images use fallback.
+  const files=[];let total=0;
+  for(const row of items){
+   const st=await fs.promises.stat(row.file.path);total+=st.size;
+   if(total>55*1024*1024)return {state:'unsupported',message:'图片总大小超过55MB，切换逐张上传'};
+   files.push({name:row.file.name,mime:EXTS.get(path.extname(row.file.path).toLowerCase()),base64:(await fs.promises.readFile(row.file.path)).toString('base64'),modified:st.mtimeMs});
+  }
+  ensure(ctx);
+  let chosen=await evalFn(ctx.wc,page.selectImageBatch,{files});
+  if(!chosen.ok&&/未.*多选|不支持.*多选/.test(chosen.message||'')){
+   await evalFn(ctx.wc,page.openUploadMenu,null);await pause(350);ensure(ctx);
+   chosen=await evalFn(ctx.wc,page.selectImageBatch,{files});
+  }
+  if(!chosen.ok)return {state:chosen.unsupported?'unsupported':'error',message:chosen.message};
+  emit('running',`整批${items.length}张文件已选中，正在等待豆包网页实际上传`,ctx);
+  const verified=await waitBatch(ctx,items,before);
+  return verified;
  }
  async function tryNative(ctx,code){
   ensure(ctx);const wc=ctx.wc;
@@ -79,7 +120,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   if(running)throw Error('另一个一键导入任务正在执行');
   const pre=await getPlan({episodeId,segmentId});
   if(!pre.ready)throw Error(pre.error||'网页不可用');
-  if(pre.blocked)throw Error(pre.overLimit?'参考图超过当前设置的9张，请先核对': '存在缺图、重号或格式不支持，先在右侧修正');
+  if(pre.blocked)throw Error(pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对': '存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
   const a=currentActive(),seg=getSegment(episodeId,segmentId),ctx={episodeId,segmentId,accountId:a.accountId,wc:a.webContents,url:a.webContents.getURL(),cancelled:false,rows:pre.items.map(x=>({code:x.code,state:'matched',message:'本地参考图已匹配'}))};
   const before=await probe(ctx.wc);
   if(before.prompt?.trim()&&before.prompt.trim()!==seg.text.trim()&&!replaceDraft)throw Error('豆包聊天框有不同草稿，须先确认是否覆盖');
@@ -93,6 +134,27 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   try{
    emit('running','开始上传本段 '+pre.items.length+' 张参考图',ctx);
    let previous=before;
+   let batchCompleted=false;
+   if(pre.items.length>1&&before.names.length===0&&before.thumbs.length===0){
+    emit('running',`尝试一次性提交${pre.items.length}张参考图`,ctx);
+    const batch=await attemptBatch(ctx,pre.items,before);
+    ensure(ctx);
+    if(batch.state==='uploaded'){
+     for(let i=0;i<pre.items.length;i++){ctx.rows[i].state='uploaded';ctx.rows[i].message='整批上传，已核验文件名及附件顺序';finished.push(pre.items[i]);}
+     autoConfirmed=pre.items.length;batchCompleted=true;previous=await probe(ctx.wc);
+     emit('running',batch.message,ctx);
+    }else if(batch.state==='needs-review'){
+     for(let i=0;i<pre.items.length;i++){ctx.rows[i].state='needs-review';ctx.rows[i].message='批量上传待核对附件顺序';}
+     emit('review',`请核对豆包聊天框的${pre.items.length}张缩略图：${pre.items.map(x=>x.code).join('、')}，按这一顺序排列后点击“确认当前图片”`,ctx,{batch:true});
+     const decision=new Promise(resolve=>{ctx.approve=resolve;});const approved=await decision;ctx.approve=null;ensure(ctx);
+     if(!approved)throw Error('批量图片核对已取消；为避免错位未写入提示词');
+     for(let i=0;i<pre.items.length;i++){ctx.rows[i].state='manual-confirmed';ctx.rows[i].message='整批图片顺序经用户人工核对';finished.push(pre.items[i]);}
+     manualConfirmed=pre.items.length;batchCompleted=true;previous=await probe(ctx.wc);
+    }else if(batch.state==='uncertain'||batch.state==='error'){
+     throw Error(`批量上传已暂停：${batch.message}；为避免重复请先清理当前聊天附件再重试`);
+    }else emit('running',`当前网页不支持批量上传，使用逐张兼容模式：${batch.message}`,ctx);
+   }
+   if(!batchCompleted){
    for(let idx=0;idx<pre.items.length;idx++){
     ensure(ctx);const x=pre.items[idx],r=ctx.rows[idx];
     if(nameMatches(previous.names,x.file.name)){
@@ -122,6 +184,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
     }else if(actual.state!=='uploaded')throw Error(`暂停在 ${x.code}：${actual.message}`);
     else autoConfirmed++;
     finished.push(x);previous=await probe(ctx.wc);
+   }
    }
    ensure(ctx);
    // User's original segment is never modified. Mapping is appended to the

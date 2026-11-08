@@ -44,7 +44,7 @@
           <div class="promptFooter"><span id="promptSaveStatus">原文按段保存，不自动改写</span><button class="textBtn" id="btnEditCodes">校正参考图编号</button></div>
           <section class="mentionWidget" id="importWidget" aria-label="一键导入提示词和图片">
             <div class="mentionRow"><button class="mentionPrimary" id="btnOneClickImport" title="从本段自动上传参考图，完整填写提示词与图号表，再尝试真实@">⚡ 一键导入：提示词＋参考图＋@</button><button class="smallBtn" id="btnImportPreflight">预检</button><button class="smallBtn" id="btnImportConfirm" hidden>确认当前图片</button><button class="smallBtn" id="btnImportCancel" hidden>取消</button></div>
-            <div class="mentionNote" id="importNote">自动读取右侧本段提示词和参考图库，逐张上传到当前豆包聊天；成功后填写图号对应表并尝试原生@。不会自动发送。</div>
+            <div class="mentionNote" id="importNote">自动读取右侧本段提示词和参考图库，优先一次批量上传本段参考图；图号表放在参考图栏目后，成片尾帧自动排第1张。不自动发送。</div>
             <div class="mentionProgress" id="importProgress" aria-live="polite" hidden></div>
             <div class="mentionDetails" id="importDetails" hidden></div>
           </section>
@@ -53,6 +53,10 @@
             <div class="mentionNote" id="mentionNote">先把提示词输入豆包聊天框；自动选择文件≠网页上传成功，只有确认附件与原生引用才标记通过。不会自动发送。</div>
             <div class="mentionProgress" id="mentionProgress" aria-live="polite" hidden></div>
             <div class="mentionDetails" id="mentionDetails" hidden></div>
+          </section>
+          <section class="tailframePanel" id="tailframePanel">
+            <div class="tailframeTop"><strong>🎞 跨段连续性｜上一段尾帧</strong><button class="smallBtn" id="btnTailChoose">选择上一段成片</button></div>
+            <div class="tailframeContent" id="tailframeContent">正在检查前一段的成片…</div>
           </section>
           <div class="assetHeader"><div><strong>参考图片</strong><span class="tiny" id="imgCount">0/0 张</span></div><button class="smallBtn" id="btnAddImages">＋ 补充图片</button></div>
           <div class="imageGuide" id="imageGuide">点击选图，Ctrl 多选、Shift 连选；按住图片或蓝色拖动条可拖到豆包网页。</div>

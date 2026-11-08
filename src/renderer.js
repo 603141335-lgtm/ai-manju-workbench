@@ -95,10 +95,27 @@ function renderExtension(){const c=extensionState?.candidate,l=extensionState?.l
   $('extensionInfo').textContent=lines.join('\n');$('btnExtTest').disabled=!c;$('btnExtUnload').disabled=!l;
 }
 function showWords(){$('wordCount').textContent=$('promptText').value.length+' 字'}
+async function renderTailFrame(){
+ const ep=getEp(),seg=getSeg();
+ if(!ep||!seg){$('tailframeContent').textContent='未选中剧集或段落';$('btnTailChoose').disabled=true;return;}
+ try{
+  const r=await B.tailStatus(ep.id,seg.id);
+  // Async selection may have changed while waiting.
+  if(getEp()?.id!==ep.id||getSeg()?.id!==seg.id)return;
+  $('btnTailChoose').disabled=r.state==='first';
+  const el=$('tailframeContent');el.replaceChildren();
+  if(r.state==='ready'){
+   const image=document.createElement('img');image.src=r.file.url;image.alt='上一段最终视频尾帧';
+   const span=document.createElement('span');span.textContent='图1 · 第'+r.sourceSegment+'段尾帧（自动首位参考图）';
+   el.append(image,span);
+  }else el.textContent=r.message||'上一段尚未提供成片';
+ }catch(e){$('tailframeContent').textContent='无法读取尾帧：'+e.message;}
+}
 async function renderImages(){const ep=getEp(),seg=getSeg(),seq=++renderSeq;
   imageRows=[];if(ep&&seg){try{imageRows=await B.wsImages(ep.id,seg.id)}catch(e){if(seq===renderSeq)error(e);return}}
   if(seq!==renderSeq)return;
   const present=imageRows.filter(r=>r.file&&!r.missing).length,missing=imageRows.filter(r=>r.missing),dups=imageRows.filter(r=>r.duplicate);
+  await renderTailFrame();
   $('imgCount').textContent=`${present}/${imageRows.length} 张`;
   const safePaths=new Set(imageRows.filter(r=>r.file&&!r.missing).map(r=>r.file.path));selected=new Set([...selected].filter(p=>safePaths.has(p)));
   $('imageGrid').innerHTML=imageRows.map((r,i)=>{
@@ -168,6 +185,7 @@ function initWorkspace(){
   $('promptText').oninput=()=>{showWords();$('promptSaveStatus').textContent='正在保存…';clearTimeout(promptTimer);promptTimer=setTimeout(()=>safe(flushPrompt),500)};
   $('btnCopyText').onclick=()=>safe(async()=>{await flushPrompt();const text=getSeg()?.text||'';if(!text)return toast('当前段还没有提示词');await B.copyText(text);toast(`已复制本段完整提示词（${text.length} 字）`)});
   $('btnPull').onclick=()=>safe(autoPull);$('btnPullImages').onclick=()=>safe(async()=>{await flushPrompt();await B.wsRescan();await reloadWorkspace();toast('已重扫图片目录并更新本段参考图')});
+  $('btnTailChoose').onclick=()=>safe(async()=>{const ep=getEp(),seg=getSeg();if(!ep||!seg)return;await flushPrompt();const result=await B.tailChoose(ep.id,seg.id);if(result.state!=='cancelled'){toast(result.message||'已处理尾帧');await renderTailFrame();}});
   $('btnAddImages').onclick=()=>safe(async()=>{await flushPrompt();const ep=getEp(),seg=getSeg();if(!seg)return;const r=await B.wsManualImages(ep.id,seg.id);if(!r.cancelled){await reloadWorkspace();toast('已加入补充图片路径')}});
   $('btnEditCodes').onclick=()=>safe(async()=>{await flushPrompt();const e=getEp(),s=getSeg();if(!s)return;const codes=await ask('校正本段需要参考图（用顿号分隔）',s.codes.join('、'));if(codes===null)return;ws=await B.wsEditCodes(e.id,s.id,codes);renderWorkspaceShell();await renderImages();toast('参考图编号已手动保存，完整提示词原文未修改')});
   $('imageGrid').onclick=e=>safe(async()=>{if(e.target.closest('select'))return;const card=e.target.closest('.imageCard');if(!card||!card.dataset.path)return;const p=card.dataset.path,i=Number(card.dataset.index);
@@ -234,7 +252,7 @@ async function runOneClickImport(checkOnly=false){
  try{
   const plan=await B.importPreflight(ep.id,seg.id);showImportStatus(plan);
   if(!plan.ready){toast(plan.error||'豆包网页当前不可用');return;}
-  if(plan.blocked){toast(plan.overLimit?'参考图超过9张，请先调整':'缺图、重复编号或图片格式异常，请先处理');return;}
+  if(plan.blocked){toast(plan.overLimit?'加上上一段尾帧超过9张，请先调整':'缺图、重复编号、图片格式或尾帧存在异常，请先处理');return;}
   if(checkOnly){toast('已预检 '+plan.items.length+' 张图片；原文不改变');return;}
   let replaceDraft=false;
   if(plan.differentDraft){replaceDraft=await confirmAction('豆包已有不同草稿','一键导入会用本段完整提示词替换当前豆包聊天输入框文字。若已有未发送内容，请先保存。是否确认？');if(!replaceDraft)return;}
@@ -250,6 +268,7 @@ function initOneClickImport(){
  $('btnImportCancel').onclick=()=>B.importCancel();
  $('btnImportConfirm').onclick=async()=>{await B.importConfirm(true);$('btnImportConfirm').hidden=true};
  B.onImportStatus(showImportStatus);
+ B.onTailUpdated(()=>{renderTailFrame().catch(error)});
 }
 
 // Doubao browser attachment automation. Do not mark as successful without a

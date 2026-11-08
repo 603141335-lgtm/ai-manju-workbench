@@ -51,11 +51,35 @@
       summary:{ready:items.filter(i=>i.status==='ready').length,missing:items.filter(i=>i.status==='missing').length,conflict:items.filter(i=>i.status==='conflict').length}};
   }
   function makeMapping(items,initialIndex=0){
-    return items.map((r,i)=>`图${initialIndex+i+1} = ${r.code}（${r.file?.name||'文件未确认'}）`).join('\n');
+    return items.map((r,i)=>{const tail=r.kind==='tail'||r.code==='尾帧';
+      return tail?`图${initialIndex+i+1} = 上一段尾帧（${r.file?.name||'尾帧.png'}，跨段衔接）`:`图${initialIndex+i+1} = ${r.code}（${r.file?.name||'文件未确认'}）`;
+    }).join('\n');
   }
+  /** Insert mapping at the reference image section without mutating original text.
+   * No duplicate footer and no modifications to any dialogue, timing or limitations.
+   * Return a new draft only; never persist it to the original segment.
+   */
   function composeText(prompt,items,offset=0){
-    const mapping=makeMapping(items,offset);
-    return String(prompt||'')+`\n\n【参考图顺序对应表｜按本次上传顺序】\n${mapping}\n请以对应图片为准，严格保持人物、场景和道具一致。`;
+    const raw=String(prompt||'');
+    const mapping=`【图片顺序对应｜实际上传顺序】\n${makeMapping(items,offset)}`;
+    const lines=raw.match(/[^\n]*\n|[^\n]+$/g)||[];
+    const head=lines.findIndex(line=>/(?:需要参考图|参考图(?:编号|列表)?|所需参考图|引用参考图)\s*[:：]?/i.test(line));
+    let insertAt=0;
+    if(head>=0){
+      insertAt=lines.slice(0,head+1).join('').length;
+      // Keep original multi-line reference numbers adjacent, before mapping.
+      for(let i=head+1;i<Math.min(lines.length,head+13);i++){
+        const text=lines[i].trim();
+        if(!text||/^(?:连续性|场景|画风|限制|分镜|音效|时间|承接|镜头|台词|\d+[—-]\d+秒|第\d+段)/.test(text)||/[。！？]/.test(text))break;
+        if(!tokens(text).length)break;
+        insertAt+=lines[i].length;
+      }
+    }else{
+      const first=lines[0]||'';
+      insertAt=first&&/^第.{1,40}(?:段|镜)/.test(first)?first.length:0;
+    }
+    const left=raw.slice(0,insertAt),right=raw.slice(insertAt);
+    return `${left}${left&&!left.endsWith('\n')?'\n':''}${mapping}\n${right&&!right.startsWith('\n')?'\n':''}${right}`;
   }
   const api={parseCodes,codeFromFile,buildPlan,makeMapping,composeText,tokens,norm};
   if(typeof module==='object'&&module.exports)module.exports=api;
