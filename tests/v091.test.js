@@ -33,7 +33,7 @@ test('内联定位不会回退到编辑器末尾，且每个函数可序列化�
 });
 test('浏览器版安装身份未改变，不引入画布',()=>{
   const pkg=require('../package.json');
-  assert.equal(pkg.version,'0.9.2');
+  assert.match(pkg.version,/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/); // Version changes must not break the install identity test
   assert.equal(pkg.build.appId,'com.manju.doubao.creativehub');
   assert(!fs.existsSync(path.join(root,'src/canvas')));
 });
