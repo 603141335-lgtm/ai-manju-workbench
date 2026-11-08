@@ -208,6 +208,50 @@ function initWorkspace(){
   $('btnEdgeDownload').onclick=()=>safe(async()=>{await B.openEdge(getGroup().id);toast('已打开 Edge 的对应配置文件；扩展是否可用取决于你的 Edge 安装状态')});
 }
 
+// One-click import keeps all pre-existing browser/account/segment data unchanged.
+let importBusy=false;
+function showImportStatus(v){
+ if(!v)return;const detail=$('importDetails'),progress=$('importProgress');
+ $('importNote').textContent=v.message||v.error||'预检完成';$('btnImportConfirm').hidden=v.state!=='review';
+ const rows=v.items||v.rows||[];
+ if(rows.length){
+  detail.hidden=false;
+  detail.innerHTML=rows.map(x=>{
+   const state=x.state||x.status||'pending';
+   const label=({ready:'本地匹配',matched:'本地匹配',selected:'文件已选择',uploaded:'网页附件已确认',native:'原生@已验证',mapping:'图号表已生成',missing:'缺图',conflict:'版本冲突',unsupported:'格式不支持',uncertain:'待人工确认','needs-review':'核对新图片','manual-confirmed':'人工确认',error:'失败'}[state]||state);
+   return '<div class="mentionItem"><strong>'+enc(x.code)+'</strong><span class="mentionState '+enc(state)+'">'+enc(label)+'</span><small title="'+enc(x.message||'')+'">'+enc(x.message||'')+'</small></div>';
+  }).join('');
+ }
+ if(v.state==='running'||v.state==='review'||v.state==='done'||v.state==='error'||v.state==='cancelled'){
+  progress.hidden=false;progress.textContent=v.message||'正在执行';
+ }
+}
+async function runOneClickImport(checkOnly=false){
+ if(importBusy)return;
+ const ep=getEp(),seg=getSeg();if(!ep||!seg){toast('请先选中剧集和段落');return;}
+ await flushPrompt();
+ $('btnOneClickImport').disabled=true;
+ try{
+  const plan=await B.importPreflight(ep.id,seg.id);showImportStatus(plan);
+  if(!plan.ready){toast(plan.error||'豆包网页当前不可用');return;}
+  if(plan.blocked){toast(plan.overLimit?'参考图超过9张，请先调整':'缺图、重复编号或图片格式异常，请先处理');return;}
+  if(checkOnly){toast('已预检 '+plan.items.length+' 张图片；原文不改变');return;}
+  let replaceDraft=false;
+  if(plan.differentDraft){replaceDraft=await confirmAction('豆包已有不同草稿','一键导入会用本段完整提示词替换当前豆包聊天输入框文字。若已有未发送内容，请先保存。是否确认？');if(!replaceDraft)return;}
+  importBusy=true;$('btnImportCancel').hidden=false;
+  const out=await B.importExecute(ep.id,seg.id,{replaceDraft,attemptNative:true});
+  showImportStatus(out);toast(out.message||'导入结束');
+ }catch(e){showImportStatus({state:'error',message:e.message});toast('一键导入：'+e.message)}
+ finally{importBusy=false;$('btnOneClickImport').disabled=false;$('btnImportCancel').hidden=true;$('btnImportConfirm').hidden=true;}
+}
+function initOneClickImport(){
+ $('btnOneClickImport').onclick=()=>runOneClickImport(false);
+ $('btnImportPreflight').onclick=()=>runOneClickImport(true);
+ $('btnImportCancel').onclick=()=>B.importCancel();
+ $('btnImportConfirm').onclick=async()=>{await B.importConfirm(true);$('btnImportConfirm').hidden=true};
+ B.onImportStatus(showImportStatus);
+}
+
 // Doubao browser attachment automation. Do not mark as successful without a
 // platform-owned native @ token; never edit the original episode prompt.
 let mentionBusy=false;
@@ -263,7 +307,7 @@ async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Elec
   try{
     cfg=await B.getCfg();ws=await B.wsState();expandGroups=new Set(cfg.groups.map(g=>g.id));
     renderGroups();renderWorkspaceShell();applyLayout();await renderImages();refreshHeader();
-    initAccounts();initWorkspace();initGlobal();initMention();await refreshDownloads();await refreshExtension();
+    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();await refreshDownloads();await refreshExtension();
     if(cfg.activeAccountId)await switchAccount(cfg.activeAccountId);setTimeout(bounds,250);
     if(ws.warning)toast(ws.warning);
   }catch(e){error(e);$('webStatus').textContent='初始化失败：'+e.message+'。打开数据目录检查 diagnostic.log'}

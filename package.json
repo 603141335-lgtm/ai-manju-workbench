@@ -1,13 +1,13 @@
 {
   "name": "doubao-creative-hub",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": true,
-  "description": "豆包创作舱浏览器工作台：图片文件选择、网页上传状态、原生@ 分开验收（修复测试版）",
+  "description": "豆包创作舱浏览器工作台：集成参考图精准匹配、逐图上传、完整提示词与图号表自动导入、原生@安全核验",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/*.test.js",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/mention-core.js && node --check src/mention-page.js && node --check src/mention-runner.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/mention-core.js && node --check src/mention-page.js && node --check src/mention-runner.js && node --check src/import-page.js && node --check src/import-engine.js && node --check src/import-core.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
     "dist:win": "node scripts/prepare-feed.js && electron-builder --win nsis --x64 --config release-build.json --publish never"
   },
   "devDependencies": {

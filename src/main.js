@@ -11,6 +11,7 @@ const {WorkspaceStore} = require('./workspace');
 const {parseMultiEpisode} = require('./parser');
 const {DownloadManager,inspectManifest}=require('./downloads');
 const {createMentionRunner}=require('./mention-runner');
+const {createImportEngine}=require('./import-engine');
 const {detectSegmentCodes}=require('./parser');
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
@@ -18,7 +19,7 @@ const MAX_LIVE_VIEWS=3;
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
 const loadedExtensions=new Map();
 const views=new Map(); // account ID -> {view,lastUsed}
-let mentionRunner=null;
+let mentionRunner=null,importEngine=null;
 const now=()=>Date.now();
 const exists=(p)=>{try{return fs.statSync(p).isFile()}catch{return false}};
 function log(err){try{fs.appendFileSync(path.join(app.getPath('userData'),'diagnostic.log'),`\n${new Date().toISOString()} ${String(err?.stack||err)}\n`)}catch{}}
@@ -81,7 +82,8 @@ function configureView(id){
     try{if(new URL(url).protocol!=='https:')return {action:'deny'}}catch{return {action:'deny'}}
     return {action:'allow',overrideBrowserWindowOptions:{width:1100,height:760,autoHideMenuBar:true,webPreferences:{session:sess,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}}};
   });
-  wc.on('did-start-loading',()=>tell('web:status',{id,status:'正在加载…'}));
+  wc.on('did-start-loading',()=>{importEngine?.cancel();tell('web:status',{id,status:'正在加载…'})});
+  wc.on('did-navigate-in-page',()=>importEngine?.cancel());
   wc.on('did-stop-loading',()=>tell('web:status',{id,status:'网页已加载'}));
   wc.on('did-fail-load',(_e,code,description,url,isMainFrame)=>{if(isMainFrame&&code!==-3)tell('web:status',{id,status:`加载失败 (${code})：${description}`,url})});
   wc.on('render-process-gone',(_e,details)=>{tell('web:status',{id,status:`网页进程退出：${details.reason}，可点刷新重试`})});
@@ -99,7 +101,7 @@ function prune(){
 }
 function selectAccount(id){
   account(id);
-  if(activeId&&id!==activeId)mentionRunner?.cancel();
+  if(activeId&&id!==activeId){mentionRunner?.cancel();importEngine?.cancel();}
   if(activeId&&views.has(activeId)){
     const old=views.get(activeId);
     try{win.contentView.removeChildView(old.view)}catch(e){log(e)}
@@ -311,6 +313,10 @@ function registerHandlers(){
   ipcMain.handle('ws:version',async(_e,code,p)=>{await workspace.chooseVersion(code,p);return workspace.snapshot()});
   ipcMain.handle('ws:layout',async(_e,patch)=>{await workspace.setLayout(patch);return true});
   ipcMain.handle('ws:rename',async(_e,name)=>{if(typeof name!=='string'||!name.trim())throw Error('项目名称不能为空');workspace.data.title=name.trim().slice(0,150);await workspace.save();return workspace.snapshot()});
+  ipcMain.handle('import:preflight',(_e,eid,sid)=>importEngine.getPlan({episodeId:eid,segmentId:sid}));
+  ipcMain.handle('import:execute',(_e,eid,sid,options)=>importEngine.execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false}));
+  ipcMain.handle('import:cancel',()=>importEngine.cancel());
+  ipcMain.handle('import:confirm',(_e,approved)=>importEngine.confirm(approved===true));
   ipcMain.handle('mention:preflight',(_e,eid,sid)=>mentionRunner.preflight({episodeId:eid,segmentId:sid}));
   ipcMain.handle('mention:execute',(_e,eid,sid)=>mentionRunner.execute({episodeId:eid,segmentId:sid}));
   ipcMain.handle('mention:cancel',()=>mentionRunner.cancel());
@@ -382,6 +388,6 @@ if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus()}});
   process.on('uncaughtException',log);process.on('unhandledRejection',log);
-  app.whenReady().then(async()=>{cfg=readCfg();workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});registerHandlers();initializeUpdater();createWindow()}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
+  app.whenReady().then(async()=>{cfg=readCfg();workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});importEngine=createImportEngine({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},getSegment:(eid,sid)=>workspace.findSegment(eid,sid).seg,resolveRows:(eid,sid)=>workspace.resolveSegment(eid,sid),getChosenPaths:()=>workspace.data.chosenPaths,getCurrentSelection:()=>({episodeId:workspace.data.activeEpisodeId,segmentId:workspace.data.activeSegmentId}),notify:info=>tell('import:status',info)});registerHandlers();initializeUpdater();createWindow()}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
   app.on('window-all-closed',()=>app.quit());
 }

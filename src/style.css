@@ -26,3 +26,10 @@
 .mentionItem{display:grid;grid-template-columns:64px 80px minmax(0,1fr);align-items:center;gap:5px;background:#13243c;padding:6px;border-radius:7px;font-size:10px}
 .mentionItem strong{color:#e6efff}.mentionItem small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#a9bfdf}
 .mentionState{color:#ffdbac}.mentionState.ready,.mentionState.verified{color:#79d9af}.mentionState.missing,.mentionState.conflict,.mentionState.error{color:#ff9d9d}
+
+/* v0.8 one-click import; legacy import UI remains available in code but hidden. */
+.mentionWidget[hidden]{display:none!important}
+#importWidget{border-color:#678fff;background:linear-gradient(118deg,#193763,#142943)}
+#importWidget .mentionPrimary{background:linear-gradient(105deg,#4d79f3,#2d5ad8);font-size:12px}
+.mentionState.uploaded,.mentionState.native{color:#73d7a7}
+.mentionState.needs-review,.mentionState.manual-confirmed,.mentionState.mapping{color:#ffd58b}
