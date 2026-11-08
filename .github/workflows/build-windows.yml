@@ -1,7 +1,7 @@
 name: Build real Doubao Browser Workbench (No Canvas) v0.9.2
 on:
   push:
-    branches: [release/doubao-browser-inline-mention-v0.9.2]
+    branches: [release/doubao-browser-voicebind-v0.9.2]
   workflow_dispatch:
 permissions:
   contents: write
@@ -63,7 +63,7 @@ jobs:
         with:
           tag_name: doubao-browser-v0.9.2
           target_commitish: ${{ github.sha }}
-          name: 豆包创作舱 v0.9.2（浏览器登录·批量上传·跨段尾帧）
+          name: 豆包创作舱 v0.9.2（浏览器登录·人物图片与音色绑定）
           prerelease: true
           body: |
             正确基于 01_豆包创作舱_v0.5_单独包.zip 的浏览器工作台，支持 WebContentsView 豆包网页版登录、账号独立持久化分区，去除画布。增加参考图列表人物音色图片绑定、音频参考自动选取和上传尝试、内联原生@尝试、一次批量上传参考图、自动提取上一段下载成片尾帧并加入下一段图1。内置 LGPL FFmpeg 独立可执行程序，见许可证说明。未应用商业 Themida/VMProtect 加壳；原生 @ 及批量上传尚未在用户已登录的真实豆包页面完成验收。
