@@ -12,9 +12,10 @@ const {makeMapping}=require('./import-core');
 const page=require('./import-page');
 const voicePage=require('./voice-page');
 const {audioLine}=require('./voice-bindings');
+const {extractReferenceLabels,labelFor}=require('./reference-labels');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const EXTS=new Map([['.png','image/png'],['.jpg','image/jpeg'],['.jpeg','image/jpeg'],['.webp','image/webp']]);
-function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null}={}){
+function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null,labels={}}={}){
  const parsed=parseCodes(prompt);const codes=parsed.codes;
  const byCode=new Map(rows.filter(x=>x.code).map(x=>[String(x.code).toUpperCase(),x]));
  const items=codes.map(code=>{
@@ -27,7 +28,7 @@ function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null}={}){
   else if(!EXTS.has(path.extname(file.path||'').toLowerCase())){status='unsupported';message='暂不支持自动上传此文件格式（建议 PNG/JPG/WebP）';}
   else try{const s=fs.statSync(file.path);if(!s.isFile()||s.size<1||s.size>25*1024*1024){status='unsupported';message='图片为空、不是文件或超过25MB';}}
   catch{status='missing';message='本地路径不存在或已移动';}
-  return {code,status,message,file:file?{path:file.path,name:path.basename(file.path)}:null,versions:versions.length};
+  return {code,label:labels[code]||'',status,message,file:file?{path:file.path,name:path.basename(file.path)}:null,versions:versions.length};
  });
  if(tail?.state==='ready'&&tail.file){
   if(items.some(x=>x.file?.path===tail.file.path))items.splice(items.findIndex(x=>x.file.path===tail.file.path),1);
@@ -45,13 +46,38 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
  function sameFilename(a,b){return String(a||'').trim().toLowerCase().split(/[\\/]/).pop()===String(b||'').trim().toLowerCase().split(/[\\/]/).pop()}
  function nameMatches(names,file){return names.filter(x=>sameFilename(x,file)).length===1}
  function newThumbCount(before,after){return after.thumbs.filter(t=>!before.thumbs.includes(t)).length}
- async function getPlan({episodeId,segmentId}){
-  const a=currentActive();const seg=getSegment(episodeId,segmentId);
+ function getDraft({episodeId,segmentId,previewText=null}){
+  const seg=getSegment(episodeId,segmentId);
   if(!seg||!String(seg.text||'').trim())throw Error('请先在当前段填写完整提示词');
-  const rows=resolveRows(episodeId,segmentId);const tail=getTailForSegment(episodeId,segmentId);const plan=createPlan({prompt:seg.text,rows,chosenPaths:getChosenPaths(),tail});
-  plan.voicePlan=getVoiceForImages(plan.items);if(plan.voicePlan.blocked){plan.blocked=true;plan.voiceErrors=plan.voicePlan.errors;}
-  const snap=await probe(a.webContents);if(!snap.ready)return {...plan,ready:false,error:'豆包网页暂未找到可用的聊天输入框'};
-  return {...plan,ready:true,currentDraftChars:(snap.prompt||'').length,differentDraft:!!snap.prompt?.trim()&&snap.prompt.trim()!==seg.text.trim(),accountId:a.accountId,conversation:a.webContents.getURL()};
+  const original=typeof previewText==='string'?previewText:seg.text;
+  if(original.length>300000)throw Error('提示词过长');
+  const parsedLabels=extractReferenceLabels(original);
+  const rows=resolveRows(episodeId,segmentId),tail=getTailForSegment(episodeId,segmentId);
+  const plan=createPlan({prompt:original,rows,chosenPaths:getChosenPaths(),tail,labels:parsedLabels.labels});
+  plan.labels=parsedLabels.labels;plan.labelConflicts=parsedLabels.conflicts;
+  if(parsedLabels.conflicts.length){plan.blocked=true;plan.labelErrors=parsedLabels.conflicts.map(x=>x.code+' 人物名称冲突：'+x.first+'/'+x.second);}
+  const voices=getVoiceForImages(plan.items);
+  plan.voicePlan={...voices,items:voices.items.map(v=>({...v,characterName:labelFor(v.code,parsedLabels.labels,v.label)}))};
+  if(plan.voicePlan.blocked){plan.blocked=true;plan.voiceErrors=plan.voicePlan.errors;}
+  plan.previewText=composeText(original,plan.items,0,plan.voicePlan.items);
+  plan.previewReady=true;
+  return plan;
+ }
+ async function getPlan({episodeId,segmentId}){
+  const a=currentActive(),seg=getSegment(episodeId,segmentId),plan=getDraft({episodeId,segmentId});
+  const snap=await probe(a.webContents);
+  if(!snap.ready)return {...plan,ready:false,error:'豆包网页暂未找到可用的聊天输入框'};
+  const trimmed=(snap.prompt||'').trim(),unchanged=seg.text.trim(),draft=plan.previewText.trim();
+  return {...plan,ready:true,currentDraftChars:(snap.prompt||'').length,differentDraft:!!trimmed&&trimmed!==unchanged&&trimmed!==draft,accountId:a.accountId,conversation:a.webContents.getURL()};
+ }
+ async function syncText({episodeId,segmentId,replaceDraft=false}={}){
+  if(running)throw Error('导入任务正在执行，不能同时改写草稿');
+  const a=currentActive(),plan=getDraft({episodeId,segmentId});
+  if(plan.blocked)throw Error('参考图/声音绑定有异常，请先核对');
+  const before=await probe(a.webContents);
+  if(before.mentions?.length)return {ok:false,message:'当前聊天已有蓝色原生 @ 标签，为防丢失，文字同步已暂停；请勿覆盖现有草稿'};
+  const result=await evalFn(a.webContents,page.setPrompt,{text:plan.previewText,allowedExisting:getSegment(episodeId,segmentId).text,replace:replaceDraft||!before.prompt?.trim()});
+  return {...result,draft:plan.previewText};
  }
  async function waitUpload(ctx,item,before){
   const deadline=Date.now()+uploadTimeoutMs;let stable=0,last=null;
@@ -174,17 +200,21 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   if(pre.blocked)throw Error(pre.voiceErrors?.length?'声音绑定异常：'+pre.voiceErrors.join('；'):pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对':'存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
   const a=currentActive(),seg=getSegment(episodeId,segmentId),ctx={episodeId,segmentId,accountId:a.accountId,wc:a.webContents,url:a.webContents.getURL(),cancelled:false,rows:pre.items.map(x=>({code:x.code,state:'matched',message:'本地参考图已匹配'}))};
   const before=await probe(ctx.wc);
-  if(before.prompt?.trim()&&before.prompt.trim()!==seg.text.trim()&&!replaceDraft)throw Error('豆包聊天框有不同草稿，须先确认是否覆盖');
+  if(before.prompt?.trim()&&before.prompt.trim()!==seg.text.trim()&&before.prompt.trim()!==pre.previewText.trim()&&!replaceDraft)throw Error('豆包聊天框有不同草稿，须先确认是否覆盖');
   if(before.mentions?.length)throw Error('聊天框已有原生 @ 引用，请使用新对话或先手动清理，以免覆盖');
   // Existing attachments can shift numbering. Only continue if their filename
   // explicitly identifies an image in the current plan; no blind renumbering.
   for(const filename of before.names){if(!pre.items.some(x=>sameFilename(x.file.name,filename)))throw Error('聊天框已有其他附件，无法保证图号顺序，请先清空附件');}
   if(before.thumbs.length>before.names.length&&before.thumbs.length)throw Error('当前聊天框有无法识别名称的图片，请先清空附件，防止图号错位');
   if(before.names.some((name,i)=>!pre.items[i]||!sameFilename(name,pre.items[i].file.name)))throw Error('当前聊天附件顺序和本段参考图顺序不同，请先清空或另开聊天，避免图1、图2错位');
-  running=ctx;const finished=[];let manualConfirmed=0,autoConfirmed=0;
+  running=ctx;const finished=[];let manualConfirmed=0,autoConfirmed=0,textFilled=false;
   try{
-   emit('running','开始上传本段 '+pre.items.length+' 张参考图',ctx);
-   let previous=before;
+   const early=await evalFn(ctx.wc,page.setPrompt,{text:pre.previewText,allowedExisting:seg.text,replace:replaceDraft||!before.prompt?.trim()});
+   ensure(ctx);
+   if(!early.ok)throw Error('发送稿同步失败：'+early.message+'；本次没有开始上传图片/音频');
+   textFilled=true;
+   emit('running','✓ 完整发送稿已一次写入豆包，开始上传图片和音频',ctx,{textFilled:true,draft:pre.previewText});
+   let previous=await probe(ctx.wc);
    let batchCompleted=false;
    if(pre.items.length>1&&before.names.length===0&&before.thumbs.length===0){
     emit('running',`尝试一次性提交${pre.items.length}张参考图`,ctx);
@@ -238,15 +268,9 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
    }
    }
    ensure(ctx);
-   // User's original segment is never modified. Mapping is appended to the
-   // draft only after every file is confirmed in the current Doubao chat.
    const voiceRows=await importVoices(ctx,pre.voicePlan?.items||[]);
    ensure(ctx);
-   const composed=composeText(seg.text,finished.map(x=>({code:x.code,file:x.file})),0,voiceRows);
-   const result=await evalFn(ctx.wc,page.setPrompt,{text:composed,allowedExisting:seg.text,replace:replaceDraft||!before.prompt?.trim()});
-   ensure(ctx);
-   if(!result.ok)throw Error(result.message+'；图片已上传，原始段落未修改');
-   emit('running','全部图片已确认、完整提示词和图号表已经写入；尝试原生 @',ctx,{textFilled:true});
+   emit('running','图片和音频上传阶段结束，发送稿已同步；开始插入顶部原生 @',ctx,{textFilled:true});
    let natives=0;
    for(let i=0;i<ctx.rows.length;i++){
     if(!attemptNative){ctx.rows[i].state='mapping';ctx.rows[i].message='已附图号对应表（未尝试原生 @）';continue;}
@@ -262,11 +286,11 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
    }
    const end={state:'done',message:`图片 ${autoConfirmed} 张自动确认、${manualConfirmed} 张人工确认｜音频 ${voiceRows.length} 段已核验上传｜图片原生@ ${natives}/${pre.items.length}｜音频原生@ ${nativeAudio}/${voiceRows.length}；未验证项只保留明确对应说明`,rows:ctx.rows,uploaded:finished.length,autoConfirmed,manualConfirmed,textFilled:true,nativeVerified:natives,nativeAudioVerified:nativeAudio,audioConfirmed:voiceRows.length,total:pre.items.length};
    emit('done',end.message,ctx,end);return end;
-  }catch(e){const end={state:'error',message:e.message,rows:ctx.rows,uploaded:finished.length,textFilled:false,total:pre.items.length};emit('error',e.message,ctx,end);return end;}
+  }catch(e){const end={state:'error',message:e.message,rows:ctx.rows,uploaded:finished.length,textFilled,total:pre.items.length};emit('error',e.message,ctx,end);return end;}
   finally{running=null;}
  }
  function cancel(){if(!running)return false;running.cancelled=true;if(running.approve){running.approve(false);running.approve=null;}emit('cancelled','已请求停止；已提交到豆包的图片不会自动删除',running);return true;}
  function confirm(approved){if(!running?.approve)return false;const answer=running.approve;running.approve=null;answer(approved===true);return true;}
- return {getPlan,execute,cancel,confirm};
+ return {getPlan,getDraft,syncText,execute,cancel,confirm};
 }
 module.exports={createPlan,createImportEngine,EXTS};

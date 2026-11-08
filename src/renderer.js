@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id), B=window.bridge;
-let cfg=null,ws=null,imageRows=[],selected=new Set(),expandGroups=new Set(),focus=false,promptTimer=null,toastTimer=null,renderSeq=0,lastAnchor=-1,lastOriginal='',saveSequence=0,treeOpen=false,downloadsState={root:'',history:[]},extensionState={candidate:null,loaded:null};
+let cfg=null,ws=null,imageRows=[],selected=new Set(),expandGroups=new Set(),focus=false,promptTimer=null,toastTimer=null,renderSeq=0,lastAnchor=-1,lastOriginal='',saveSequence=0,treeOpen=true,draftRenderSeq=0,draftTimer=null,previewMode=false,downloadsState={root:'',history:[]},extensionState={candidate:null,loaded:null};
 const enc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const getAccount=()=>cfg?.accounts?.find(a=>a.id===cfg.activeAccountId)||cfg?.accounts?.[0];
 const getGroup=()=>cfg?.groups?.find(g=>g.id===getAccount()?.groupId);
@@ -52,8 +52,7 @@ function renderWorkspaceShell(){if(!ws)return;const data=ws.workspace,ep=getEp()
   const index=allowedEpisodes.findIndex(e=>e.id===ep?.id);
   $('btnPrevEp').disabled=index<=0;$('btnNextEp').disabled=index<0||index>=allowedEpisodes.length-1;
   $('btnPrevSeg').disabled=!seg;$('btnNextSeg').disabled=!seg;
-  $('segmentStrip').innerHTML=allowedSegments.map((s,i)=>`<div class="segmentCard ${s.id===seg?.id?'active':''} ${s.hidden?'hiddenItem':''} ${(ep?.locked||s.locked)?'lockedItem':''}" data-sid="${enc(s.id)}" role="button" tabindex="0" title="${enc(s.title)}"><div class="segCardTop"><strong>第${s.n}段</strong><span class="segCardOps"><button class="miniEye" data-seg-action="hide" data-sid="${enc(s.id)}" aria-label="${s.hidden?'恢复':'隐藏'}第${s.n}段" title="${s.hidden?'恢复':'隐藏'}本段">${s.hidden?'◉':'◌'}</button><button class="miniLock" data-seg-action="lock" data-sid="${enc(s.id)}" aria-label="${s.locked?'解锁':'锁定'}第${s.n}段" title="${s.locked?'解锁':'锁定'}本段">${s.locked?'🔒':'♧'}</button></span></div><div class="segCardCompact"><span class="segState ${s.status}">${statusText(s.status)}</span><span>参考图 ${s.codes.length} 张</span></div></div>`).join('')||'<div class="emptySeg">无可显示分段。点击「显示已隐藏」可恢复。</div>';
-  const active=$('segmentStrip').querySelector('.segmentCard.active');if(active)active.scrollIntoView({block:'nearest',inline:'nearest'});
+  $('segmentStrip').replaceChildren();
   const frozen=!!(ep?.locked||seg?.locked);
   $('promptText').disabled=!seg||frozen;$('btnCopyText').disabled=!seg;$('btnPull').disabled=!seg;$('btnEditCodes').disabled=!seg||frozen;
   $('btnAddImages').disabled=!seg||frozen;$('btnPullImages').disabled=!seg;$('btnExportImages').disabled=!seg;
@@ -72,16 +71,27 @@ function renderWorkspaceShell(){if(!ws)return;const data=ws.workspace,ep=getEp()
   renderEpisodeTree();
   selected=new Set(seg?.selectedPaths||[]);lastAnchor=-1;refreshHeader();
 }
-function renderEpisodeTree(){if(!ws)return;const data=ws.workspace;
-  const target=data.treeExpandedEpisodeId||data.activeEpisodeId;
-  const episodes=data.episodes.filter(ep=>data.showHidden||(!ep.hidden&&ep.segments.some(s=>!s.hidden)));
-  $('episodeTreeList').innerHTML=episodes.map((ep,i)=>{
-    const opened=ep.id===target,segments=ep.segments.filter(s=>data.showHidden||(!ep.hidden&&!s.hidden));
-    const done=ep.segments.filter(s=>s.status==='done').length;
-    return `<div class="treeEpisode" data-tree-eid="${enc(ep.id)}"><div class="treeEpisodeHead"><button class="treeName ${ep.id===data.activeEpisodeId?'current':''}" data-tree-action="expand" data-eid="${enc(ep.id)}">${opened?'▾':'▸'} ${enc(ep.title||`第${i+1}集`)} ${ep.locked?'🔒':''}${ep.hidden?'（已隐藏）':''}</button><span class="treeBadge">${done}/${ep.segments.length} 完成</span><button class="treeMini" data-tree-action="hide-ep" data-eid="${enc(ep.id)}" title="${ep.hidden?'恢复本集':'隐藏本集'}">${ep.hidden?'显示':'隐藏'}</button><button class="treeMini" data-tree-action="lock-ep" data-eid="${enc(ep.id)}" title="${ep.locked?'解锁本集':'锁定本集'}">${ep.locked?'解锁':'🔒'}</button></div>${opened?`<div class="treeSegments">${segments.map(s=>`<button data-tree-action="segment" data-eid="${enc(ep.id)}" data-sid="${enc(s.id)}" class="${s.id===data.activeSegmentId&&ep.id===data.activeEpisodeId?'selected':''} ${s.hidden?'hiddenItem':''} ${s.locked?'lockedItem':''}" title="${enc(s.title)}">第${s.n}段 · ${enc(s.title.slice(0,17))} ${s.hidden?'（隐藏）':''}</button>`).join('')||'<span class="tiny">本集暂无可显示段落</span>'}</div>`:''}</div>`;
-  }).join('')||'<div class="emptySeg" style="padding:12px">暂无可显示剧集。点击「显示已隐藏」恢复。</div>';
+function renderEpisodeTree(){
+ if(!ws)return;
+ const data=ws.workspace,target=data.treeExpandedEpisodeId||data.activeEpisodeId;
+ const episodes=data.episodes.filter(ep=>data.showHidden||(!ep.hidden&&ep.segments.some(s=>!s.hidden)));
+ const folded=!!data.layout?.foldActiveEpisode;
+ $('episodeTreeList').innerHTML=episodes.map((ep,i)=>{
+  const opened=ep.id===target&&!folded;
+  const segments=ep.segments.filter(s=>data.showHidden||(!ep.hidden&&!s.hidden));
+  const done=ep.segments.filter(s=>s.status==='done').length;
+  const rows=opened?`<div class="treeSegments">${segments.map(s=>{
+   const active=ep.id===data.activeEpisodeId&&s.id===data.activeSegmentId;
+   const isDone=s.status==='done',locked=ep.locked||s.locked;
+   return `<div class="segmentTile ${active?'selected':''} ${isDone?'doneCompact':''} ${locked?'lockedItem':''}" data-tree-action="segment" data-eid="${enc(ep.id)}" data-sid="${enc(s.id)}" role="button" tabindex="0" title="第${s.n}段｜${enc(s.title)}">
+      ${isDone?`<span class="tileMiniName">✓ 第${s.n}段 · 已完成</span>`:`<div class="tileHead"><strong>第${s.n}段</strong><button type="button" class="tileDone" data-tree-action="done" data-eid="${enc(ep.id)}" data-sid="${enc(s.id)}" aria-label="标记第${s.n}段为已完成">□ 已完成</button></div><div class="tileTitle">${enc(s.title||'未命名段落')}</div><div class="tileMeta">${statusText(s.status)} · 参考图 ${s.codes?.length||0} 张</div>`}
+      ${isDone?`<button type="button" class="tileDone checked" data-tree-action="done" data-eid="${enc(ep.id)}" data-sid="${enc(s.id)}" aria-label="撤销第${s.n}段已完成">撤销</button>`:''}
+    </div>`;
+  }).join('')||'<div class="emptySeg">本集暂无可显示的段落</div>'}</div>`:'';
+  return `<div class="treeEpisode ${opened?'opened':''}" data-tree-eid="${enc(ep.id)}"><div class="treeEpisodeHead"><button class="treeName ${ep.id===data.activeEpisodeId?'current':''}" data-tree-action="expand" data-eid="${enc(ep.id)}" aria-expanded="${opened}">${opened?'▾':'▸'} ${enc(ep.title||`第${i+1}集`)}</button><span class="treeBadge">${done}/${ep.segments.length} 已完成</span></div>${rows}</div>`;
+ }).join('')||'<div class="emptySeg">暂无剧集。点击上方「批量导入文档」开始。</div>';
 }
-function toggleTree(open){treeOpen=!!open;$('episodeTreePanel').hidden=!treeOpen;$('timeline').classList.toggle('tree-open',treeOpen);$('btnEpisodeTree').setAttribute('aria-expanded',String(treeOpen));if(treeOpen)renderEpisodeTree();bounds()}
+function toggleTree(open){treeOpen=!!open;$('episodeTreePanel').hidden=false;$('timeline').classList.remove('tree-open');$('btnEpisodeTree').setAttribute('aria-expanded','true');renderEpisodeTree();bounds()}
 async function mutateWorkspace(action){await flushPrompt();const result=await action();if(!result)return;ws=result.state||result;renderWorkspaceShell();await renderImages();bounds()}
 async function refreshDownloads(){downloadsState=await B.downloadState();renderDownloads()}
 function renderDownloads(){if(!downloadsState)return;$('downloadPath').textContent=downloadsState.root||'未设置下载目录';$('downloadPath').title=downloadsState.root||'';
@@ -95,6 +105,38 @@ function renderExtension(){const c=extensionState?.candidate,l=extensionState?.l
   $('extensionInfo').textContent=lines.join('\n');$('btnExtTest').disabled=!c;$('btnExtUnload').disabled=!l;
 }
 function showWords(){$('wordCount').textContent=$('promptText').value.length+' 字'}
+function setPreviewMode(show){
+ previewMode=!!show;
+ $('promptText').hidden=previewMode;$('draftPreviewText').hidden=!previewMode;
+ $('draftActions').hidden=!previewMode;
+ $('btnShowOriginal').classList.toggle('active',!previewMode);
+ $('btnShowDraft').classList.toggle('active',previewMode);
+ $('btnEditCodes').disabled=previewMode;
+}
+async function refreshDraftPreview(){
+ const ep=getEp(),seg=getSeg();if(!ep||!seg){$('draftPreviewText').value='';return;}
+ const seq=++draftRenderSeq;
+ try{
+  const draft=await B.importDraft(ep.id,seg.id,$('promptText').value);
+  if(seq!==draftRenderSeq||getEp()?.id!==ep.id||getSeg()?.id!==seg.id)return;
+  $('draftPreviewText').value=draft.previewText||'';
+  const errors=[...(draft.labelErrors||[]),...(draft.voiceErrors||[])];
+  $('draftPreviewInfo').textContent=errors.length?'需要校正：'+errors.join('；'):`已生成完整发送稿 · ${draft.items.length}张参考图 · ${draft.voicePlan?.items?.length||0}段绑定音频`;
+  $('btnSyncDraft').disabled=!!draft.blocked;
+  $('draftSyncStatus').textContent='发送稿已生成 · 尚未确认同步';
+ }catch(e){if(seq===draftRenderSeq){$('draftPreviewText').value='';$('draftPreviewInfo').textContent='无法生成：'+e.message;$('draftSyncStatus').textContent='发送稿生成失败';}}
+}
+async function syncOnlyText(){
+ await flushPrompt();const ep=getEp(),seg=getSeg();if(!ep||!seg)return;
+ let result=await B.importSyncText(ep.id,seg.id,false);
+ if(result.needsConfirmation){
+  if(!await confirmAction('替换豆包草稿文字？','网页已有不同草稿。覆盖之前请确保已保存；若存在蓝色图片或音频@，程序会拒绝覆盖。'))return;
+  result=await B.importSyncText(ep.id,seg.id,true);
+ }
+ if(!result.ok){$('draftSyncStatus').textContent='同步未完成';toast(result.message);return;}
+ $('draftSyncStatus').textContent='✓ 完整发送稿已同步豆包';toast('完整发送稿已一次同步到豆包（未自动发送）');
+}
+
 async function renderTailFrame(){
  const ep=getEp(),seg=getSeg();
  if(!ep||!seg){$('tailframeContent').textContent='未选中剧集或段落';$('btnTailChoose').disabled=true;return;}
@@ -126,6 +168,7 @@ async function renderImages(){const ep=getEp(),seg=getSeg(),seq=++renderSeq;
   }).join('')||'<div class="emptySeg" style="padding:22px 0">本段暂无图片编号；可用「补充图片」。</div>';
   const warn=[];if(missing.length)warn.push(`缺少 ${missing.length} 张：${missing.map(x=>x.code).join('、')}`);if(dups.length)warn.push(`${dups.length} 个编号有多个版本，请核对`);if(imageRows.length>9)warn.push(`本段 ${imageRows.length} 张超过常用9图限制，软件不会删图`);
   $('imageWarning').hidden=!warn.length;$('imageWarning').textContent=warn.join('；');selectionLabels();
+  await refreshDraftPreview();
 }
 function selectionLabels(){$('selectionCount').textContent=`已选择 ${selected.size} 张`;const all=imageRows.filter(r=>r.file&&!r.missing).length;$('dragHandle').textContent=`☷ 按住这里拖动 ${selected.size||all} 张${selected.size?'选中':'本段'}图片到豆包`;$('dragHandle').setAttribute('aria-disabled',(!all).toString())}
 async function persistSelection(){const e=getEp(),s=getSeg();if(!e||!s)return;const paths=[...selected];s.selectedPaths=paths;await B.wsSetSelection(e.id,s.id,paths)}
@@ -170,7 +213,24 @@ function initAccounts(){const list=$('groupList');list.addEventListener('click',
 function initWorkspace(){
   $('rightEpisode').onchange=e=>safe(()=>chooseEpisode(e.target.value));
   $('btnEpisodeTree').onclick=()=>toggleTree(!treeOpen);
-  $('episodeTreeList').onclick=e=>safe(async()=>{const btn=e.target.closest('[data-tree-action]');if(!btn)return;const {treeAction,eid,sid}=btn.dataset;if(treeAction==='expand'){await mutateWorkspace(()=>B.wsTreeEpisode(eid));}else if(treeAction==='segment'){toggleTree(false);await chooseSegment(eid,sid);}else if(treeAction==='hide-ep'){const ep=ws.workspace.episodes.find(x=>x.id===eid);await mutateWorkspace(()=>B.wsHidden(eid,null,!ep.hidden));}else if(treeAction==='lock-ep'){const ep=ws.workspace.episodes.find(x=>x.id===eid);await mutateWorkspace(()=>B.wsLocked(eid,null,!ep.locked));}});
+  $('episodeTreeList').onclick=e=>safe(async()=>{
+   const btn=e.target.closest('[data-tree-action]');if(!btn)return;
+   const {treeAction,eid,sid}=btn.dataset;
+   if(treeAction==='expand'){
+    await flushPrompt();
+    if(ws.workspace.treeExpandedEpisodeId===eid){const flag=!ws.workspace.layout.foldActiveEpisode;await B.wsLayout({foldActiveEpisode:flag});ws.workspace.layout.foldActiveEpisode=flag;renderEpisodeTree();}
+    else{await B.wsTreeEpisode(eid);await B.wsLayout({foldActiveEpisode:false});ws=await B.wsState();renderWorkspaceShell();}
+   }else if(treeAction==='segment')await chooseSegment(eid,sid);
+   else if(treeAction==='done'){
+    await flushPrompt();const ep=ws.workspace.episodes.find(x=>x.id===eid),seg=ep?.segments.find(x=>x.id===sid);if(!seg)return;
+    const next=seg.status==='done'?'pending':'done';
+    ws=await B.wsSetStatus(eid,sid,next,cfg.activeAccountId);
+    renderWorkspaceShell();await renderImages();
+    toast(next==='done'?`第${seg.n}段已完成，卡片已收起；可点击撤销`:`第${seg.n}段已恢复待制作`);
+   }
+  });
+  $('episodeTreeList').onkeydown=e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-tree-action="segment"]')){e.preventDefault();e.target.click()}};
+
   $('btnShowHidden').onclick=()=>safe(()=>mutateWorkspace(()=>B.wsShowHidden(!ws.workspace.showHidden)));
   $('btnHideDone').onclick=()=>safe(async()=>{const result=await B.wsHideDone();ws=result.state;renderWorkspaceShell();await renderImages();toast(`已隐藏 ${result.hidden} 个完成段，可点“显示已隐藏”查看`);bounds()});
   $('btnHideEpisode').onclick=()=>safe(async()=>{const e=getEp();if(e)await mutateWorkspace(()=>B.wsHidden(e.id,null,!e.hidden))});
@@ -184,6 +244,10 @@ function initWorkspace(){
   $('btnPrevSeg').onclick=()=>safe(()=>moveSegment(-1));$('btnNextSeg').onclick=()=>safe(()=>moveSegment(1));
   $('statusSelect').onchange=e=>safe(async()=>{await flushPrompt();const ep=getEp(),seg=getSeg();if(!seg)return;ws=await B.wsSetStatus(ep.id,seg.id,e.target.value,cfg.activeAccountId);renderWorkspaceShell();await renderImages();toast('制作状态：'+statusText(e.target.value))});
   $('promptText').oninput=()=>{showWords();$('promptSaveStatus').textContent='正在保存…';clearTimeout(promptTimer);promptTimer=setTimeout(()=>safe(flushPrompt),500)};
+  $('btnShowOriginal').onclick=()=>setPreviewMode(false);$('btnShowDraft').onclick=()=>safe(async()=>{await refreshDraftPreview();setPreviewMode(true)});
+  $('btnCopyDraft').onclick=()=>safe(async()=>{if(!$('draftPreviewText').value)await refreshDraftPreview();await B.copyText($('draftPreviewText').value);toast('完整发送稿已复制')});
+  $('btnSyncDraft').onclick=()=>safe(syncOnlyText);
+  $('promptText').addEventListener('input',()=>{clearTimeout(draftTimer);draftTimer=setTimeout(()=>safe(refreshDraftPreview),600)});
   $('btnCopyText').onclick=()=>safe(async()=>{await flushPrompt();const text=getSeg()?.text||'';if(!text)return toast('当前段还没有提示词');await B.copyText(text);toast(`已复制本段完整提示词（${text.length} 字）`)});
   $('btnPull').onclick=()=>safe(autoPull);$('btnPullImages').onclick=()=>safe(async()=>{await flushPrompt();await B.wsRescan();await reloadWorkspace();toast('已重扫图片目录并更新本段参考图')});
   $('btnTailChoose').onclick=()=>safe(async()=>{const ep=getEp(),seg=getSeg();if(!ep||!seg)return;await flushPrompt();const result=await B.tailChoose(ep.id,seg.id);if(result.state!=='cancelled'){toast(result.message||'已处理尾帧');await renderTailFrame();}});
@@ -232,6 +296,7 @@ let importBusy=false;
 function showImportStatus(v){
  if(!v)return;const detail=$('importDetails'),progress=$('importProgress');
  $('importNote').textContent=v.message||v.error||'预检完成';$('btnImportConfirm').hidden=v.state!=='review';
+ if(v.textFilled===true)$('draftSyncStatus').textContent='✓ 已同步发送稿到豆包';
  const rows=v.items||v.rows||[];
  if(rows.length){
   detail.hidden=false;
@@ -348,7 +413,7 @@ function initVoiceBindings(){
  $('btnVoiceChoose').onclick=()=>safe(async()=>{
   const code=$('voiceCodeSelect').value,label=$('voiceNameInput').value.trim()||'人物声音';
   close();const res=await B.voiceAdd(code,label);
-  if(!res.cancelled){toast(`${code} 声音样本已绑定；一键导入将自动匹配默认音色`);await refreshVoiceBindings()}
+  if(!res.cancelled){toast(`${code} 声音样本已绑定；发送稿已同步更新`);await refreshVoiceBindings();await refreshDraftPreview()}
  });
  $('voiceList').onclick=e=>safe(async()=>{
   const b=e.target.closest('button[data-voice]');if(!b)return;
@@ -356,7 +421,7 @@ function initVoiceBindings(){
   if(voice==='play'){await B.voicePlay(code,id);return;}
   if(voice==='remove'){if(!(await confirmAction('解除音色绑定',`确认将此声音样本从 ${code} 的绑定列表移除吗？原始音频文件不会被删除。`)))return;await B.voiceRemove(code,id)}
   if(voice==='default')await B.voiceDefault(code,id);
-  await refreshVoiceBindings();
+  await refreshVoiceBindings();await refreshDraftPreview();
  });
 }
 async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Electron Windows 桌面程序中操作真实豆包';return}

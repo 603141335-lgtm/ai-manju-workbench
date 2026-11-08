@@ -1,19 +1,14 @@
-# 豆包创作舱 v0.9.2｜人物图片与音频绑定版
+# 豆包创作舱 v0.9.3 · 浏览器登录版
+以 \`release/doubao-browser-voicebind-v0.9.2\` 为基础升级，保留原有 Electron WebContentsView 豆包登录、多账号独立持久分区、人物声音绑定、素材文件夹、一次批量上传与跨段 FFmpeg 尾帧。
 
-基于 Windows v0.9.1 的内嵌豆包浏览器工作台增量升级，保留登录账号、剧集、参考图库、批量上传、图片顶部内联 @ 尝试、跨段尾帧和下载管理，不恢复画布。
+## 本次变更
+- 识别 \`A01小李、A01-01小李、A15杜不凡\`；素材只按精确编号匹配，发送稿加入人名，错误/冲突提示。
+- 右侧「原始提示词 / 发送稿预览」一键切换；声音绑定变化立即更新预览；只同步完整文字时不重新上传图片/声音。
+- 原生网页导入开始即通过一个编辑器写入操作填好完整发送稿，并回读校验。后续上传或原生@失败也会显示文字已同步；绝不自行生成假蓝色引用。
+- 下方一行一集、展开多行分段；已完成按钮收起成小卡并支持撤销；保留旧版锁定、隐藏状态于「更多 → 高级项目管理」。
+- 安装身份 \`com.manju.doubao.creativehub\` 未更改；账号和工作区数据保留。
 
-**新增**：每个人物图号绑定 WAV/MP3 角色音色样本（可多选、试听、设默认）；本段一键导入时只自动选择当前参考图涉及的人物音频，检查 Seedance 2.0 的 3段/15秒限制，然后尝试网页音频上传，并把人物图片与音频编号映射放在提示词最上方。豆包网页版若无音频上传控件/原生 @ 菜单，将明确报错或标注未验证，不冒充成功。
-
-详细操作、源码结构、风险和真实网页验收清单：[docs/V092_CHARACTER_VOICE_BINDING.md](docs/V092_CHARACTER_VOICE_BINDING.md)。
-
-## 构建
-
-```sh
-npm install
-npm run check
-npm run dist:win
-```
-
-Windows GitHub Actions 会附带 LGPL FFmpeg/ffprobe，正式 NSIS 安装包发布到 GitHub Releases。新版本继续使用原 `com.manju.doubao.creativehub` 安装身份，覆盖升级不清除数据。
-
-> 注意：在本环境可以验证本地音频时长、音色绑定和提示词映射；真实豆包网页版音频上传、原生蓝色 @ 引用仍须用户实测。请勿将自动生成的纯文字关系误认为真实引用。
+## 验收
+\`npm run check\` 及可选 \`python tests/ui_v093_browser.py\`（需要 Chromium 和 Playwright）验证，离线 UI 测试只使用模拟豆包，不能证明真实豆包原生@与音频接口兼容。
+正式 Windows 构建：GitHub Actions .github/workflows/build-windows.yml。
+开发环境无商业 Themida 加壳，安装包也未签名（若未配置 Windows 证书）。

@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   voiceDefault:(code,id)=>ipcRenderer.invoke('voice:default',code,id),
   voiceRemove:(code,id)=>ipcRenderer.invoke('voice:remove',code,id),
   voicePlay:(code,id)=>ipcRenderer.invoke('voice:play',code,id),
+  importDraft:(eid,sid,text)=>ipcRenderer.invoke('import:draft',eid,sid,text),
+  importSyncText:(eid,sid,replaceDraft)=>ipcRenderer.invoke('import:sync-text',eid,sid,!!replaceDraft),
   importPreflight:(eid,sid)=>ipcRenderer.invoke('import:preflight',eid,sid),
   importExecute:(eid,sid,opts)=>ipcRenderer.invoke('import:execute',eid,sid,opts),
   importCancel:()=>ipcRenderer.invoke('import:cancel'),

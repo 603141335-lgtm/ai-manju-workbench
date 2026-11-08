@@ -349,6 +349,8 @@ function registerHandlers(){
     if(!file||!exists(file))throw Error('声音文件已失效');
     const result=await shell.openPath(file);if(result)throw Error(result);return true;
   });
+  ipcMain.handle('import:draft',(_e,eid,sid,prompt)=>importEngine.getDraft({episodeId:eid,segmentId:sid,previewText:prompt}));
+  ipcMain.handle('import:sync-text',(_e,eid,sid,replaceDraft)=>importEngine.syncText({episodeId:eid,segmentId:sid,replaceDraft:!!replaceDraft}));
   ipcMain.handle('import:preflight',(_e,eid,sid)=>importEngine.getPlan({episodeId:eid,segmentId:sid}));
   ipcMain.handle('import:execute',(_e,eid,sid,options)=>importEngine.execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false}));
   ipcMain.handle('import:cancel',()=>importEngine.cancel());
