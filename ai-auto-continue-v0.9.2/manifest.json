@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "AI自动续聊助手",
+  "short_name": "自动续聊",
+  "version": "0.9.2",
+  "description": "方形平台卡片、点击切换任务、动态任务实例、固定三任务并发与自动排队。",
+  "permissions": [
+    "storage",
+    "tabs",
+    "downloads",
+    "unlimitedStorage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*",
+    "https://doubao.com/*",
+    "https://www.doubao.com/*",
+    "https://chat.deepseek.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://doubao.com/*",
+        "https://www.doubao.com/*",
+        "https://chat.deepseek.com/*"
+      ],
+      "js": [
+        "runner.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "打开AI自动续聊助手",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
