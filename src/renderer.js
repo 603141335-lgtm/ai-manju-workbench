@@ -75,23 +75,23 @@ function renderWorkspaceShell(){if(!ws)return;const data=ws.workspace,ep=getEp()
 function renderEpisodeTree(){
  if(!ws)return;
  const data=ws.workspace,target=data.treeExpandedEpisodeId||data.activeEpisodeId;
- const episodes=data.episodes.filter(ep=>data.showHidden||(!ep.hidden&&ep.segments.some(s=>!s.hidden)));
- const folded=!!data.layout?.foldActiveEpisode;
- $('episodeTreeList').innerHTML=episodes.map((ep,i)=>{
-  const opened=ep.id===target&&!folded;
-  const segments=ep.segments.filter(s=>data.showHidden||(!ep.hidden&&!s.hidden));
-  const done=ep.segments.filter(s=>s.status==='done').length;
-  const rows=opened?`<div class="treeSegments">${segments.map(s=>{
-   const active=ep.id===data.activeEpisodeId&&s.id===data.activeSegmentId;
-   const isDone=s.status==='done';const locked=ep.locked||s.locked;
-   return `<div class="segmentTile ${active?'selected':''} ${isDone?'doneCompact':''} ${locked?'lockedItem':''}" data-tree-action="segment" data-eid="${enc(ep.id)}" data-sid="${enc(s.id)}" role="button" tabindex="0" title="第${s.n}段｜${enc(s.title)}">
-      ${isDone?`<span class="tileMiniName">✓ 第${s.n}段 · 已完成</span>`:`<div class="tileHead"><strong>第${s.n}段</strong><button type="button" class="tileDone" data-tree-action="done" data-eid="${enc(ep.id)}" data-sid="${enc(s.id)}" aria-label="标记第${s.n}段为已完成">□ 已完成</button></div><div class="tileTitle">${enc(s.title||'未命名段落')}</div><div class="tileMeta">${statusText(s.status)} · 参考图 ${s.codes?.length||0} 张</div>`}
-      ${isDone?`<button type="button" class="tileDone checked" data-tree-action="done" data-eid="${enc(ep.id)}" data-sid="${enc(s.id)}" aria-label="撤销第${s.n}段已完成">撤销</button>`:''}
-    </div>`;
-  }).join('')||'<div class="emptySeg">本集暂无可显示的段落</div>'}</div>`:'';
-  return `<div class="treeEpisode ${opened?'opened':''}" data-tree-eid="${enc(ep.id)}"><div class="treeEpisodeHead"><button class="treeName ${ep.id===data.activeEpisodeId?'current':''}" data-tree-action="expand" data-eid="${enc(ep.id)}" aria-expanded="${opened}">${opened?'▾':'▸'} ${enc(ep.title||`第${i+1}集`)}</button><span class="treeBadge">${done}/${ep.segments.length} 已完成</span></div>${rows}</div>`;
- }).join('')||'<div class="emptySeg">暂无剧集。点击上方「批量导入文档」开始。</div>';
+ const episodes=data.episodes.filter(ep=>data.showHidden||(!ep.hidden&&ep.segments.some(seg=>!seg.hidden)));
+ const active=episodes.find(x=>x.id===target)||episodes[0];
+ const rail='<div class="episodeRail">'+episodes.map((ep,i)=>{
+   const count=ep.segments.filter(s=>s.status==='done').length,selected=active?.id===ep.id;
+   return '<div class="episodeSquare '+(selected?'selected':'')+'"><button class="episodeSelect" type="button" data-tree-action="expand" data-eid="'+enc(ep.id)+'" title="'+enc(ep.title)+'"><strong>第'+enc(ep.number||i+1)+'集</strong><small>'+count+'/'+ep.segments.length+' 已完成</small></button><button class="squareDelete" type="button" data-tree-action="delete-episode" data-eid="'+enc(ep.id)+'" title="删除整集到回收站" aria-label="删除第'+enc(ep.number||i+1)+'集">×</button></div>';
+ }).join('')+'</div>';
+ const list=active?active.segments.filter(x=>data.showHidden||(!active.hidden&&!x.hidden)):[];
+ const cards=list.map(seg=>{
+   const selected=active.id===data.activeEpisodeId&&seg.id===data.activeSegmentId,done=seg.status==='done';
+   return '<div class="segmentSquare '+(selected?'selected ':'')+(done?'doneCompact':'')+'" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'"><button class="segmentSelect" data-tree-action="segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" type="button" title="'+enc(seg.title)+'"><strong>第'+seg.n+'段</strong><small>'+enc(done?'✓ 已完成':seg.title||'未命名')+'</small></button><div class="segmentSquareActions"><button class="tileDone '+(done?'checked':'')+'" data-tree-action="done" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="'+(done?'撤销完成':'标记完成')+'">'+(done?'✓':'□')+'</button><button class="squareDelete" data-tree-action="delete-segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="删除本段到回收站" aria-label="删除第'+seg.n+'段">×</button></div></div>';
+ }).join('');
+ const last=(data.trash||[]).at(-1);
+ $('episodeTreeList').innerHTML='<div class="episodeRailHeading"><strong>剧集目录</strong><span>'+(last?'<button type="button" class="smallBtn" data-tree-action="restore" data-trash-id="'+enc(last.id)+'">↶ 撤销上次删除</button>':'')+'</span></div>'+rail+
+ '<div class="segmentGridHeading"><strong>'+(active?enc(active.title):'暂无剧集')+'</strong><span>'+(active?active.segments.filter(s=>s.status==='done').length+'/'+active.segments.length+' 已完成':'')+'</span></div>'+
+ '<div class="segmentSquareGrid">'+(cards||'<div class="emptySeg">本集暂无段落</div>')+'</div>';
 }
+
 function toggleTree(open){treeOpen=!!open;$('episodeTreePanel').hidden=false;$('timeline').classList.remove('tree-open');$('btnEpisodeTree').setAttribute('aria-expanded','true');renderEpisodeTree();bounds()}
 async function mutateWorkspace(action){await flushPrompt();const result=await action();if(!result)return;ws=result.state||result;renderWorkspaceShell();await renderImages();bounds()}
 async function refreshDownloads(){downloadsState=await B.downloadState();renderDownloads()}
@@ -218,10 +218,15 @@ function initWorkspace(){
    const btn=e.target.closest('[data-tree-action]');if(!btn)return;
    const {treeAction,eid,sid}=btn.dataset;
    if(treeAction==='expand'){
-    await flushPrompt();
-    if(ws.workspace.treeExpandedEpisodeId===eid){const flag=!ws.workspace.layout.foldActiveEpisode;await B.wsLayout({foldActiveEpisode:flag});ws.workspace.layout.foldActiveEpisode=flag;renderEpisodeTree();}
-    else{await B.wsTreeEpisode(eid);await B.wsLayout({foldActiveEpisode:false});ws=await B.wsState();renderWorkspaceShell();}
-   }else if(treeAction==='segment')await chooseSegment(eid,sid);
+     await flushPrompt();await B.wsTreeEpisode(eid);await B.wsLayout({foldActiveEpisode:false});ws=await B.wsState();renderWorkspaceShell();await chooseEpisode(eid);
+    }else if(treeAction==='restore'){
+     ws=await B.wsRestore(btn.dataset.trashId);renderWorkspaceShell();await renderImages();toast('已从回收站恢复');
+    }else if(treeAction==='delete-episode'||treeAction==='delete-segment'){
+     const episode=ws.workspace.episodes.find(x=>x.id===eid),segment=episode?.segments.find(x=>x.id===sid),isEpisode=treeAction==='delete-episode';
+     if(!episode)return;
+     if(!await confirmAction(isEpisode?'删除整集？':'删除段落？',isEpisode?'将整集及所有段落移入回收站，原参考图和视频不会删除。':'仅将第'+segment?.n+'段移入回收站，原参考图和视频不会删除。'))return;
+     await flushPrompt();const result=await B.wsDelete(eid,isEpisode?null:sid);ws=result.state;renderWorkspaceShell();await renderImages();toast('已移入回收站，可点击撤销上次删除');
+    }else if(treeAction==='segment')await chooseSegment(eid,sid);
    else if(treeAction==='done'){
     await flushPrompt();const ep=ws.workspace.episodes.find(x=>x.id===eid),seg=ep?.segments.find(x=>x.id===sid);if(!seg)return;
     const next=seg.status==='done'?'pending':'done';
