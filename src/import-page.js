@@ -9,10 +9,17 @@ function probe(){
  const richText=root=>{let s='';function visit(node){if(node.nodeType===3){s+=node.nodeValue||'';return;}if(node.nodeType!==1)return;const tag=node.tagName;if(tag==='BR'){if(node.parentElement?.childNodes.length!==1)s+='\n';return;}if(['DIV','P','LI'].includes(tag)&&s.length>0)s+='\n';for(const child of node.childNodes)visit(child);}for(const child of root.childNodes)visit(child);return s;};
  const visible=el=>{if(!el?.getBoundingClientRect)return false;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>15&&r.height>12&&s.display!=='none'&&s.visibility!=='hidden'};
  const els=[...document.querySelectorAll('.guidance-input-content .tiptap.ProseMirror[contenteditable="true"],.guidance-input-content [contenteditable="true"],.tiptap.ProseMirror[contenteditable="true"],textarea.semi-input-textarea,[role="textbox"][contenteditable="true"],textarea,[contenteditable="true"]')].filter(visible);
- const rank=el=>{const r=el.getBoundingClientRect();return (el.closest('.guidance-input-content')?500:0)+(el.matches('.tiptap.ProseMirror')?200:0)+Math.min(r.width,700)+(r.bottom>innerHeight*.35?100:0)};
+ const rank=el=>{const r=el.getBoundingClientRect();let p=el,video=0;
+  for(let i=0;i<6&&p;i++,p=p.parentElement){const t=(p.innerText||'').slice(0,1200);if(t.length<900&&/视频生成/.test(t)&&/Seedance|16\s*:\s*9/i.test(t)){video=700;break;}}
+  return video+(el.closest('.guidance-input-content')?250:0)+(el.matches('.tiptap.ProseMirror')?180:0)+Math.min(r.width,700)+(r.bottom>innerHeight*.35?250:0)};
  const edit=els.sort((a,b)=>rank(b)-rank(a))[0];
  if(!edit)return {ready:false,message:'没有找到豆包的聊天输入框'};
- const region=edit.closest('.guidance-input-content')?.parentElement||edit.closest('form')||edit.parentElement?.parentElement||document.body;
+ let region=edit.closest('.guidance-input-content')?.parentElement||edit.closest('form')||edit.parentElement?.parentElement||document.body;
+ // Reference thumbnails may sit beside the video editor rather than inside it.
+ for(let p=region,i=0;i<4&&p&&p!==document.body;i++,p=p.parentElement){
+  const str=(p.innerText||'').slice(0,1200);
+  if(str.length<950&&/视频生成/.test(str)&&/Seedance|16\s*:\s*9/i.test(str)){region=p;break;}
+ }
  // No data URLs, cookies or message history are returned to the Electron host.
  const names=new Set(),thumbs=new Set();
  for(const el of region.querySelectorAll('[title],[aria-label],[data-filename],img[alt]')){
@@ -73,7 +80,7 @@ function openUploadMenu(){
  const visible=el=>{const r=el.getBoundingClientRect();return r.width>10&&r.height>10&&r.top>=0&&r.bottom<=innerHeight};
  const controls=[...document.querySelectorAll('button,[role="button"],[role="menuitem"],label')].filter(visible);
  const label=el=>(el.getAttribute('aria-label')||el.getAttribute('title')||el.textContent||'').trim().replace(/\s+/g,' ');
- const plus=controls.find(el=>/^(?:\+|添加|添加附件|附件|更多附件|添加文件)$/i.test(label(el)));
+ const plus=controls.filter(el=>/^(?:\+|添加|添加附件|附件|更多附件|添加文件)$/i.test(label(el))).sort((a,b)=>b.getBoundingClientRect().bottom-a.getBoundingClientRect().bottom)[0];
  if(!plus)return {ok:false,message:'未找到聊天框附件“＋”按钮'};
  plus.click();return {ok:true,message:'已打开附件操作菜单'};
 }
@@ -81,7 +88,9 @@ function setPrompt(payload){
  const richText=root=>{let s='';function visit(node){if(node.nodeType===3){s+=node.nodeValue||'';return;}if(node.nodeType!==1)return;const tag=node.tagName;if(tag==='BR'){if(node.parentElement?.childNodes.length!==1)s+='\n';return;}if(['DIV','P','LI'].includes(tag)&&s.length>0)s+='\n';for(const child of node.childNodes)visit(child);}for(const child of root.childNodes)visit(child);return s;};
  const visible=el=>{const r=el.getBoundingClientRect();return r.width>25&&r.height>15};
  const els=[...document.querySelectorAll('.guidance-input-content .tiptap.ProseMirror[contenteditable="true"],.guidance-input-content [contenteditable="true"],.tiptap.ProseMirror[contenteditable="true"],textarea.semi-input-textarea,[role="textbox"][contenteditable="true"],textarea,[contenteditable="true"]')].filter(visible);
- const rank=el=>{const r=el.getBoundingClientRect();return(el.closest('.guidance-input-content')?500:0)+(el.matches('.tiptap.ProseMirror')?200:0)+Math.min(r.width,700)};
+ const rank=el=>{const r=el.getBoundingClientRect();let p=el,video=0;
+  for(let i=0;i<6&&p;i++,p=p.parentElement){const t=(p.innerText||'').slice(0,1200);if(t.length<900&&/视频生成/.test(t)&&/Seedance|16\s*:\s*9/i.test(t)){video=700;break;}}
+  return video+(el.closest('.guidance-input-content')?250:0)+(el.matches('.tiptap.ProseMirror')?180:0)+Math.min(r.width,700)+(r.bottom>innerHeight*.35?250:0)};
  const el=els.sort((a,b)=>rank(b)-rank(a))[0];if(!el)return {ok:false,message:'没有找到豆包聊天输入框'};
  const actual=el.isContentEditable?richText(el):(el.value||'');
  if(actual===payload.text)return {ok:true,same:true,length:actual.length,message:'提示词已有相同内容，未重复填写'};
