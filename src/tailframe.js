@@ -104,6 +104,11 @@ class TailFrameStore{
   if(row.error)return {state:'error',message:row.error,videoPath:row.videoPath};
   if(!fs.existsSync(row.framePath))return {state:'missing',message:'已绑定的尾帧图片丢失',videoPath:row.videoPath};
   const sourceMoved=!fs.existsSync(row.videoPath);
+  if(!sourceMoved){
+   const st=fs.statSync(row.videoPath);
+   if(st.mtimeMs!==row.sourceMtime||st.size!==row.sourceSize)
+    return {state:'stale',message:'原视频被替换或修改，请重新提取尾帧',videoPath:row.videoPath};
+  }
   return {state:'ready',code:'尾帧',file:{path:row.framePath,name:path.basename(row.framePath)},
    sourceSegment:prev.seg.n,sourceSegmentId:prev.seg.id,videoPath:row.videoPath,
    seekSecond:row.seekSecond,locked:!!row.locked,sourceMoved,
