@@ -13,6 +13,12 @@ function scanAndAct(target){
   const ratio=controls.some(x=>/16\s*:\s*9\s*[·•]\s*15\s*s/i.test(x))||controls.some(x=>/^(?:16\s*:\s*9|横屏)/.test(x));
   const duration=controls.some(x=>/15\s*s|15秒/i.test(x));
   if(target==='probe')return {video,model,ratio,duration,controls:controls.slice(0,60)};
+  if(target==='menu'){
+    const choices=els.filter(x=>/^(?:AI创作|创作|更多|\\+|添加)$/i.test(label(x)));
+    const el=choices.sort((a,b)=>b.getBoundingClientRect().top-a.getBoundingClientRect().top)[0];
+    if(!el)return {ok:false,reason:'没有找到创作模式选择菜单'};
+    el.click();return {ok:true,clicked:label(el)};
+  }
   if(target==='video'){
     if(video)return {ok:true,already:true};
     const b=find(/^(?:视频生成|AI视频生成|视频创作)$/)||find(/视频生成/);
@@ -54,7 +60,11 @@ async function ensure(wc){
   const exec=async target=>wc.executeJavaScript('('+scanAndAct.toString()+')('+JSON.stringify(target)+')',true);
   try{
     let p=await exec('probe');
-    if(!p.video){await exec('video');await sleep(650);p=await exec('probe')}
+    if(!p.video){
+      let selected=await exec('video');
+      if(!selected.ok){await exec('menu');await sleep(280);selected=await exec('video')}
+      await sleep(650);p=await exec('probe');
+    }
     if(!p.video)return {ready:false,message:'没有确认视频生成模式，请在豆包网页手动选择「视频生成」',details:p};
     if(!p.model){await exec('model');await sleep(280);await exec('fast');await sleep(430);p=await exec('probe')}
     if(!p.ratio||!p.duration){
