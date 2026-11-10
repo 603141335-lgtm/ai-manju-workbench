@@ -10,12 +10,13 @@ const id=()=>randomUUID();
 const MAX_SEGMENTS=20000;
 const unique=a=>[...new Set(a)];
 const isImage=p=>typeof p==='string'&&EXTS.has(path.extname(p).toLowerCase());
-const fresh=()=>({version:2,title:'我的AI漫剧项目',assetFolder:'',episodes:[],chosenPaths:{},activeEpisodeId:null,activeSegmentId:null,showHidden:false,treeExpandedEpisodeId:null,layout:{bottomHeight:315,bottomCollapsed:false,rightWidth:450,foldActiveEpisode:false}});
+const fresh=()=>({version:2,title:'我的AI漫剧项目',assetFolder:'',episodes:[],trash:[],chosenPaths:{},activeEpisodeId:null,activeSegmentId:null,showHidden:false,treeExpandedEpisodeId:null,layout:{bottomHeight:315,bottomCollapsed:false,rightWidth:450,foldActiveEpisode:false}});
 function scrub(input){
   const o=fresh();if(!input||typeof input!=='object')return o;
   o.title=String(input.title||o.title).slice(0,150);
   o.assetFolder=typeof input.assetFolder==='string'?input.assetFolder:'';
   o.showHidden=!!input.showHidden;
+   o.trash=Array.isArray(input.trash)?input.trash.filter(t=>t&&['episode','segment'].includes(t.kind)&&t.item&&typeof t.item==='object').slice(-150):[];
   o.treeExpandedEpisodeId=typeof input.treeExpandedEpisodeId==='string'?input.treeExpandedEpisodeId:null;
   if(input.chosenPaths&&typeof input.chosenPaths==='object')for(const [key,v] of Object.entries(input.chosenPaths)){if(typeof v==='string'&&v.length<4096)o.chosenPaths[normCode(key)]=v;}
   if(input.layout&&typeof input.layout==='object')o.layout={bottomHeight:Math.max(180,Math.min(500,Number(input.layout.bottomHeight)||245)),bottomCollapsed:!!input.layout.bottomCollapsed,rightWidth:Math.max(300,Math.min(750,Number(input.layout.rightWidth)||450)),foldActiveEpisode:!!input.layout.foldActiveEpisode};
@@ -25,7 +26,7 @@ function scrub(input){
     const episode={id:String(e.id||id()),number:Number.isInteger(e.number)?e.number:null,title:String(e.title||'未命名剧集').slice(0,350),original:String(e.original||''),preamble:String(e.preamble||''),hidden:!!e.hidden,locked:!!e.locked,segments:[]};
     if(Array.isArray(e.segments))for(const s of e.segments.slice(0,Math.min(budget,900))){
       const text=String(s.text??s.prompt??'');if(text.length>300000)continue;
-      episode.segments.push({id:String(s.id||id()),n:Number.isFinite(Number(s.n))?Number(s.n):episode.segments.length+1,title:String(s.title||s.name||'未命名段落').slice(0,350),text,codes:unique((Array.isArray(s.codes)?s.codes:detectSegmentCodes(text).codes).map(c=>normCode(String(c))).filter(Boolean)).slice(0,100),method:String(s.method||'栏目识别'),manual:!!s.manual,hidden:!!s.hidden,locked:!!s.locked,status:['pending','done','redo'].includes(s.status)?s.status:'pending',completedAt:typeof s.completedAt==='string'?s.completedAt:null,accountId:typeof s.accountId==='string'?s.accountId:null,selectedPaths:Array.isArray(s.selectedPaths)?unique(s.selectedPaths.filter(x=>typeof x==='string')).slice(0,100):[],manualPaths:Array.isArray(s.manualPaths)?unique(s.manualPaths.filter(x=>typeof x==='string'&&isImage(x))).slice(0,150):[]});
+      episode.segments.push({id:String(s.id||id()),n:Number.isFinite(Number(s.n))?Number(s.n):episode.segments.length+1,title:String(s.title||s.name||'未命名段落').slice(0,350),text,codes:unique((Array.isArray(s.codes)?s.codes:detectSegmentCodes(text).codes).map(c=>normCode(String(c))).filter(Boolean)).slice(0,100),method:String(s.method||'栏目识别'),manual:!!s.manual,hidden:!!s.hidden,locked:!!s.locked,status:['pending','done','redo'].includes(s.status)?s.status:'pending',completedAt:typeof s.completedAt==='string'?s.completedAt:null,accountId:typeof s.accountId==='string'?s.accountId:null,selectedPaths:Array.isArray(s.selectedPaths)?unique(s.selectedPaths.filter(x=>typeof x==='string')).slice(0,100):[],manualPaths:Array.isArray(s.manualPaths)?unique(s.manualPaths.filter(x=>typeof x==='string'&&isImage(x))).slice(0,150):[],continuityBlocked:!!s.continuityBlocked});
     }
     if(episode.segments.length){budget-=episode.segments.length;o.episodes.push(episode);}
   }
@@ -142,7 +143,44 @@ class WorkspaceStore{
   async hideDone(){let hidden=0;for(const ep of this.data.episodes){for(const seg of ep.segments){if(seg.status==='done'&&!seg.hidden){seg.hidden=true;hidden++;}}if(ep.segments.length&&ep.segments.every(s=>s.status==='done'))ep.hidden=true;}this.keepSelectionVisible();await this.save();return {hidden,state:this.snapshot()};}
   async editText(eid,sid,text){if(typeof text!=='string'||text.length>300000)throw Error('提示词超过30万字');const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.text=text;if(!seg.manual){const det=detectSegmentCodes(text);seg.codes=det.codes;seg.method=det.method;}await this.save();}
   async editCodes(eid,sid,codes){const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.codes=unique((Array.isArray(codes)?codes:String(codes).split(/[、,，\s]+/)).map(normCode).filter(Boolean)).slice(0,100);seg.manual=true;await this.save();}
-  async setStatus(eid,sid,status,accountId){if(!['pending','done','redo'].includes(status))throw Error('状态无效');const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.status=status;seg.accountId=status==='done'?accountId:null;seg.completedAt=status==='done'?new Date().toISOString():null;await this.save();}
+  async deleteItem(eid,sid=null){
+     const index=this.data.episodes.findIndex(e=>e.id===eid);
+     if(index<0)throw Error('剧集不存在');
+     const ep=this.data.episodes[index];
+     this.assertUnlocked(ep,sid?ep.segments.find(s=>s.id===sid):null);
+     let item,kind,position;
+     if(sid){
+       position=ep.segments.findIndex(s=>s.id===sid);
+       if(position<0)throw Error('段落不存在');
+       kind='segment';item=ep.segments.splice(position,1)[0];
+       // Do not silently bind the next segment to an unrelated earlier clip.
+       if(ep.segments[position])ep.segments[position].continuityBlocked=true;
+     }else{kind='episode';position=index;item=this.data.episodes.splice(index,1)[0]}
+     const entry={id:id(),kind,episodeId:eid,position,item,deletedAt:new Date().toISOString()};
+     this.data.trash.push(entry);
+     if(this.data.trash.length>150)this.data.trash=this.data.trash.slice(-150);
+     const next=this.data.episodes.find(e=>e.id===eid&&e.segments.length)||this.data.episodes.find(e=>e.segments.length);
+     this.data.activeEpisodeId=next?.id||null;
+     this.data.activeSegmentId=next?.segments[0]?.id||null;
+     this.data.treeExpandedEpisodeId=next?.id||null;
+     await this.save();return {state:this.snapshot(),entryId:entry.id};
+   }
+   async restoreItem(trashId){
+     const i=this.data.trash.findIndex(x=>x.id===trashId);if(i<0)throw Error('回收站中没有该条目');
+     const entry=this.data.trash[i];
+     if(entry.kind==='episode'){
+       if(this.data.episodes.some(e=>e.id===entry.item.id))throw Error('同ID剧集已存在');
+       this.data.episodes.splice(Math.min(entry.position,this.data.episodes.length),0,entry.item);
+     }else{
+       const ep=this.data.episodes.find(e=>e.id===entry.episodeId);
+       if(!ep)throw Error('所属剧集不存在，请先恢复剧集');
+       if(ep.segments.some(s=>s.id===entry.item.id))throw Error('同ID段落已存在');
+       ep.segments.splice(Math.min(entry.position,ep.segments.length),0,entry.item);
+       if(ep.segments[entry.position+1])ep.segments[entry.position+1].continuityBlocked=false;
+     }
+     this.data.trash.splice(i,1);await this.save();return this.snapshot();
+   }
+   async setStatus(eid,sid,status,accountId){if(!['pending','done','redo'].includes(status))throw Error('状态无效');const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.status=status;seg.accountId=status==='done'?accountId:null;seg.completedAt=status==='done'?new Date().toISOString():null;await this.save();}
   async setSelection(eid,sid,paths){const {seg}=this.findSegment(eid,sid);if(!Array.isArray(paths))throw Error('图片选择无效');const allowed=this.resolveSegment(eid,sid).filter(r=>r.file&&!r.missing).map(r=>r.file.path);seg.selectedPaths=unique(paths.filter(p=>typeof p==='string'&&allowed.includes(p))).slice(0,100);await this.save();}
   async chooseVersion(code,file){code=normCode(code);const versions=this.assetIndex.byCode.get(code)||[];
     if(this.data.episodes.some(e=>(e.locked||e.segments.some(s=>s.locked&&s.codes.includes(code)))&&e.segments.some(s=>s.codes.includes(code))))throw Error('有锁定的剧集或分段引用了这个编号；请先解锁');
