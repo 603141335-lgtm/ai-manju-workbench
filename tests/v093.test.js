@@ -49,13 +49,13 @@ test('升级持久化：已完成状态和剧集折叠设置不丢，原hidden/l
  assert.equal(restored.episodes[0].segments[0].hidden,true);
  assert.equal(restored.episodes[0].segments[0].text,old.episodes[0].segments[0].text);
 });
-test('UI：剧集树行与已完成小卡存在；旧锁定隐藏位于高级管理',()=>{
+test('UI：剧集方卡与段落方卡存在；旧锁定隐藏位于高级管理',()=>{
  const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');
  // Assert stable DOM contracts, not unobfuscated JavaScript identifiers.
  // The actual completed-card behavior is covered by the browser UI test.
  assert.match(html,/id="draftPreviewText"/);
  assert.match(html,/id="btnSyncDraft"/);
- assert.match(html,/id="episodeTreeList"/);
+ assert.match(html,/id="episodeCards"/);assert.match(html,/id="segmentCards"/);
  assert.match(html,/<details class="advancedLegacy">/);
  assert.match(html,/id="segmentStrip" hidden/);
 });
