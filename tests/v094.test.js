@@ -51,3 +51,9 @@ test('v0.9.4: video adapter never falsely confirms without all four parameters',
  const res=await ensure(wc);
  assert.equal(res.ready,false);assert(called>=1);
 });
+
+test('v0.9.4: deleted-item recovery does not shadow existing project JSON recovery',()=>{
+ const preload=fs.readFileSync(path.join(__dirname,'../src/preload.js'),'utf8');
+ assert.match(preload,/wsRestoreTrash:id=>ipcRenderer\.invoke\('ws:restoreItem',id\)/);
+ assert.match(preload,/wsRestore:\(\)=>ipcRenderer\.invoke\('ws:restore'\)/);
+});
