@@ -28,7 +28,19 @@ class DownloadManager{
   async save(){const snapshot=JSON.stringify({version:1,root:this.root,history:this.history.slice(0,300)},null,2);this.writeQueue=this.writeQueue.catch(()=>{}).then(async()=>{await fs.promises.mkdir(path.dirname(this.settingsFile),{recursive:true});const tmp=this.settingsFile+'.tmp';await fs.promises.writeFile(tmp,snapshot,'utf8');await fs.promises.rename(tmp,this.settingsFile)});return this.writeQueue}
   async chooseRoot(root){if(typeof root!=='string'||!path.isAbsolute(root))throw Error('无效的下载目录');await fs.promises.mkdir(root,{recursive:true});this.root=root;await this.save();}
   begin(original,context,url){const dir=downloadDirectory(this.root,context);fs.mkdirSync(dir,{recursive:true});const dest=nextAvailable(dir,context,original,p=>this.reserved.has(p));this.reserved.add(dest);
-    const record={id:randomUUID(),file:path.basename(dest),path:dest,account:context.account||'',episode:context.episode||'',segment:context.segment||'',episodeId:context.episodeId||'',segmentId:context.segmentId||'',source:siteHost(url),type:fileCategory(original),status:'progressing',createdAt:new Date().toISOString(),receivedBytes:0,totalBytes:0};this.history.unshift(record);this.history=this.history.slice(0,300);this.save().catch(e=>{this.lastError=e.message});return record;}
-  update(id,state,receivedBytes=0,totalBytes=0){const r=this.history.find(x=>x.id===id);if(!r)return null;if(typeof receivedBytes==='number')r.receivedBytes=Math.max(0,receivedBytes);if(typeof totalBytes==='number')r.totalBytes=Math.max(0,totalBytes);if(state)r.status=state;if(['completed','cancelled','interrupted'].includes(state))this.reserved.delete(r.path);this.save().catch(e=>{this.lastError=e.message});return r;}
+    const record={id:randomUUID(),file:path.basename(dest),path:dest,account:context.account||'',episode:context.episode||'',segment:context.segment||'',episodeId:context.episodeId||'',segmentId:context.segmentId||'',accountId:context.accountId||'',associationStatus:context.episodeId?'matched':'pending',tailStatus:'none',taskId:context.taskId||'',source:siteHost(url),type:fileCategory(original),status:'progressing',createdAt:new Date().toISOString(),receivedBytes:0,totalBytes:0};this.history.unshift(record);this.history=this.history.slice(0,300);this.save().catch(e=>{this.lastError=e.message});return record;}
+  associate(id,context){
+    const row=this.history.find(x=>x.id===id);if(!row)throw Error('下载记录不存在');
+    if(row.type!=='视频'||row.status!=='completed')throw Error('请先选择已下载完成的视频');
+    if(row.accountId&&context.accountId&&row.accountId!==context.accountId)throw Error('下载账号与当前登录账号不一致，不能跨账号强行关联');
+    row.episodeId=context.episodeId;row.segmentId=context.segmentId;row.episode=context.episode;row.segment=context.segment;
+    row.associationStatus='matched';this.save().catch(e=>{this.lastError=e.message});return row;
+   }
+   setTailStatus(id,status,message=''){
+    const row=this.history.find(x=>x.id===id);if(!row)return null;
+    row.tailStatus=status;row.tailMessage=String(message).slice(0,350);
+    this.save().catch(e=>{this.lastError=e.message});return row;
+   }
+   update(id,state,receivedBytes=0,totalBytes=0){const r=this.history.find(x=>x.id===id);if(!r)return null;if(typeof receivedBytes==='number')r.receivedBytes=Math.max(0,receivedBytes);if(typeof totalBytes==='number')r.totalBytes=Math.max(0,totalBytes);if(state)r.status=state;if(['completed','cancelled','interrupted'].includes(state))this.reserved.delete(r.path);this.save().catch(e=>{this.lastError=e.message});return r;}
 }
 module.exports={DownloadManager,downloadDirectory,nextAvailable,fileCategory,fileExtension,siteHost,inspectManifest};
