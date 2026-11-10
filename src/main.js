@@ -68,7 +68,7 @@ function setupSession(sess,accountId){
         episodeId:safeMatch?ep.id:'',segmentId:safeMatch?seg.id:'',accountId,account:acc?.name||'未知账号'};
       const record=downloads.begin(item.getFilename(),context,item.getURL());
       item.setSavePath(record.path);
-      if(context.segmentId)downloadAssociations.confirmed({...context});
+      if(context.segmentId&&record.type==='视频')downloadAssociations.confirmed({...context});
       tell('app:toast',`开始下载：${record.file}`);
       tell('download:changed',downloads.snapshot());
       let lastProgress=0;
