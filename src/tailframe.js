@@ -12,7 +12,12 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function findPredecessor(data,episodeId,segmentId){
  const ep=data.episodes.find(e=>e.id===episodeId);if(!ep)return null;
  const index=ep.segments.findIndex(s=>s.id===segmentId);
- return index>0?{ep,seg:ep.segments[index-1]}:null;
+ const current=ep.segments[index];if(!current)return null;
+  if(Object.prototype.hasOwnProperty.call(current,'previousSegmentId')){
+   const target=ep.segments.find(s=>s.id===current.previousSegmentId);
+   return target?{ep,seg:target}:null;
+  }
+  return index>0?{ep,seg:ep.segments[index-1]}:null;
 }
 function safeSegment(s){return /^[\w-]{1,160}$/.test(String(s))?String(s):createHash('sha256').update(String(s)).digest('hex').slice(0,32)}
 function validVideo(p){try{const st=fs.statSync(p);return path.isAbsolute(p)&&VIDEO_EXT.has(path.extname(p).toLowerCase())&&st.isFile()&&st.size>200;}catch{return false}}
@@ -63,37 +68,86 @@ async function extractLastValidFrame(video,dest,tools=binaries()){
  }catch(e){await fsp.rm(dest,{force:true}).catch(()=>{});throw e;}
 }
 class TailFrameStore{
- constructor(userData,{tools=binaries()}={}){this.folder=path.join(userData,'tailframes');this.file=path.join(this.folder,'bindings.json');this.rows={};this.tools=tools;this.busy=new Set();this.saveQueue=Promise.resolve();}
- async load(){await fsp.mkdir(this.folder,{recursive:true});if(fs.existsSync(this.file)){try{const r=JSON.parse(await fsp.readFile(this.file,'utf8'));if(r?.version===1&&r.rows&&typeof r.rows==='object')this.rows=r.rows;}catch{await fsp.copyFile(this.file,this.file+'.invalid-'+Date.now());}}return this;}
- async save(){const bytes=JSON.stringify({version:1,rows:this.rows},null,2);this.saveQueue=this.saveQueue.catch(()=>{}).then(async()=>{const tmp=this.file+'.tmp';await fsp.writeFile(tmp,bytes);await fsp.rename(tmp,this.file);});return this.saveQueue;}
- row(epId,segId){return this.rows[`${safeSegment(epId)}:${safeSegment(segId)}`]||null;}
+ constructor(userData,{tools=binaries()}={}){
+  this.folder=path.join(userData,'tailframes');this.file=path.join(this.folder,'bindings.json');
+  this.rows={};this.versions={};this.tools=tools;this.busy=new Set();this.saveQueue=Promise.resolve();
+ }
+ async load(){
+  await fsp.mkdir(this.folder,{recursive:true});
+  if(fs.existsSync(this.file)){
+   try{
+    const r=JSON.parse(await fsp.readFile(this.file,'utf8'));
+    if([1,2].includes(r?.version)&&r.rows&&typeof r.rows==='object'){
+     this.rows=r.rows;this.versions=r.versions&&typeof r.versions==='object'?r.versions:{};
+     for(const [k,v] of Object.entries(this.rows))if(!this.versions[k]?.length)this.versions[k]=[v];
+    }
+   }catch{await fsp.copyFile(this.file,this.file+'.invalid-'+Date.now());}
+  }
+  return this;
+ }
+ async save(){
+  const bytes=JSON.stringify({version:2,rows:this.rows,versions:this.versions},null,2);
+  this.saveQueue=this.saveQueue.catch(()=>{}).then(async()=>{
+   const tmp=this.file+'.tmp';await fsp.writeFile(tmp,bytes);await fsp.rename(tmp,this.file);
+  });
+  return this.saveQueue;
+ }
+ key(eid,sid){return safeSegment(eid)+':'+safeSegment(sid)}
+ row(epId,segId){return this.rows[this.key(epId,segId)]||null}
  status(data,episodeId,segmentId){
-  const prev=findPredecessor(data,episodeId,segmentId);if(!prev)return {state:'first',message:'本集第一段，无上段尾帧'};
-  const row=this.row(prev.ep.id,prev.seg.id);if(!row)return {state:'none',sourceSegment:prev.seg.n,message:`第${prev.seg.n}段尚未指定最终视频，可手动绑定`};
-  if(this.busy.has(`${safeSegment(prev.ep.id)}:${safeSegment(prev.seg.id)}`))return {state:'extracting',message:'上一段尾帧正在提取'};
+  const prev=findPredecessor(data,episodeId,segmentId);
+  if(!prev)return {state:'first',message:'本集第一段，没有前段尾帧'};
+  const key=this.key(prev.ep.id,prev.seg.id);
+  if(this.busy.has(key))return {state:'extracting',sourceSegment:prev.seg.n,message:'上一段尾帧正在提取'};
+  const row=this.row(prev.ep.id,prev.seg.id);
+  if(!row)return {state:'none',sourceSegment:prev.seg.n,message:'上一段暂未下载可关联的视频；本段仍可使用已有参考图'};
   if(row.error)return {state:'error',message:row.error,videoPath:row.videoPath};
-  if(!fs.existsSync(row.framePath))return {state:'missing',message:'提取的尾帧图片已移动或丢失',videoPath:row.videoPath};
-  if(!fs.existsSync(row.videoPath))return {state:'stale',message:'上一段原视频文件已移动',framePath:row.framePath};
-  const st=fs.statSync(row.videoPath);if(st.mtimeMs!==row.sourceMtime||st.size!==row.sourceSize)return {state:'stale',message:'上一段成片已被修改，需重新提取',videoPath:row.videoPath};
-  return {state:'ready',code:'尾帧',file:{path:row.framePath,name:path.basename(row.framePath)},sourceSegment:prev.seg.n,sourceSegmentId:prev.seg.id,videoPath:row.videoPath,seekSecond:row.seekSecond,message:`第${prev.seg.n}段尾帧已绑定为本段图1`};
+  if(!fs.existsSync(row.framePath))return {state:'missing',message:'已绑定的尾帧图片丢失',videoPath:row.videoPath};
+  const sourceMoved=!fs.existsSync(row.videoPath);
+  return {state:'ready',code:'尾帧',file:{path:row.framePath,name:path.basename(row.framePath)},
+   sourceSegment:prev.seg.n,sourceSegmentId:prev.seg.id,videoPath:row.videoPath,
+   seekSecond:row.seekSecond,locked:!!row.locked,sourceMoved,
+   message:'第'+prev.seg.n+'段尾帧已绑定为本段图1'+(sourceMoved?'（原视频已移动，尾帧仍可使用）':'')};
  }
  async setFinal(data,episodeId,segmentId,videoPath,{auto=false}={}){
-  const ep=data.episodes.find(e=>e.id===episodeId);const seg=ep?.segments.find(s=>s.id===segmentId);
-  if(!seg)throw Error('无法找到视频对应的剧集和段落');
-  if(!validVideo(videoPath))throw Error('请选择存在的 MP4/MOV/WEBM/MKV 成品视频');
-  const key=`${safeSegment(episodeId)}:${safeSegment(segmentId)}`;
-  if(auto&&this.rows[key])return {state:'kept',message:'已经有选定的最终版，下载其他视频不会自动覆盖它'};
-  if(this.busy.has(key))return {state:'busy',message:'本段尾帧正在处理'};
+  const ep=data.episodes.find(e=>e.id===episodeId),seg=ep?.segments.find(s=>s.id===segmentId);
+  if(!seg)throw Error('无法找到视频对应的集或段');
+  if(!validVideo(videoPath))throw Error('视频不存在、损坏或格式不支持');
+  const key=this.key(episodeId,segmentId);
+  if(this.busy.has(key))return {state:'busy',message:'本段已在提取另一条视频，等待队列重试'};
   this.busy.add(key);
-  const st=await fsp.stat(videoPath);const target=path.join(this.folder,safeSegment(episodeId),safeSegment(segmentId)+'-'+createHash('sha256').update(videoPath+'|'+st.mtimeMs+'|'+st.size).digest('hex').slice(0,14)+'.png');
   try{
-   const out=await extractLastValidFrame(videoPath,target,this.tools);
-   this.rows[key]={episodeId,segmentId,videoPath,framePath:target,sourceMtime:st.mtimeMs,sourceSize:st.size,seekSecond:out.second,createdAt:new Date().toISOString(),error:null};
-   await this.save();return {state:'ready',message:`第${seg.n}段尾帧已提取，将用于下一段图1`,framePath:target,second:out.second};
-  }catch(e){
-   // Preserve previously working final video/frame if a replacement extraction fails.
-   return {state:'error',message:'提取尾帧失败：'+e.message};
-  }finally{this.busy.delete(key);}
+   const st=await fsp.stat(videoPath);
+   const hash=createHash('sha256').update(videoPath+'|'+st.mtimeMs+'|'+st.size).digest('hex').slice(0,14);
+   const target=path.join(this.folder,safeSegment(episodeId),safeSegment(segmentId)+'-'+hash+'.png');
+   const existing=(this.versions[key]||[]).find(r=>r.videoPath===videoPath&&r.sourceMtime===st.mtimeMs&&r.sourceSize===st.size&&fs.existsSync(r.framePath));
+   const out=existing?{second:existing.seekSecond}:await extractLastValidFrame(videoPath,target,this.tools);
+   const candidate=existing||{episodeId,segmentId,videoPath,framePath:target,
+    sourceMtime:st.mtimeMs,sourceSize:st.size,seekSecond:out.second,createdAt:new Date().toISOString(),error:null,locked:!auto};
+   this.versions[key]??=[];
+   if(!existing)this.versions[key].push(candidate);
+   const selected=this.rows[key],retained=!!(selected?.locked&&auto);
+   if(!retained)this.rows[key]={...candidate,locked:!auto};
+   try{
+    const outDir=path.join(path.dirname(videoPath),'尾帧');await fsp.mkdir(outDir,{recursive:true});
+    const friendly=path.join(outDir,path.basename(videoPath,path.extname(videoPath))+'_尾帧.png');
+    if(!fs.existsSync(friendly))await fsp.copyFile(candidate.framePath,friendly);
+   }catch{} // Always retain the canonical frame under userData.
+   await this.save();
+   return {state:retained?'candidate':'ready',message:retained?'新成片尾帧已保存，原最终版仍锁定':'第'+seg.n+'段成片尾帧已自动提取，将用于下一段图1',
+    framePath:candidate.framePath,second:out.second,locked:retained};
+  }catch(e){return {state:'error',message:'提取尾帧失败：'+e.message};}
+  finally{this.busy.delete(key)}
+ }
+ async setLocked(eid,sid,locked){
+  const r=this.row(eid,sid);if(!r)throw Error('本段还没有最终视频');
+  r.locked=!!locked;await this.save();return {locked:r.locked};
+ }
+ listVersions(eid,sid){const k=this.key(eid,sid);return {current:this.rows[k]||null,versions:this.versions[k]||[]}}
+ async selectVersion(eid,sid,framePath){
+  const k=this.key(eid,sid),r=(this.versions[k]||[]).find(v=>v.framePath===framePath);
+  if(!r||!fs.existsSync(r.framePath))throw Error('指定的尾帧版本不存在');
+  this.rows[k]={...r,locked:true};await this.save();return {state:'ready',locked:true,framePath:r.framePath};
  }
 }
 module.exports={findPredecessor,extractLastValidFrame,TailFrameStore,binaries,validVideo};
