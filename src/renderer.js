@@ -36,7 +36,7 @@ function refreshHeader(){if(!cfg)return;const reached=cfg.accounts.filter(a=>a.d
   $('addressText').textContent=`doubao.com / ${getAccount()?.name||'当前账号'}`;
   $('bottomSummary').textContent=`${getAccount()?.name||'—'} · 每号目标 ${cfg.target} 条 · ${ws?.workspace?.episodes?.filter(e=>!e.deletedAt)?.length||0} 集`;
 }
-async function switchAccount(id){await flushPrompt();const x=await safe(()=>B.selectAccount(id));if(!x)return;cfg.activeAccountId=id;const group=getGroup();if(group)expandGroups.add(group.id);renderGroups();refreshHeader();$('webStatus').textContent='正在进入独立的豆包登录会话…';await refreshExtension();bounds();}
+async function switchAccount(id){await flushPrompt();const x=await safe(()=>B.selectAccount(id));if(!x)return;cfg.activeAccountId=id;const group=getGroup();if(group)expandGroups.add(group.id);renderGroups();refreshHeader();$('webStatus').textContent='正在进入独立的豆包登录会话…';$('videoModeStatus').textContent='正在核验视频模式';await refreshExtension();bounds();}
 async function nextAccount(){const all=cfg.groups.flatMap(g=>cfg.accounts.filter(a=>a.groupId===g.id));if(!all.length)return;const cur=all.findIndex(a=>a.id===cfg.activeAccountId), rotated=[...all.slice(cur+1),...all.slice(0,cur+1)];await switchAccount(rotated.find(a=>a.done<cfg.target)?.id||all[(cur+1)%all.length].id)}
 function bounds(){requestAnimationFrame(()=>{const rect=$('webHost').getBoundingClientRect();if(rect.width>=100&&rect.height>=100)B.bounds({x:rect.left,y:rect.top,width:rect.width,height:rect.height})})}
 function applyLayout(){const v=ws?.workspace?.layout;if(!v)return;const root=document.documentElement;root.style.setProperty('--rightw',v.rightWidth+'px');root.style.setProperty('--bottomh',v.bottomHeight+'px');$('timeline').style.display=v.bottomCollapsed?'none':'';$('bottomResizer').style.display=v.bottomCollapsed?'none':'';$('btnToggleBottom').textContent=v.bottomCollapsed?'展开底栏':'收起底栏';bounds()}
@@ -100,9 +100,18 @@ function renderEpisodeTree(){
 function toggleTree(open){treeOpen=!!open;$('episodeTreePanel').hidden=false;$('timeline').classList.remove('tree-open');$('btnEpisodeTree').setAttribute('aria-expanded','true');renderEpisodeTree();bounds()}
 async function mutateWorkspace(action){await flushPrompt();const result=await action();if(!result)return;ws=result.state||result;renderWorkspaceShell();await renderImages();bounds()}
 async function refreshDownloads(){downloadsState=await B.downloadState();renderDownloads()}
-function renderDownloads(){if(!downloadsState)return;$('downloadPath').textContent=downloadsState.root||'未设置下载目录';$('downloadPath').title=downloadsState.root||'';
-  const records=downloadsState.history||[];$('downloadStatus').textContent=records.filter(x=>x.status==='completed').length+' 项已完成';
-  $('downloadHistory').innerHTML=records.slice(0,7).map(x=>`<button class="downloadItem" data-dl-id="${enc(x.id)}" title="${enc(x.path)}"><span class="fileInfo">${enc(x.file)}</span><span class="downloadState ${enc(x.status)}">${({completed:'完成',progressing:'下载中',cancelled:'取消',interrupted:'中断'}[x.status]||x.status)}</span></button>`).join('')||'暂无下载记录；请在豆包网页使用正常下载入口';
+function renderDownloads(){
+ if(!downloadsState)return;
+ $('downloadPath').textContent=downloadsState.root||'未设置下载目录';$('downloadPath').title=downloadsState.root||'';
+ const records=downloadsState.history||[];
+ $('downloadStatus').textContent=records.filter(x=>x.status==='completed').length+' 项下载完成';
+ $('downloadHistory').innerHTML=records.slice(0,10).map(x=>{
+  const status=({completed:'完成',progressing:'下载中',cancelled:'取消',interrupted:'中断'}[x.status]||x.status);
+  const pending=x.type==='视频'&&x.status==='completed'&&!x.segmentId;
+  const tail=x.tailStatus==='ready'?' ✓尾帧':x.tailStatus==='candidate'?' ✓候选':x.tailStatus==='extracting'?' 提取中':x.tailStatus==='error'?' 截帧失败':'';
+  return '<div class="downloadItem"><button class="downloadOpen" data-dl-id="'+enc(x.id)+'" title="'+enc(x.path)+'"><span class="fileInfo">'+enc(x.file)+'</span><span class="downloadState '+enc(x.status)+'">'+enc(status)+'</span></button>'+
+    (pending?'<button class="downloadAssociate" data-assign-id="'+enc(x.id)+'" title="将视频归属当前账号所选段落并截取尾帧">关联当前段</button>':'<span class="downloadTail">'+enc(tail)+'</span>')+'</div>';
+ }).join('')||'暂无下载记录；在豆包网页点击正常下载按钮即可';
 }
 async function refreshExtension(){extensionState=await B.extensionStatus();renderExtension()}
 function renderExtension(){const c=extensionState?.candidate,l=extensionState?.loaded;const lines=[];
@@ -145,12 +154,12 @@ async function syncOnlyText(){
 
 async function renderTailFrame(){
  const ep=getEp(),seg=getSeg();
- if(!ep||!seg){$('tailframeContent').textContent='未选中剧集或段落';$('btnTailChoose').disabled=true;return;}
+ if(!ep||!seg){$('tailframeContent').textContent='未选中剧集或段落';$('btnTailChoose').disabled=true;$('btnTailLock').hidden=true;lastTailStatus=null;return;}
  try{
   const r=await B.tailStatus(ep.id,seg.id);
   // Async selection may have changed while waiting.
   if(getEp()?.id!==ep.id||getSeg()?.id!==seg.id)return;
-  $('btnTailChoose').disabled=r.state==='first';
+  lastTailStatus=r;$('btnTailChoose').disabled=r.state==='first';$('btnTailLock').hidden=r.state!=='ready';$('btnTailLock').textContent=r.locked?'🔒 解锁最终版':'锁定最终版';
   const el=$('tailframeContent');el.replaceChildren();
   if(r.state==='ready'){
    const image=document.createElement('img');image.src=r.file.url;image.alt='上一段最终视频尾帧';
@@ -279,6 +288,7 @@ function initWorkspace(){
   $('btnCopyText').onclick=()=>safe(async()=>{await flushPrompt();const text=getSeg()?.text||'';if(!text)return toast('当前段还没有提示词');await B.copyText(text);toast(`已复制本段完整提示词（${text.length} 字）`)});
   $('btnPull').onclick=()=>safe(autoPull);$('btnPullImages').onclick=()=>safe(async()=>{await flushPrompt();await B.wsRescan();await reloadWorkspace();toast('已重扫图片目录并更新本段参考图')});
   $('btnTailChoose').onclick=()=>safe(async()=>{const ep=getEp(),seg=getSeg();if(!ep||!seg)return;await flushPrompt();const result=await B.tailChoose(ep.id,seg.id);if(result.state!=='cancelled'){toast(result.message||'已处理尾帧');await renderTailFrame();}});
+   $('btnTailLock').onclick=()=>safe(async()=>{const ep=getEp(),r=lastTailStatus;if(!ep||r?.state!=='ready')return;await B.tailLock(ep.id,r.sourceSegmentId,!r.locked);await renderTailFrame();toast(r.locked?'已解锁最终版':'已锁定上一段最终版');});
   $('btnAddImages').onclick=()=>safe(async()=>{await flushPrompt();const ep=getEp(),seg=getSeg();if(!seg)return;const r=await B.wsManualImages(ep.id,seg.id);if(!r.cancelled){await reloadWorkspace();toast('已加入补充图片路径')}});
   $('btnEditCodes').onclick=()=>safe(async()=>{await flushPrompt();const e=getEp(),s=getSeg();if(!s)return;const codes=await ask('校正本段需要参考图（用顿号分隔）',s.codes.join('、'));if(codes===null)return;ws=await B.wsEditCodes(e.id,s.id,codes);renderWorkspaceShell();await renderImages();toast('参考图编号已手动保存，完整提示词原文未修改')});
   $('imageGrid').onclick=e=>safe(async()=>{if(e.target.closest('select'))return;const card=e.target.closest('.imageCard');if(!card||!card.dataset.path)return;const p=card.dataset.path,i=Number(card.dataset.index);
@@ -310,7 +320,15 @@ function initWorkspace(){
   $('btnProjectName').onclick=()=>safe(async()=>{const name=await ask('修改当前项目名称',ws.workspace.title);if(!name)return;ws=await B.wsRename(name);renderWorkspaceShell();toast('项目名称已保存')});
   $('btnShowPaths').onclick=()=>{$('assetStats').textContent=JSON.stringify(ws.assets,null,2)};
   $('btnDownloadRefresh').onclick=()=>safe(refreshDownloads);
-  $('downloadHistory').onclick=e=>safe(async()=>{const el=e.target.closest('[data-dl-id]');if(el)await B.downloadReveal(el.dataset.dlId)});
+  $('downloadHistory').onclick=e=>safe(async()=>{
+     const assign=e.target.closest('[data-assign-id]');
+     if(assign){
+      const ep=getEp(),seg=getSeg();if(!ep||!seg)return toast('请先选中该视频真正所属的集和段');
+      if(!await confirmAction('关联下载视频？','确认这条视频属于「'+ep.title+' · 第'+seg.n+'段」？关联后自动提取尾帧给下一段。'))return;
+      downloadsState=await B.downloadAssociate(assign.dataset.assignId,ep.id,seg.id);renderDownloads();toast('视频已关联，开始自动截取尾帧');return;
+     }
+     const el=e.target.closest('[data-dl-id]');if(el)await B.downloadReveal(el.dataset.dlId);
+   });
   $('btnDownloadFolder').onclick=()=>safe(()=>B.downloadOpen());
   $('btnDownloadChoose').onclick=()=>safe(async()=>{const r=await B.downloadChoose();if(!r.cancelled){downloadsState=r;renderDownloads();toast('新下载位置已保存，不会移动或删除原有文件')}});
   $('btnExtInspect').onclick=()=>safe(async()=>{const r=await B.extensionInspect();if(r.cancelled)return;await refreshExtension();toast('扩展文件权限清单已读取；请审查后再决定是否测试载入')});
@@ -362,7 +380,7 @@ function initOneClickImport(){
  $('btnImportCancel').onclick=()=>B.importCancel();
  $('btnImportConfirm').onclick=async()=>{await B.importConfirm(true);$('btnImportConfirm').hidden=true};
  B.onImportStatus(showImportStatus);
- B.onTailUpdated(()=>{renderTailFrame().catch(error)});
+ B.onTailUpdated(()=>{renderTailFrame().catch(error);refreshDraftPreview().catch(error);refreshDownloads().catch(error)});
 }
 
 // Doubao browser attachment automation. Do not mark as successful without a
@@ -409,10 +427,18 @@ function initMention(){
 }
 
 function initGlobal(){const help=$('helpDialog');$('btnHelp').onclick=()=>modal(help);$('closeHelp').onclick=$('closeHelpBottom').onclick=()=>dialogClose(help);
-  for(const id of ['helpDialog','pasteDialog','toolsDialog'])$(id).addEventListener('cancel',e=>{e.preventDefault();dialogClose($(id))});
+  for(const id of ['helpDialog','pasteDialog','toolsDialog','trashDialog'])$(id).addEventListener('cancel',e=>{e.preventDefault();dialogClose($(id))});
   setupResize($('leftResizer'),'left');setupResize($('rightResizer'),'right');setupResize($('bottomResizer'),'bottom');
   new ResizeObserver(bounds).observe($('webHost'));window.addEventListener('resize',bounds);
-  B.onStatus(x=>{if(x.id===cfg?.activeAccountId)$('webStatus').textContent=x.status});B.onToast(toast);B.onLayout(bounds);B.onDownloadChange(x=>{downloadsState=x;renderDownloads()});
+  B.onStatus(x=>{if(x.id===cfg?.activeAccountId)$('webStatus').textContent=x.status});
+   B.onVideoStatus(x=>{
+    if(x.accountId!==cfg?.activeAccountId)return;
+    const v=$('videoModeStatus');v.textContent=x.stage==='ready'?'✓ 视频已就绪':x.message||'检测中';
+    v.className='tiny '+(x.stage==='ready'?'ready':(['error','manual','login','attention'].includes(x.stage)?'error':''));
+    v.title=x.message||'';
+   });
+   $('btnVideoCheck').onclick=()=>safe(async()=>{toast('正在核对豆包视频生成模式…');const x=await B.videoEnsure();if(x.verified)toast('✓ Seedance 2.0 Fast · 16:9 · 15秒，当前豆包网页已确认')});
+   B.onToast(toast);B.onLayout(bounds);B.onDownloadChange(x=>{downloadsState=x;renderDownloads()});
   window.addEventListener('beforeunload',()=>{if(promptTimer){const e=getEp(),s=getSeg();if(s){s.text=$('promptText').value;B.wsEditText(e.id,s.id,s.text)}}});
   document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='PageDown'){e.preventDefault();safe(nextAccount)}if(e.altKey&&e.key==='ArrowRight'){e.preventDefault();safe(()=>moveSegment(1))}if(e.altKey&&e.key==='ArrowLeft'){e.preventDefault();safe(()=>moveSegment(-1))}if(e.key==='Escape'&&focus){focus=false;$('layout').classList.remove('focus');$('btnMaxBrowser').textContent='专注';bounds()}});
 }
