@@ -70,8 +70,8 @@ class TailFrameStore{
  row(epId,segId){return this.rows[`${safeSegment(epId)}:${safeSegment(segId)}`]||null;}
  status(data,episodeId,segmentId){
   const prev=findPredecessor(data,episodeId,segmentId);if(!prev)return {state:'first',message:'本集第一段，无上段尾帧'};
-  const row=this.row(prev.ep.id,prev.seg.id);if(!row)return {state:'none',sourceSegment:prev.seg.n,message:`第${prev.seg.n}段尚未指定最终视频，可手动绑定`};
   if(this.busy.has(`${safeSegment(prev.ep.id)}:${safeSegment(prev.seg.id)}`))return {state:'extracting',message:'上一段尾帧正在提取'};
+  const row=this.row(prev.ep.id,prev.seg.id);if(!row)return {state:'none',sourceSegment:prev.seg.n,message:`第${prev.seg.n}段尚未指定最终视频，可手动绑定`};
   if(row.error)return {state:'error',message:row.error,videoPath:row.videoPath};
   if(!fs.existsSync(row.framePath))return {state:'missing',message:'提取的尾帧图片已移动或丢失',videoPath:row.videoPath};
   if(!fs.existsSync(row.videoPath))return {state:'stale',message:'上一段原视频文件已移动',framePath:row.framePath};
