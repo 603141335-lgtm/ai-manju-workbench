@@ -220,7 +220,7 @@ function initWorkspace(){
    if(treeAction==='expand'){
      await flushPrompt();await B.wsTreeEpisode(eid);await B.wsLayout({foldActiveEpisode:false});ws=await B.wsState();renderWorkspaceShell();await chooseEpisode(eid);
     }else if(treeAction==='restore'){
-     ws=await B.wsRestore(btn.dataset.trashId);renderWorkspaceShell();await renderImages();toast('已从回收站恢复');
+     ws=await B.wsRestoreTrash(btn.dataset.trashId);renderWorkspaceShell();await renderImages();toast('已从回收站恢复');
     }else if(treeAction==='delete-episode'||treeAction==='delete-segment'){
      const episode=ws.workspace.episodes.find(x=>x.id===eid),segment=episode?.segments.find(x=>x.id===sid),isEpisode=treeAction==='delete-episode';
      if(!episode)return;
