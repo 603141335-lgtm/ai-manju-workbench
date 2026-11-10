@@ -62,21 +62,12 @@ jobs:
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt
-      - name: Upload v0.9.4 installer to workflow artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Doubao-Creative-Hub-Setup-v0.9.4-x64
-          path: |
-            release/Doubao-Creative-Hub-Setup-v0.9.4-x64.exe
-            release/SHA256SUMS.txt
-          if-no-files-found: error
-          retention-days: 14
       - name: Publish private GitHub Release (avoids Actions artifact quota)
-        if: github.event_name == 'push'
+        if: github.event_name == 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: doubao-browser-v0.9.4
-          target_commitish: ${{ github.sha }}
+          target_commitish: feature/doubao-creative-hub-v0.9.4
           name: 豆包创作舱 v0.9.4（视频模式·尾帧自动化·方形剧集目录·可恢复删除）
           prerelease: true
           body: |
