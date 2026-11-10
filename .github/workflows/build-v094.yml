@@ -1,0 +1,74 @@
+name: Build Doubao Creative Hub v0.9.4 (Windows)
+on:
+  push:
+    branches:
+      - feature/v0.9.4-video-tailframe-ui
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Validate original + v0.9.4 code and regression tests
+        run: npm run check
+      - name: Harden checkout only (do not commit obfuscated source)
+        run: node scripts/harden.js
+      - name: Validate hardened distribution
+        run: npm run check
+      - name: Download LGPL FFmpeg binaries
+        run: |
+          New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
+          $url='https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip'
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP/ffmpeg-win64-lgpl.zip" -MaximumRedirection 10
+          Expand-Archive -Path "$env:RUNNER_TEMP/ffmpeg-win64-lgpl.zip" -DestinationPath "$env:RUNNER_TEMP/ffmpeg-bundle" -Force
+          foreach ($name in @('ffmpeg.exe','ffprobe.exe')) {
+            $match=Get-ChildItem "$env:RUNNER_TEMP/ffmpeg-bundle" -Filter $name -File -Recurse | Select-Object -First 1
+            if(-not $match){throw "Missing $name from LGPL FFmpeg build"}
+            Copy-Item $match.FullName "vendor/bin/$name" -Force
+          }
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv2.1' -OutFile vendor/bin/COPYING.LGPLv2.1
+          Copy-Item docs/FFMPEG_NOTICE.txt vendor/bin/FFMPEG_NOTICE.txt
+          & "$env:GITHUB_WORKSPACE/vendor/bin/ffmpeg.exe" -version | Select-Object -First 1
+          Add-Content $env:GITHUB_PATH "$env:GITHUB_WORKSPACE/vendor/bin"
+      - name: Verify tailframe extraction with real FFmpeg
+        run: node --test tests/v090.test.js
+      - name: Prepare offline update metadata
+        run: node scripts/prepare-feed.js
+      - name: Build Windows installer
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
+      - name: Verify installer and checksum
+        run: |
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Setup-v0.9.4-x64.exe' -File)
+          if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS v0.9.4 installer not generated'}
+          $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
+          "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS-v094.txt
+          Get-Content release/SHA256SUMS-v094.txt
+      - name: Publish private beta release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: doubao-browser-v0.9.4-beta
+          target_commitish: ${{ github.sha }}
+          name: 豆包创作舱 v0.9.4 Beta（原版升级·自动尾帧·方形剧集目录）
+          prerelease: true
+          body: |
+            原v0.9.3增量升级。保持安装身份及账号数据，新增视频模式实际DOM核验、下载后自动截尾帧、剧集段落回收站和上下两层方形卡片。已通过自动化源码与模拟用例；豆包真实已登录网站DOM仍需Windows实机核验。切勿在未备份项目的情况下清理用户数据。
+          files: |
+            release/Doubao-Creative-Hub-Setup-v0.9.4-x64.exe
+            release/SHA256SUMS-v094.txt
+            release/latest.yml
+            release/*.blockmap
+          fail_on_unmatched_files: false
