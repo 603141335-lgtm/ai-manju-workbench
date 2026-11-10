@@ -28,7 +28,7 @@ function scrub(input){
       const text=String(s.text??s.prompt??'');if(text.length>300000)continue;
       episode.segments.push({id:String(s.id||id()),n:Number.isFinite(Number(s.n))?Number(s.n):episode.segments.length+1,title:String(s.title||s.name||'未命名段落').slice(0,350),text,codes:unique((Array.isArray(s.codes)?s.codes:detectSegmentCodes(text).codes).map(c=>normCode(String(c))).filter(Boolean)).slice(0,100),method:String(s.method||'栏目识别'),manual:!!s.manual,hidden:!!s.hidden,locked:!!s.locked,status:['pending','done','redo'].includes(s.status)?s.status:'pending',completedAt:typeof s.completedAt==='string'?s.completedAt:null,accountId:typeof s.accountId==='string'?s.accountId:null,selectedPaths:Array.isArray(s.selectedPaths)?unique(s.selectedPaths.filter(x=>typeof x==='string')).slice(0,100):[],manualPaths:Array.isArray(s.manualPaths)?unique(s.manualPaths.filter(x=>typeof x==='string'&&isImage(x))).slice(0,150):[],continuityBlocked:!!s.continuityBlocked});
     }
-    if(episode.segments.length){budget-=episode.segments.length;o.episodes.push(episode);}
+    budget-=episode.segments.length;o.episodes.push(episode);
   }
   o.activeEpisodeId=o.episodes.find(e=>e.id===input.activeEpisodeId)?.id||o.episodes[0]?.id||null;
   const e=o.episodes.find(e=>e.id===o.activeEpisodeId);o.activeSegmentId=e?.segments.find(s=>s.id===input.activeSegmentId)?.id||e?.segments[0]?.id||null;
