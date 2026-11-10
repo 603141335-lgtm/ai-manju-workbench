@@ -30,7 +30,7 @@
     <section class="workspaceColumn" id="workspaceColumn">
       <div class="topWorkspace" id="topWorkspace">
         <section class="browserPanel" id="browserPanel">
-          <div class="browserhead"><div class="navBtns"><button class="iconBtn" data-nav="back" title="后退">←</button><button class="iconBtn" data-nav="forward" title="前进">→</button><button class="iconBtn" data-nav="reload" title="刷新豆包">↻</button><button class="iconBtn" data-nav="home" title="首页">⌂</button></div><div class="address"><span class="secure">●</span><span id="addressText">doubao.com</span></div><button class="iconBtn" data-nav="zoomOut">−</button><span class="zoomLabel">网页</span><button class="iconBtn" data-nav="zoomIn">＋</button><button class="ghost compact" id="btnMaxBrowser">专注</button></div>
+          <div class="browserhead"><div class="navBtns"><button class="iconBtn" data-nav="back" title="后退">←</button><button class="iconBtn" data-nav="forward" title="前进">→</button><button class="iconBtn" data-nav="reload" title="刷新豆包">↻</button><button class="iconBtn" data-nav="home" title="首页">⌂</button></div><div class="address"><span class="secure">●</span><span id="addressText">doubao.com</span></div><button class="iconBtn" data-nav="zoomOut">−</button><span class="zoomLabel">网页</span><button class="iconBtn" data-nav="zoomIn">＋</button><button class="ghost compact" id="btnVideoCheck" title="核验豆包视频生成模式与Seedance参数">🎬 视频模式</button><span class="tiny" id="videoModeStatus" title="豆包视频模式自动验证状态">等待检测</span><button class="ghost compact" id="btnMaxBrowser">专注</button></div>
           <div class="webHost" id="webHost"><div class="underlay">正在加载真实豆包网页，请在网页里登录后开始制作。</div></div>
           <div class="browserfoot"><span id="webStatus">正在初始化浏览器…</span><button id="btnEdge" class="linkBtn" title="兼容备用：打开对应 Edge 配置文件">用 Edge 打开</button></div>
         </section>
@@ -58,7 +58,7 @@
             <div class="mentionDetails" id="mentionDetails" hidden></div>
           </section>
           <section class="tailframePanel" id="tailframePanel">
-            <div class="tailframeTop"><strong>🎞 跨段连续性｜上一段尾帧</strong><button class="smallBtn" id="btnTailChoose">选择上一段成片</button></div>
+            <div class="tailframeTop"><strong>🎞 跨段连续性｜上一段尾帧</strong><div class="tailActions"><button class="smallBtn" id="btnTailLock" hidden>锁定最终版</button><button class="smallBtn" id="btnTailChoose">手动选择成片</button></div></div>
             <div class="tailframeContent" id="tailframeContent">正在检查前一段的成片…</div>
           </section>
           <section class="voicePanel" id="voicePanel" aria-label="人物图片与音色绑定">
@@ -92,9 +92,14 @@
       <div class="resizer horizontal" id="bottomResizer" title="调整下方剧集导航高度"></div>
       <section class="timeline" id="timeline">
         <div class="timelineTop"><div class="projectName">▣ <span id="projectName">我的AI漫剧项目</span></div><span class="timelineInfo" id="timelineInfo">请先导入剧集</span>
-          <div class="projectTools"><button id="btnImportFiles" class="smallBtn actionPriority">＋ 批量导入文档</button><button id="btnAutoSplit" class="smallBtn actionPriority">⚡ 自动分段</button><button id="btnPaste" class="smallBtn">粘贴整集</button><button id="btnImportOld" class="smallBtn">迁入旧项目</button><button id="btnChooseFolder" class="smallBtn actionPriority">▧ 参考图文件夹</button><button id="btnMoreTools" class="smallBtn">更多 ▾</button></div>
+          <div class="projectTools"><button id="btnImportFiles" class="smallBtn actionPriority">＋ 批量导入文档</button><button id="btnAutoSplit" class="smallBtn actionPriority">⚡ 自动分段</button><button id="btnPaste" class="smallBtn">粘贴整集</button><button id="btnImportOld" class="smallBtn">迁入旧项目</button><button id="btnChooseFolder" class="smallBtn actionPriority">▧ 参考图文件夹</button><button id="btnTrash" class="smallBtn" title="恢复已移除的剧集或段落">▣ 回收站</button><button id="btnMoreTools" class="smallBtn">更多 ▾</button></div>
         </div>
-        <div id="episodeTreePanel" class="episodeTreePanel"><div class="treeScroll" id="episodeTreeList" aria-label="剧集与段落目录"><div class="emptySeg">导入剧集后，在这里逐集展开段落。</div></div></div>
+        <div id="episodeTreePanel" class="episodeTreePanel" aria-label="剧集和段落目录">
+           <div class="episodeBoardHeader"><strong>剧集目录</strong><span class="tiny">点击上方集卡切换 · 右上角可删除</span></div>
+           <div class="episodeCardStrip" id="episodeCards" aria-label="横向剧集卡片"><div class="emptySeg">请导入剧集</div></div>
+           <div class="episodeBoardHeader segmentBoardHeader"><strong id="episodeBoardTitle">段落目录</strong><button class="smallBtn dangerOutline" id="btnDeleteCurrentEpisode" disabled>删除本集</button></div>
+           <div class="segmentCardGrid" id="segmentCards" aria-label="当前剧集的分段卡片"><div class="emptySeg">选中一集后显示分段。</div></div>
+         </div>
         <!-- legacy strip retained as a hidden compatibility target for installed workspaces -->
         <div class="segmentStrip" id="segmentStrip" hidden></div>
         <div class="timelineFooter"><div class="stats" id="projectStats">0 集 · 0 段</div><div class="segmentEditActions" hidden></div><div class="segmentNavigation"><button id="btnPrevEp" class="ghost compact">← 上一集</button><button id="btnNextEp" class="ghost compact">下一集 →</button><button id="btnPrevSeg" class="ghost compact">← 上一段</button><button id="btnNextSeg" class="primary compact">下一段 →</button></div></div>
@@ -104,13 +109,14 @@
   <footer class="statusbar"><span>● 本地桌面版 · 不需要 127.0.0.1 网页服务</span><span id="bottomSummary">账号隔离 · 提示词原文不压缩 · 图片按编号绑定</span></footer>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
-<dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>豆包创作舱｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 底部每集单独一整行，点击集名展开分段，点击段落切换；点右上角「已完成」自动缩成小卡。高级隐藏/锁定在「更多」菜单。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
+<dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>豆包创作舱｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 底部上方为方形剧集卡，下方是当前剧集的方形段落卡；剧集和段落均可移至回收站并恢复，已完成状态单独保留。高级隐藏/锁定在「更多」菜单。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
 <dialog id="voiceDialog"><div class="dialogbody"><div class="dialoghead"><h2>绑定人物声音到参考图</h2><button id="btnVoiceClose" class="iconBtn">×</button></div>
     <p>先选择人物图号、填写角色名，再选择本机 WAV/MP3 声音样本。每个人物可以有多个样本，默认仅自动使用选定的一个。</p>
     <label for="voiceCodeSelect">对应人物图片</label><select id="voiceCodeSelect" class="voiceSelect"></select>
     <label for="voiceNameInput">人物名称 / 声音标签</label><input id="voiceNameInput" maxlength="45" placeholder="例如：杜不凡（沉稳男声）" />
     <p class="tiny">Seedance 2.0 参考音频：每段2—15秒、同一任务最多3段、总长最多15秒；模型限制不等于豆包聊天框已经支持音频上传。</p>
     <div class="dialogActions"><button class="ghost" id="btnVoiceCancel">取消</button><button class="primary" id="btnVoiceChoose">选择音频并绑定</button></div></div></dialog>
+<dialog id="trashDialog"><div class="dialogbody"><div class="dialoghead"><h2>剧集回收站</h2><button id="btnCloseTrash" class="iconBtn">×</button></div><p class="tiny">删除只移出工作区，不会清除硬盘上的视频、图片、尾帧或登录账号。点击恢复即可回到原位置。</p><div id="trashList" class="trashList"></div><div class="dialogActions"><button class="ghost" id="btnCloseTrashBottom">关闭</button></div></div></dialog>
 <dialog id="pasteDialog"><div class="dialogbody"><div class="dialoghead"><h2>粘贴完整多集提示词</h2><button id="closePaste" class="iconBtn">×</button></div><p>按“第X集｜标题”“第X段｜标题”识别，每段原文存储；导入不影响旧项目。</p><textarea id="pasteText" placeholder="将一集或多集完整提示词粘贴到这里" spellcheck="false"></textarea><div class="dialogActions"><button id="submitPaste" class="primary">解析并加入项目</button></div></div></dialog>
 <dialog id="toolsDialog"><div class="dialogbody"><div class="dialoghead"><h2>项目管理</h2><button id="closeTools" class="iconBtn">×</button></div><div class="toolGrid"><button id="btnRescan" class="ghost">重扫参考图目录</button><button id="btnProjectBackup" class="ghost">备份漫剧项目</button><button id="btnProjectRestore" class="ghost">恢复漫剧项目</button><button id="btnExportSegment" class="ghost">导出当前段</button><button id="btnProjectName" class="ghost">重命名当前项目</button><button id="btnShowPaths" class="ghost">查看素材统计</button></div><details class="advancedLegacy"><summary>高级项目管理：隐藏、锁定及旧数据兼容</summary>
 <div class="legacyActions"><button id="btnEpisodeTree" class="smallBtn" hidden>剧集目录</button><span id="episodeMiniStat" class="tiny"></span>
