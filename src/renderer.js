@@ -389,7 +389,7 @@ function initGlobal(){const help=$('helpDialog');$('btnHelp').onclick=()=>modal(
   for(const id of ['helpDialog','pasteDialog','toolsDialog'])$(id).addEventListener('cancel',e=>{e.preventDefault();dialogClose($(id))});
   setupResize($('leftResizer'),'left');setupResize($('rightResizer'),'right');setupResize($('bottomResizer'),'bottom');
   new ResizeObserver(bounds).observe($('webHost'));window.addEventListener('resize',bounds);
-  B.onStatus(x=>{if(x.id===cfg?.activeAccountId)$('webStatus').textContent=x.status});B.onToast(toast);B.onLayout(bounds);B.onDownloadChange(x=>{downloadsState=x;renderDownloads()});
+  B.onStatus(x=>{if(x.id===cfg?.activeAccountId)$('webStatus').textContent=x.status});B.onVideoStatus(x=>{if(x.accountId===cfg?.activeAccountId)$('webStatus').textContent=x.message||'视频模式未就绪'});B.onToast(toast);B.onLayout(bounds);B.onDownloadChange(x=>{downloadsState=x;renderDownloads()});
   window.addEventListener('beforeunload',()=>{if(promptTimer){const e=getEp(),s=getSeg();if(s){s.text=$('promptText').value;B.wsEditText(e.id,s.id,s.text)}}});
   document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='PageDown'){e.preventDefault();safe(nextAccount)}if(e.altKey&&e.key==='ArrowRight'){e.preventDefault();safe(()=>moveSegment(1))}if(e.altKey&&e.key==='ArrowLeft'){e.preventDefault();safe(()=>moveSegment(-1))}if(e.key==='Escape'&&focus){focus=false;$('layout').classList.remove('focus');$('btnMaxBrowser').textContent='专注';bounds()}});
 }
