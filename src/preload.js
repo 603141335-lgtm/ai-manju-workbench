@@ -88,6 +88,7 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   onDownloadChange:fn=>ipcRenderer.on('download:changed',(_e,s)=>fn(s)),
   openData:()=>ipcRenderer.invoke('app:openData'),
   backup:()=>ipcRenderer.invoke('app:backup'),
+  onVideoStatus:fn=>ipcRenderer.on('video:status',(_e,x)=>fn(x)),
   onStatus:fn=>ipcRenderer.on('web:status',(_e,x)=>fn(x)),
   onSelected:fn=>ipcRenderer.on('web:selected',(_e,x)=>fn(x)),
   onLayout:fn=>ipcRenderer.on('app:layout',()=>fn()),
