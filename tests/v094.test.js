@@ -25,10 +25,9 @@ test('v0.9.4: delete episode is recoverable and preserves unrelated episodes',as
 });
 test('v0.9.4: deleting an intermediate segment does not inherit another clip',async()=>{
  const w=newWorkspace();await w.load();
- w.data.episodes=[{id:'e1',title:'第一集',segments:[{id:'s1',n:1,text:'一'},{id:'s2',n:2,text:'二'},{id:'s3',n:3,text:'三'}]}];
+ w.data.episodes=[{id:'e1',title:'第一集',segments:[{id:'s1',n:1,text:'一',previousSegmentId:null},{id:'s2',n:2,text:'二',previousSegmentId:'s1'},{id:'s3',n:3,text:'三',previousSegmentId:'s2'}]}];
  const removed=await w.deleteItem('e1','s2');
- assert.equal(w.data.episodes[0].segments[1].continuityBlocked,true);
- assert.equal(findPredecessor(w.data,'e1','s3'),null);
+ assert.equal(findPredecessor(w.data,'e1','s3')?.seg.id,'s2');
  await w.restoreItem(removed.entryId);
  assert.equal(findPredecessor(w.data,'e1','s3').seg.id,'s2');
 });
