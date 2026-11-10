@@ -10,7 +10,7 @@ const id=()=>randomUUID();
 const MAX_SEGMENTS=20000;
 const unique=a=>[...new Set(a)];
 const isImage=p=>typeof p==='string'&&EXTS.has(path.extname(p).toLowerCase());
-const fresh=()=>({version:2,title:'我的AI漫剧项目',assetFolder:'',episodes:[],chosenPaths:{},activeEpisodeId:null,activeSegmentId:null,showHidden:false,treeExpandedEpisodeId:null,layout:{bottomHeight:315,bottomCollapsed:false,rightWidth:450,foldActiveEpisode:false}});
+const fresh=()=>({version:3,title:'我的AI漫剧项目',assetFolder:'',episodes:[],chosenPaths:{},activeEpisodeId:null,activeSegmentId:null,showHidden:false,treeExpandedEpisodeId:null,layout:{bottomHeight:315,bottomCollapsed:false,rightWidth:450,foldActiveEpisode:false}});
 function scrub(input){
   const o=fresh();if(!input||typeof input!=='object')return o;
   o.title=String(input.title||o.title).slice(0,150);
@@ -22,16 +22,16 @@ function scrub(input){
   let budget=MAX_SEGMENTS;
   if(Array.isArray(input.episodes))for(const e of input.episodes.slice(0,1000)){
     if(budget<=0)break;
-    const episode={id:String(e.id||id()),number:Number.isInteger(e.number)?e.number:null,title:String(e.title||'未命名剧集').slice(0,350),original:String(e.original||''),preamble:String(e.preamble||''),hidden:!!e.hidden,locked:!!e.locked,segments:[]};
+    const episode={id:String(e.id||id()),number:Number.isInteger(e.number)?e.number:null,title:String(e.title||'未命名剧集').slice(0,350),original:String(e.original||''),preamble:String(e.preamble||''),hidden:!!e.hidden,locked:!!e.locked,deletedAt:typeof e.deletedAt==='string'?e.deletedAt:null,segments:[]};
     if(Array.isArray(e.segments))for(const s of e.segments.slice(0,Math.min(budget,900))){
       const text=String(s.text??s.prompt??'');if(text.length>300000)continue;
-      episode.segments.push({id:String(s.id||id()),n:Number.isFinite(Number(s.n))?Number(s.n):episode.segments.length+1,title:String(s.title||s.name||'未命名段落').slice(0,350),text,codes:unique((Array.isArray(s.codes)?s.codes:detectSegmentCodes(text).codes).map(c=>normCode(String(c))).filter(Boolean)).slice(0,100),method:String(s.method||'栏目识别'),manual:!!s.manual,hidden:!!s.hidden,locked:!!s.locked,status:['pending','done','redo'].includes(s.status)?s.status:'pending',completedAt:typeof s.completedAt==='string'?s.completedAt:null,accountId:typeof s.accountId==='string'?s.accountId:null,selectedPaths:Array.isArray(s.selectedPaths)?unique(s.selectedPaths.filter(x=>typeof x==='string')).slice(0,100):[],manualPaths:Array.isArray(s.manualPaths)?unique(s.manualPaths.filter(x=>typeof x==='string'&&isImage(x))).slice(0,150):[]});
+      episode.segments.push({id:String(s.id||id()),n:Number.isFinite(Number(s.n))?Number(s.n):episode.segments.length+1,title:String(s.title||s.name||'未命名段落').slice(0,350),text,codes:unique((Array.isArray(s.codes)?s.codes:detectSegmentCodes(text).codes).map(c=>normCode(String(c))).filter(Boolean)).slice(0,100),method:String(s.method||'栏目识别'),manual:!!s.manual,hidden:!!s.hidden,locked:!!s.locked,status:['pending','done','redo'].includes(s.status)?s.status:'pending',deletedAt:typeof s.deletedAt==='string'?s.deletedAt:null,previousSegmentId:typeof s.previousSegmentId==='string'?s.previousSegmentId:(episode.segments.at(-1)?.id||null),completedAt:typeof s.completedAt==='string'?s.completedAt:null,accountId:typeof s.accountId==='string'?s.accountId:null,selectedPaths:Array.isArray(s.selectedPaths)?unique(s.selectedPaths.filter(x=>typeof x==='string')).slice(0,100):[],manualPaths:Array.isArray(s.manualPaths)?unique(s.manualPaths.filter(x=>typeof x==='string'&&isImage(x))).slice(0,150):[]});
     }
     if(episode.segments.length){budget-=episode.segments.length;o.episodes.push(episode);}
   }
-  o.activeEpisodeId=o.episodes.find(e=>e.id===input.activeEpisodeId)?.id||o.episodes[0]?.id||null;
-  const e=o.episodes.find(e=>e.id===o.activeEpisodeId);o.activeSegmentId=e?.segments.find(s=>s.id===input.activeSegmentId)?.id||e?.segments[0]?.id||null;
-  if(!o.episodes.some(e=>e.id===o.treeExpandedEpisodeId))o.treeExpandedEpisodeId=o.activeEpisodeId;
+  o.activeEpisodeId=o.episodes.find(e=>e.id===input.activeEpisodeId&&!e.deletedAt)?.id||o.episodes.find(e=>!e.deletedAt)?.id||null;
+  const e=o.episodes.find(e=>e.id===o.activeEpisodeId);o.activeSegmentId=e?.segments.find(s=>s.id===input.activeSegmentId&&!s.deletedAt)?.id||e?.segments.find(s=>!s.deletedAt)?.id||null;
+  if(!o.episodes.some(e=>e.id===o.treeExpandedEpisodeId&&!e.deletedAt))o.treeExpandedEpisodeId=o.activeEpisodeId;
   return o;
 }
 function convertLegacy(workbench){
@@ -39,7 +39,7 @@ function convertLegacy(workbench){
   const incoming=scrub({...workbench,version:2});
   if(!incoming.episodes.length)throw Error('旧项目没有可识别的剧集和分段');
   // Imported IDs must not collide with either the current workspace or other imports.
-  for(const e of incoming.episodes){e.id=id();for(const s of e.segments){s.id=id();s.status='pending';s.selectedPaths=[];s.hidden=false;s.locked=false;}}
+  for(const e of incoming.episodes){e.id=id();e.deletedAt=null;let prev=null;for(const s of e.segments){s.id=id();s.previousSegmentId=prev;prev=s.id;s.deletedAt=null;s.status='pending';s.selectedPaths=[];s.hidden=false;s.locked=false;}}
   return incoming;
 }
 function importV01Segments(cfg){
@@ -88,6 +88,7 @@ class WorkspaceStore{
     await fsp.mkdir(path.dirname(this.file),{recursive:true});
     if(fs.existsSync(this.file)){
       try{const raw=await fsp.readFile(this.file,'utf8');const input=JSON.parse(raw);
+        if(input&&Number(input.version)<3){const checkpoint=this.file+'.pre-v094.json';if(!fs.existsSync(checkpoint))await fsp.writeFile(checkpoint,raw,'utf8');}
         // One-time upgrade checkpoint: leave the pre-v0.3 workspace byte-for-byte intact.
         if(input&&input.version===2&&!Object.prototype.hasOwnProperty.call(input,'showHidden')){const marker=this.file+'.pre-v03-backup.json';if(!fs.existsSync(marker))await fsp.writeFile(marker,raw,'utf8');}
         this.data=scrub(input);
@@ -122,7 +123,7 @@ class WorkspaceStore{
     if(typeof text!=='string'||text.length>20000000)throw Error('提示词为空或超过20MB');
     const parsed=parseMultiEpisode(text,filename);if(!parsed.length)throw Error('未识别到剧集或分段');
     if(this.data.episodes.reduce((n,e)=>n+e.segments.length,0)+parsed.reduce((n,e)=>n+e.segments.length,0)>MAX_SEGMENTS)throw Error('总分段数量超出安全上限');
-    const ep=parsed.map(e=>({...e,hidden:false,locked:false,segments:e.segments.map(s=>({...s,hidden:false,locked:false,status:'pending',accountId:null,completedAt:null,selectedPaths:[],manualPaths:[]}))}));
+    const ep=parsed.map(e=>{let previous=null;return {...e,hidden:false,locked:false,deletedAt:null,segments:e.segments.map(s=>{const row={...s,hidden:false,locked:false,deletedAt:null,previousSegmentId:previous,status:'pending',accountId:null,completedAt:null,selectedPaths:[],manualPaths:[]};previous=row.id;return row;})};});
     this.data.episodes.push(...ep);this.data.activeEpisodeId=ep[0].id;this.data.activeSegmentId=ep[0].segments[0].id;this.data.treeExpandedEpisodeId=ep[0].id;await this.save();return {addedEpisodes:ep.length,addedSegments:ep.reduce((n,e)=>n+e.segments.length,0),workspace:this.data};
   }
   async mergeLegacy(v){const converted=convertLegacy(v);const count=this.data.episodes.length;
@@ -132,14 +133,14 @@ class WorkspaceStore{
     this.data.activeEpisodeId=converted.episodes[0].id;this.data.activeSegmentId=converted.episodes[0].segments[0].id;this.data.treeExpandedEpisodeId=converted.episodes[0].id;
     await this.save();return {episodes:converted.episodes.length,segments:converted.episodes.reduce((n,e)=>n+e.segments.length,0),preservedSource:true};
   }
-  async select(eid,sid){const {ep,seg}=this.findSegment(eid,sid);this.data.activeEpisodeId=ep.id;this.data.activeSegmentId=seg.id;this.data.treeExpandedEpisodeId=ep.id;await this.save();}
+  async select(eid,sid){const {ep,seg}=this.findSegment(eid,sid);if(ep.deletedAt||seg.deletedAt)throw Error('该剧集或段落在回收站内，请先恢复');this.data.activeEpisodeId=ep.id;this.data.activeSegmentId=seg.id;this.data.treeExpandedEpisodeId=ep.id;await this.save();}
   assertUnlocked(ep,seg){if(ep.locked||seg?.locked)throw Error('这一集或这一段已锁定；先解锁才能修改原文、参考图或制作状态');}
-  keepSelectionVisible(){const {ep,seg}=this.current();if(!ep||!seg||!isVisible(ep,seg,this.data.showHidden)){const next=firstVisible(this.data.episodes,this.data.showHidden);if(next){this.data.activeEpisodeId=next.ep.id;this.data.activeSegmentId=next.seg.id;this.data.treeExpandedEpisodeId=next.ep.id;}else if(this.data.episodes.length){this.data.showHidden=true;}}}
+  keepSelectionVisible(){const {ep,seg}=this.current();if(!ep||!seg||!isVisible(ep,seg,this.data.showHidden)){const next=firstVisible(this.data.episodes,this.data.showHidden);if(next){this.data.activeEpisodeId=next.ep.id;this.data.activeSegmentId=next.seg.id;this.data.treeExpandedEpisodeId=next.ep.id;}else {this.data.activeEpisodeId=null;this.data.activeSegmentId=null;this.data.treeExpandedEpisodeId=null;}}}
   async setHidden(eid,sid,hidden){const {ep,seg}=sid?this.findSegment(eid,sid):{ep:this.data.episodes.find(e=>e.id===eid),seg:null};if(!ep)throw Error('剧集不存在');if(seg)seg.hidden=!!hidden;else ep.hidden=!!hidden;this.keepSelectionVisible();await this.save();return this.snapshot();}
   async setLocked(eid,sid,locked){const {ep,seg}=sid?this.findSegment(eid,sid):{ep:this.data.episodes.find(e=>e.id===eid),seg:null};if(!ep)throw Error('剧集不存在');if(seg)seg.locked=!!locked;else ep.locked=!!locked;await this.save();return this.snapshot();}
   async setShowHidden(show){this.data.showHidden=!!show;this.keepSelectionVisible();await this.save();return this.snapshot();}
-  async setTreeEpisode(eid){if(!this.data.episodes.some(e=>e.id===eid))throw Error('剧集不存在');this.data.treeExpandedEpisodeId=eid;await this.save();return this.snapshot();}
-  async hideDone(){let hidden=0;for(const ep of this.data.episodes){for(const seg of ep.segments){if(seg.status==='done'&&!seg.hidden){seg.hidden=true;hidden++;}}if(ep.segments.length&&ep.segments.every(s=>s.status==='done'))ep.hidden=true;}this.keepSelectionVisible();await this.save();return {hidden,state:this.snapshot()};}
+  async setTreeEpisode(eid){if(!this.data.episodes.some(e=>e.id===eid&&!e.deletedAt))throw Error('剧集不存在');this.data.treeExpandedEpisodeId=eid;await this.save();return this.snapshot();}
+  async hideDone(){let hidden=0;for(const ep of this.data.episodes){if(ep.deletedAt)continue;for(const seg of ep.segments){if(seg.deletedAt)continue;if(seg.status==='done'&&!seg.hidden){seg.hidden=true;hidden++;}}if(ep.segments.length&&ep.segments.every(s=>s.status==='done'))ep.hidden=true;}this.keepSelectionVisible();await this.save();return {hidden,state:this.snapshot()};}
   async editText(eid,sid,text){if(typeof text!=='string'||text.length>300000)throw Error('提示词超过30万字');const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.text=text;if(!seg.manual){const det=detectSegmentCodes(text);seg.codes=det.codes;seg.method=det.method;}await this.save();}
   async editCodes(eid,sid,codes){const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.codes=unique((Array.isArray(codes)?codes:String(codes).split(/[、,，\s]+/)).map(normCode).filter(Boolean)).slice(0,100);seg.manual=true;await this.save();}
   async setStatus(eid,sid,status,accountId){if(!['pending','done','redo'].includes(status))throw Error('状态无效');const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.status=status;seg.accountId=status==='done'?accountId:null;seg.completedAt=status==='done'?new Date().toISOString():null;await this.save();}
@@ -148,7 +149,29 @@ class WorkspaceStore{
     if(this.data.episodes.some(e=>(e.locked||e.segments.some(s=>s.locked&&s.codes.includes(code)))&&e.segments.some(s=>s.codes.includes(code))))throw Error('有锁定的剧集或分段引用了这个编号；请先解锁');
     if(!versions.some(v=>v.path===file))throw Error('图片不属于该编号');this.data.chosenPaths[code]=file;await this.save();}
   async setFolder(folder){this.data.assetFolder=folder;await this.assetIndex.scan(folder);await this.save();return this.assetIndex.stats;}
-  async setLayout(patch){const cur=this.data.layout;const lay={...cur,...patch};lay.bottomHeight=Math.max(180,Math.min(500,Math.round(Number(lay.bottomHeight)||245)));lay.rightWidth=Math.max(300,Math.min(750,Math.round(Number(lay.rightWidth)||450)));lay.bottomCollapsed=!!lay.bottomCollapsed;this.data.layout=lay;await this.save();}
+  async deleteEpisode(eid){
+    const ep=this.data.episodes.find(e=>e.id===eid);if(!ep||ep.deletedAt)throw Error('剧集不存在或已删除');
+    ep.deletedAt=new Date().toISOString();this.keepSelectionVisible();await this.save();return this.snapshot();
+   }
+   async deleteSegment(eid,sid){
+    const {ep,seg}=this.findSegment(eid,sid);if(ep.deletedAt||seg.deletedAt)throw Error('段落不存在或已删除');
+    seg.deletedAt=new Date().toISOString();this.keepSelectionVisible();await this.save();return this.snapshot();
+   }
+   async restoreEpisode(eid){
+    const ep=this.data.episodes.find(e=>e.id===eid);if(!ep||!ep.deletedAt)throw Error('回收站内找不到该剧集');
+    ep.deletedAt=null;this.data.activeEpisodeId=ep.id;const seg=ep.segments.find(s=>!s.deletedAt);
+    this.data.activeSegmentId=seg?.id||null;this.data.treeExpandedEpisodeId=ep.id;
+    await this.save();return this.snapshot();
+   }
+   async restoreSegment(eid,sid){
+    const {ep,seg}=this.findSegment(eid,sid);if(ep.deletedAt)throw Error('请先恢复整集');
+    seg.deletedAt=null;this.data.activeEpisodeId=eid;this.data.activeSegmentId=sid;this.data.treeExpandedEpisodeId=eid;
+    await this.save();return this.snapshot();
+   }
+   trash(){return {episodes:this.data.episodes.filter(e=>e.deletedAt).map(e=>({id:e.id,title:e.title,deletedAt:e.deletedAt,count:e.segments.length})),
+    segments:this.data.episodes.filter(e=>!e.deletedAt).flatMap(e=>e.segments.filter(s=>s.deletedAt).map(s=>({episodeId:e.id,id:s.id,n:s.n,title:s.title,episodeTitle:e.title,deletedAt:s.deletedAt})))};
+   }
+   async setLayout(patch){const cur=this.data.layout;const lay={...cur,...patch};lay.bottomHeight=Math.max(180,Math.min(500,Math.round(Number(lay.bottomHeight)||245)));lay.rightWidth=Math.max(300,Math.min(750,Math.round(Number(lay.rightWidth)||450)));lay.bottomCollapsed=!!lay.bottomCollapsed;this.data.layout=lay;await this.save();}
   async addManualImages(eid,sid,paths){const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.manualPaths=unique([...seg.manualPaths,...paths.filter(isImage)]).slice(0,150);await this.save();}
   resolveSegment(eid,sid){const {seg}=this.findSegment(eid,sid);return this.assetIndex.resolve(seg.codes,this.data.chosenPaths,seg.manualPaths);}
   async exportSegment(eid,sid,target){const {ep,seg}=this.findSegment(eid,sid);const folder=path.join(target,safeName(`${ep.title}_${seg.n}_${seg.title}`,75)+'_'+new Date().toISOString().replace(/[:.]/g,'-'));await fsp.mkdir(folder,{recursive:true});await fsp.writeFile(path.join(folder,'完整提示词.txt'),seg.text,'utf8');const rows=this.resolveSegment(eid,sid);const missing=[],errors=[];let copied=0;const dir=path.join(folder,'参考图');await fsp.mkdir(dir,{recursive:true});
