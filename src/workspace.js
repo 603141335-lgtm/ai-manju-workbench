@@ -40,7 +40,7 @@ function convertLegacy(workbench){
   const incoming=scrub({...workbench,version:2});
   if(!incoming.episodes.length)throw Error('旧项目没有可识别的剧集和分段');
   // Imported IDs must not collide with either the current workspace or other imports.
-  for(const e of incoming.episodes){e.id=id();for(const s of e.segments){s.id=id();s.status='pending';s.selectedPaths=[];s.hidden=false;s.locked=false;}}
+  for(const e of incoming.episodes){e.id=id();let previous=null;for(const s of e.segments){s.id=id();s.previousSegmentId=previous;previous=s.id;s.status='pending';s.selectedPaths=[];s.hidden=false;s.locked=false;}}
   return incoming;
 }
 function importV01Segments(cfg){
@@ -91,6 +91,7 @@ class WorkspaceStore{
       try{const raw=await fsp.readFile(this.file,'utf8');const input=JSON.parse(raw);
         // One-time upgrade checkpoint: leave the pre-v0.3 workspace byte-for-byte intact.
         if(input&&input.version===2&&!Object.prototype.hasOwnProperty.call(input,'showHidden')){const marker=this.file+'.pre-v03-backup.json';if(!fs.existsSync(marker))await fsp.writeFile(marker,raw,'utf8');}
+         if(input&&input.version===2&&!Object.prototype.hasOwnProperty.call(input,'trash')){const marker=this.file+'.pre-v094-backup.json';if(!fs.existsSync(marker))await fsp.writeFile(marker,raw,'utf8');}
         this.data=scrub(input);
       }catch(e){this.corruptWarning=`工作台数据损坏：${e.message}`;
         const bk=this.file+'.bak';
