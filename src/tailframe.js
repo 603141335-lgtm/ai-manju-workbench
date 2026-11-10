@@ -12,6 +12,7 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function findPredecessor(data,episodeId,segmentId){
  const ep=data.episodes.find(e=>e.id===episodeId);if(!ep)return null;
  const index=ep.segments.findIndex(s=>s.id===segmentId);
+  if(index>=0&&ep.segments[index].continuityBlocked)return null;
  return index>0?{ep,seg:ep.segments[index-1]}:null;
 }
 function safeSegment(s){return /^[\w-]{1,160}$/.test(String(s))?String(s):createHash('sha256').update(String(s)).digest('hex').slice(0,32)}
@@ -82,13 +83,13 @@ class TailFrameStore{
   if(!seg)throw Error('无法找到视频对应的剧集和段落');
   if(!validVideo(videoPath))throw Error('请选择存在的 MP4/MOV/WEBM/MKV 成品视频');
   const key=`${safeSegment(episodeId)}:${safeSegment(segmentId)}`;
-  if(auto&&this.rows[key])return {state:'kept',message:'已经有选定的最终版，下载其他视频不会自动覆盖它'};
+  if(auto&&this.rows[key]?.locked)return {state:'kept',message:'最终版已手动锁定，新的下载不会覆盖它'};
   if(this.busy.has(key))return {state:'busy',message:'本段尾帧正在处理'};
   this.busy.add(key);
   const st=await fsp.stat(videoPath);const target=path.join(this.folder,safeSegment(episodeId),safeSegment(segmentId)+'-'+createHash('sha256').update(videoPath+'|'+st.mtimeMs+'|'+st.size).digest('hex').slice(0,14)+'.png');
   try{
    const out=await extractLastValidFrame(videoPath,target,this.tools);
-   this.rows[key]={episodeId,segmentId,videoPath,framePath:target,sourceMtime:st.mtimeMs,sourceSize:st.size,seekSecond:out.second,createdAt:new Date().toISOString(),error:null};
+   this.rows[key]={episodeId,segmentId,videoPath,framePath:target,sourceMtime:st.mtimeMs,sourceSize:st.size,seekSecond:out.second,createdAt:new Date().toISOString(),locked:!auto,error:null};
    await this.save();return {state:'ready',message:`第${seg.n}段尾帧已提取，将用于下一段图1`,framePath:target,second:out.second};
   }catch(e){
    // Preserve previously working final video/frame if a replacement extraction fails.
