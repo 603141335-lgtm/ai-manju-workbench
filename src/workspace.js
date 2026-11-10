@@ -26,7 +26,7 @@ function scrub(input){
     const episode={id:String(e.id||id()),number:Number.isInteger(e.number)?e.number:null,title:String(e.title||'未命名剧集').slice(0,350),original:String(e.original||''),preamble:String(e.preamble||''),hidden:!!e.hidden,locked:!!e.locked,segments:[]};
     if(Array.isArray(e.segments))for(const s of e.segments.slice(0,Math.min(budget,900))){
       const text=String(s.text??s.prompt??'');if(text.length>300000)continue;
-      episode.segments.push({id:String(s.id||id()),n:Number.isFinite(Number(s.n))?Number(s.n):episode.segments.length+1,title:String(s.title||s.name||'未命名段落').slice(0,350),text,codes:unique((Array.isArray(s.codes)?s.codes:detectSegmentCodes(text).codes).map(c=>normCode(String(c))).filter(Boolean)).slice(0,100),method:String(s.method||'栏目识别'),manual:!!s.manual,hidden:!!s.hidden,locked:!!s.locked,status:['pending','done','redo'].includes(s.status)?s.status:'pending',completedAt:typeof s.completedAt==='string'?s.completedAt:null,accountId:typeof s.accountId==='string'?s.accountId:null,selectedPaths:Array.isArray(s.selectedPaths)?unique(s.selectedPaths.filter(x=>typeof x==='string')).slice(0,100):[],manualPaths:Array.isArray(s.manualPaths)?unique(s.manualPaths.filter(x=>typeof x==='string'&&isImage(x))).slice(0,150):[],continuityBlocked:!!s.continuityBlocked});
+      episode.segments.push({id:String(s.id||id()),n:Number.isFinite(Number(s.n))?Number(s.n):episode.segments.length+1,title:String(s.title||s.name||'未命名段落').slice(0,350),text,codes:unique((Array.isArray(s.codes)?s.codes:detectSegmentCodes(text).codes).map(c=>normCode(String(c))).filter(Boolean)).slice(0,100),method:String(s.method||'栏目识别'),manual:!!s.manual,hidden:!!s.hidden,locked:!!s.locked,status:['pending','done','redo'].includes(s.status)?s.status:'pending',completedAt:typeof s.completedAt==='string'?s.completedAt:null,accountId:typeof s.accountId==='string'?s.accountId:null,selectedPaths:Array.isArray(s.selectedPaths)?unique(s.selectedPaths.filter(x=>typeof x==='string')).slice(0,100):[],manualPaths:Array.isArray(s.manualPaths)?unique(s.manualPaths.filter(x=>typeof x==='string'&&isImage(x))).slice(0,150):[],continuityBlocked:!!s.continuityBlocked,previousSegmentId:typeof s.previousSegmentId==='string'?s.previousSegmentId:(episode.segments.at(-1)?.id||null)});
     }
     budget-=episode.segments.length;o.episodes.push(episode);
   }
@@ -123,7 +123,10 @@ class WorkspaceStore{
     if(typeof text!=='string'||text.length>20000000)throw Error('提示词为空或超过20MB');
     const parsed=parseMultiEpisode(text,filename);if(!parsed.length)throw Error('未识别到剧集或分段');
     if(this.data.episodes.reduce((n,e)=>n+e.segments.length,0)+parsed.reduce((n,e)=>n+e.segments.length,0)>MAX_SEGMENTS)throw Error('总分段数量超出安全上限');
-    const ep=parsed.map(e=>({...e,hidden:false,locked:false,segments:e.segments.map(s=>({...s,hidden:false,locked:false,status:'pending',accountId:null,completedAt:null,selectedPaths:[],manualPaths:[]}))}));
+    const ep=parsed.map(e=>{
+       const segments=e.segments.map((s,i)=>({...s,hidden:false,locked:false,status:'pending',accountId:null,completedAt:null,selectedPaths:[],manualPaths:[],previousSegmentId:i?e.segments[i-1].id:null}));
+       return {...e,hidden:false,locked:false,segments};
+     });
     this.data.episodes.push(...ep);this.data.activeEpisodeId=ep[0].id;this.data.activeSegmentId=ep[0].segments[0].id;this.data.treeExpandedEpisodeId=ep[0].id;await this.save();return {addedEpisodes:ep.length,addedSegments:ep.reduce((n,e)=>n+e.segments.length,0),workspace:this.data};
   }
   async mergeLegacy(v){const converted=convertLegacy(v);const count=this.data.episodes.length;
@@ -154,7 +157,7 @@ class WorkspaceStore{
        if(position<0)throw Error('段落不存在');
        kind='segment';item=ep.segments.splice(position,1)[0];
        // Do not silently bind the next segment to an unrelated earlier clip.
-       if(ep.segments[position])ep.segments[position].continuityBlocked=true;
+       // Explicit previousSegmentId keeps references to the deleted segment in trash.
      }else{kind='episode';position=index;item=this.data.episodes.splice(index,1)[0]}
      const entry={id:id(),kind,episodeId:eid,position,item,deletedAt:new Date().toISOString()};
      this.data.trash.push(entry);
@@ -176,7 +179,7 @@ class WorkspaceStore{
        if(!ep)throw Error('所属剧集不存在，请先恢复剧集');
        if(ep.segments.some(s=>s.id===entry.item.id))throw Error('同ID段落已存在');
        ep.segments.splice(Math.min(entry.position,ep.segments.length),0,entry.item);
-       if(ep.segments[entry.position+1])ep.segments[entry.position+1].continuityBlocked=false;
+       // Restoring the original segment does not change existing continuity IDs.
      }
      this.data.trash.splice(i,1);await this.save();return this.snapshot();
    }
