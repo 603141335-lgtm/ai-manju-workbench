@@ -200,6 +200,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   if(pre.tailStatus?.state==='extracting'){
       for(let count=0;count<30;count++){await sleep(500);const next=getDraft({episodeId,segmentId});if(next.tailStatus?.state!=='extracting')break;}
       pre=await getPlan({episodeId,segmentId});
+      if(pre.tailStatus?.state==='extracting')throw Error('上一段视频尾帧仍在提取中，请等候提取完成后重试，避免遗漏图1');
     }
    if(pre.blocked)throw Error(pre.voiceErrors?.length?'声音绑定异常：'+pre.voiceErrors.join('；'):pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对':'存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
   const a=currentActive(),seg=getSegment(episodeId,segmentId),ctx={episodeId,segmentId,accountId:a.accountId,wc:a.webContents,url:a.webContents.getURL(),cancelled:false,rows:pre.items.map(x=>({code:x.code,state:'matched',message:'本地参考图已匹配'}))};
