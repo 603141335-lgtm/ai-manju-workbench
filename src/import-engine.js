@@ -34,7 +34,7 @@ function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null,labels={
   if(items.some(x=>x.file?.path===tail.file.path))items.splice(items.findIndex(x=>x.file.path===tail.file.path),1);
   items.unshift({code:'尾帧',kind:'tail',status:'ready',message:tail.message,file:{path:tail.file.path,name:tail.file.name},versions:1});
  }
- return {codes,items,tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing','extracting'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
+ return {codes,items,tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
 }
 function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
  let running=null;
@@ -195,9 +195,13 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
 
  async function execute({episodeId,segmentId,replaceDraft=false,attemptNative=true}={}){
   if(running)throw Error('另一个一键导入任务正在执行');
-  const pre=await getPlan({episodeId,segmentId});
+  let pre=await getPlan({episodeId,segmentId});
   if(!pre.ready)throw Error(pre.error||'网页不可用');
-  if(pre.blocked)throw Error(pre.voiceErrors?.length?'声音绑定异常：'+pre.voiceErrors.join('；'):pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对':'存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
+  if(pre.tailStatus?.state==='extracting'){
+      for(let count=0;count<30;count++){await sleep(500);const next=getDraft({episodeId,segmentId});if(next.tailStatus?.state!=='extracting')break;}
+      pre=await getPlan({episodeId,segmentId});
+    }
+   if(pre.blocked)throw Error(pre.voiceErrors?.length?'声音绑定异常：'+pre.voiceErrors.join('；'):pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对':'存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
   const a=currentActive(),seg=getSegment(episodeId,segmentId),ctx={episodeId,segmentId,accountId:a.accountId,wc:a.webContents,url:a.webContents.getURL(),cancelled:false,rows:pre.items.map(x=>({code:x.code,state:'matched',message:'本地参考图已匹配'}))};
   const before=await probe(ctx.wc);
   if(before.prompt?.trim()&&before.prompt.trim()!==seg.text.trim()&&before.prompt.trim()!==pre.previewText.trim()&&!replaceDraft)throw Error('豆包聊天框有不同草稿，须先确认是否覆盖');
