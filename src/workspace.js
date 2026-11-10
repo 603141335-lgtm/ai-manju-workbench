@@ -164,8 +164,9 @@ class WorkspaceStore{
      this.data.trash.push(entry);
      if(this.data.trash.length>150)this.data.trash=this.data.trash.slice(-150);
      const next=this.data.episodes.find(e=>e.id===eid&&e.segments.length)||this.data.episodes.find(e=>e.segments.length);
+     const nextSegment=kind==='segment'&&next?.id===eid?(next.segments[position]||next.segments[position-1]):next?.segments[0];
      this.data.activeEpisodeId=next?.id||null;
-     this.data.activeSegmentId=next?.segments[0]?.id||null;
+     this.data.activeSegmentId=nextSegment?.id||null;
      this.data.treeExpandedEpisodeId=next?.id||null;
      await this.save();return {state:this.snapshot(),entryId:entry.id};
    }
@@ -182,7 +183,11 @@ class WorkspaceStore{
        ep.segments.splice(Math.min(entry.position,ep.segments.length),0,entry.item);
        // Restoring the original segment does not change existing continuity IDs.
      }
-     this.data.trash.splice(i,1);await this.save();return this.snapshot();
+     this.data.trash.splice(i,1);
+     this.data.activeEpisodeId=entry.kind==='episode'?entry.item.id:entry.episodeId;
+     this.data.activeSegmentId=entry.kind==='episode'?entry.item.segments[0]?.id||null:entry.item.id;
+     this.data.treeExpandedEpisodeId=this.data.activeEpisodeId;
+     await this.save();return this.snapshot();
    }
    async setStatus(eid,sid,status,accountId){if(!['pending','done','redo'].includes(status))throw Error('状态无效');const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.status=status;seg.accountId=status==='done'?accountId:null;seg.completedAt=status==='done'?new Date().toISOString():null;await this.save();}
   async setSelection(eid,sid,paths){const {seg}=this.findSegment(eid,sid);if(!Array.isArray(paths))throw Error('图片选择无效');const allowed=this.resolveSegment(eid,sid).filter(r=>r.file&&!r.missing).map(r=>r.file.path);seg.selectedPaths=unique(paths.filter(p=>typeof p==='string'&&allowed.includes(p))).slice(0,100);await this.save();}
