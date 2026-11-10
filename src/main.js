@@ -51,6 +51,7 @@ function getDownloadPath(filename){
   return candidate;
 }
 const pendingVideoChecks=new Map();
+const lastPreparedByAccount=new Map();
 async function ensureVideoMode(id=activeId){
   const wc=views.get(id)?.view?.webContents;
   if(!wc||wc.isDestroyed())throw Error('豆包网页尚未加载');
@@ -69,7 +70,13 @@ function setupSession(sess,accountId){
   sess.__creativeHubReady=true;
   sess.on('will-download',(_ev,item)=>{
     try{
-      const ep=workspace.current().ep,seg=workspace.current().seg;
+      const selected=workspace.current();
+      const prepared=lastPreparedByAccount.get(accountId);
+      const usable=prepared&&Date.now()-prepared.at<6*60*60*1000;
+      const preparedEp=usable?workspace.data.episodes.find(e=>e.id===prepared.episodeId):null;
+      const preparedSeg=preparedEp?.segments.find(x=>x.id===prepared.segmentId);
+      const ep=preparedSeg?preparedEp:(activeId===accountId?selected.ep:null);
+      const seg=preparedSeg?preparedSeg:(activeId===accountId?selected.seg:null);
       const acc=cfg.accounts.find(a=>a.id===accountId);
       const context={project:workspace.data.title,episode:ep?.title||'未分集',segment:seg?.title||'未分段',episodeNumber:ep?.number?`第${ep.number}集`:'未分集',segmentNumber:seg?`第${seg.n}段`:'未分段',episodeId:ep?.id||'',segmentId:seg?.id||'',account:acc?.name||'未知账号'};
       const record=downloads.begin(item.getFilename(),context,item.getURL());
@@ -85,10 +92,13 @@ function setupSession(sess,accountId){
         downloads.update(record.id,state,item.getReceivedBytes(),item.getTotalBytes());
         tell('download:changed',downloads.snapshot());
         tell('app:toast',state==='completed'?`下载完成：${record.file}`:`下载${state==='cancelled'?'已取消':'中断'}：${record.file}`);
+        if(state==='completed'&&record.type==='视频'&&(!record.episodeId||!record.segmentId)){
+          tell('app:toast','视频已下载，但未能可靠确认所属段落；没有自动绑定尾帧，请从右侧选择最终成片');
+        }
         if(state==='completed'&&record.type==='视频'&&record.episodeId&&record.segmentId){
           tailframes?.setFinal(workspace.data,record.episodeId,record.segmentId,record.path,{auto:true})
             .then(info=>{tell('tail:updated',{episodeId:record.episodeId,segmentId:record.segmentId,...info});
-              if(info.state==='ready')tell('app:toast',info.message);})
+              if(info.message)tell('app:toast',info.message);})
             .catch(e=>log(e));
         }
       });
@@ -381,7 +391,10 @@ function registerHandlers(){
   ipcMain.handle('import:execute',async(_e,eid,sid,options)=>{
     const mode=await ensureVideoMode();
     if(!mode.ready)throw Error(mode.message||'视频生成模式未就绪');
-    return importEngine.execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false});
+    const accountId=activeId;
+    const result=await importEngine.execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false});
+    if(result?.state==='done')lastPreparedByAccount.set(accountId,{episodeId:eid,segmentId:sid,at:Date.now()});
+    return result;
   });
   ipcMain.handle('import:cancel',()=>importEngine.cancel());
   ipcMain.handle('import:confirm',(_e,approved)=>importEngine.confirm(approved===true));
