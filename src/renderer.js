@@ -216,26 +216,49 @@ function initAccounts(){const list=$('groupList');list.addEventListener('click',
   $('btnBackup').onclick=()=>safe(async()=>{if(await B.backup())toast('账号清单备份成功（不包含登录凭证）')});
   $('btnData').onclick=()=>safe(()=>B.openData());
 }
+async function refreshTrashList(){
+ const data=await B.wsTrash(),container=$('trashList');
+ const episodes=data.episodes.map(e=>'<div class="trashRow"><span class="trashMeta"><strong>'+enc(e.title)+'</strong><small>整集 · '+e.count+'段 · '+enc(e.deletedAt)+'</small></span><button data-trash-action="episode" data-eid="'+enc(e.id)+'">恢复整集</button></div>');
+ const segments=data.segments.map(s=>'<div class="trashRow"><span class="trashMeta"><strong>'+enc(s.episodeTitle)+' · 第'+s.n+'段</strong><small>'+enc(s.title)+' · '+enc(s.deletedAt)+'</small></span><button data-trash-action="segment" data-eid="'+enc(s.episodeId)+'" data-sid="'+enc(s.id)+'">恢复本段</button></div>');
+ container.innerHTML=[...episodes,...segments].join('')||'<div class="emptySeg">回收站是空的。</div>';
+}
+async function openTrash(){await refreshTrashList();modal($('trashDialog'))}
 function initWorkspace(){
   $('rightEpisode').onchange=e=>safe(()=>chooseEpisode(e.target.value));
   $('btnEpisodeTree').onclick=()=>toggleTree(!treeOpen);
-  $('episodeTreeList').onclick=e=>safe(async()=>{
+  $('episodeTreePanel').onclick=e=>safe(async()=>{
    const btn=e.target.closest('[data-tree-action]');if(!btn)return;
    const {treeAction,eid,sid}=btn.dataset;
-   if(treeAction==='expand'){
-    await flushPrompt();
-    if(ws.workspace.treeExpandedEpisodeId===eid){const flag=!ws.workspace.layout.foldActiveEpisode;await B.wsLayout({foldActiveEpisode:flag});ws.workspace.layout.foldActiveEpisode=flag;renderEpisodeTree();}
-    else{await B.wsTreeEpisode(eid);await B.wsLayout({foldActiveEpisode:false});ws=await B.wsState();renderWorkspaceShell();}
-   }else if(treeAction==='segment')await chooseSegment(eid,sid);
+   if(treeAction==='expand'){await chooseEpisode(eid);}
+   else if(treeAction==='segment'){await chooseSegment(eid,sid);}
    else if(treeAction==='done'){
-    await flushPrompt();const ep=ws.workspace.episodes.find(x=>x.id===eid),seg=ep?.segments.find(x=>x.id===sid);if(!seg)return;
-    const next=seg.status==='done'?'pending':'done';
+    await flushPrompt();
+    const ep=ws.workspace.episodes.find(x=>x.id===eid),seg=ep?.segments.find(x=>x.id===sid);
+    if(!seg)return;const next=seg.status==='done'?'pending':'done';
     ws=await B.wsSetStatus(eid,sid,next,cfg.activeAccountId);
-    renderWorkspaceShell();await renderImages();
-    toast(next==='done'?`第${seg.n}段已完成，卡片已收起；可点击撤销`:`第${seg.n}段已恢复待制作`);
+    renderWorkspaceShell();await renderImages();toast(next==='done'?'已完成第'+seg.n+'段':'第'+seg.n+'段恢复待制作');
+   }else if(treeAction==='delete-episode'){
+    const ep=ws.workspace.episodes.find(x=>x.id===eid);if(!ep)return;
+    if(await confirmAction('移除整集？','「'+ep.title+'」及其中 '+ep.segments.filter(s=>!s.deletedAt).length+' 段将放入回收站，可恢复。不会删除图片、视频、提示词及账号。')){
+     await mutateWorkspace(()=>B.wsDeleteEpisode(eid));toast('本集已移至回收站');
+    }
+   }else if(treeAction==='delete-segment'){
+    const ep=ws.workspace.episodes.find(x=>x.id===eid),seg=ep?.segments.find(x=>x.id===sid);if(!seg)return;
+    if(await confirmAction('移除当前段？','第'+seg.n+'段将移至回收站，原文和参考图不会丢失。')){
+     await mutateWorkspace(()=>B.wsDeleteSegment(eid,sid));toast('段落已移入回收站');
+    }
    }
   });
-  $('episodeTreeList').onkeydown=e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-tree-action="segment"]')){e.preventDefault();e.target.click()}};
+  $('episodeTreePanel').onkeydown=e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-tree-action]')){e.preventDefault();e.target.click()}};
+  $('btnDeleteCurrentEpisode').onclick=()=>{const ep=getEp();if(!ep)return;const btn=[...$('episodeCards').querySelectorAll('[data-tree-action="delete-episode"]')].find(x=>x.dataset.eid===ep.id);btn?.click()};
+  $('btnTrash').onclick=()=>safe(openTrash);
+  $('btnCloseTrash').onclick=$('btnCloseTrashBottom').onclick=()=>dialogClose($('trashDialog'));
+  $('trashList').onclick=e=>safe(async()=>{
+   const btn=e.target.closest('[data-trash-action]');if(!btn)return;
+   const {trashAction,eid,sid}=btn.dataset;
+   await mutateWorkspace(()=>trashAction==='episode'?B.wsRestoreEpisode(eid):B.wsRestoreSegment(eid,sid));
+   toast('已从回收站恢复');await refreshTrashList();
+  });
   $('btnShowHidden').onclick=()=>safe(()=>mutateWorkspace(()=>B.wsShowHidden(!ws.workspace.showHidden)));
   $('btnHideDone').onclick=()=>safe(async()=>{const result=await B.wsHideDone();ws=result.state;renderWorkspaceShell();await renderImages();toast(`已隐藏 ${result.hidden} 个完成段，可点“显示已隐藏”查看`);bounds()});
   $('btnHideEpisode').onclick=()=>safe(async()=>{const e=getEp();if(e)await mutateWorkspace(()=>B.wsHidden(e.id,null,!e.hidden))});
