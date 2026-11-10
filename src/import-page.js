@@ -9,7 +9,7 @@ function probe(){
  const richText=root=>{let s='';function visit(node){if(node.nodeType===3){s+=node.nodeValue||'';return;}if(node.nodeType!==1)return;const tag=node.tagName;if(tag==='BR'){if(node.parentElement?.childNodes.length!==1)s+='\n';return;}if(['DIV','P','LI'].includes(tag)&&s.length>0)s+='\n';for(const child of node.childNodes)visit(child);}for(const child of root.childNodes)visit(child);return s;};
  const visible=el=>{if(!el?.getBoundingClientRect)return false;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>15&&r.height>12&&s.display!=='none'&&s.visibility!=='hidden'};
  const els=[...document.querySelectorAll('.guidance-input-content .tiptap.ProseMirror[contenteditable="true"],.guidance-input-content [contenteditable="true"],.tiptap.ProseMirror[contenteditable="true"],textarea.semi-input-textarea,[role="textbox"][contenteditable="true"],textarea,[contenteditable="true"]')].filter(visible);
- const rank=el=>{const r=el.getBoundingClientRect();return (el.closest('.guidance-input-content')?500:0)+(el.matches('.tiptap.ProseMirror')?200:0)+Math.min(r.width,700)+(r.bottom>innerHeight*.35?100:0)};
+ const rank=el=>{const r=el.getBoundingClientRect();return (el.closest('.guidance-input-content')?500:0)+(el.matches('.tiptap.ProseMirror')?200:0)+( /视频|描述你想要的视频/.test(el.getAttribute('placeholder')||el.getAttribute('data-placeholder')||'')?180:0 )+Math.min(r.width,700)+(r.bottom>innerHeight*.35?100:0)};
  const edit=els.sort((a,b)=>rank(b)-rank(a))[0];
  if(!edit)return {ready:false,message:'没有找到豆包的聊天输入框'};
  const region=edit.closest('.guidance-input-content')?.parentElement||edit.closest('form')||edit.parentElement?.parentElement||document.body;
@@ -73,7 +73,8 @@ function openUploadMenu(){
  const visible=el=>{const r=el.getBoundingClientRect();return r.width>10&&r.height>10&&r.top>=0&&r.bottom<=innerHeight};
  const controls=[...document.querySelectorAll('button,[role="button"],[role="menuitem"],label')].filter(visible);
  const label=el=>(el.getAttribute('aria-label')||el.getAttribute('title')||el.textContent||'').trim().replace(/\s+/g,' ');
- const plus=controls.find(el=>/^(?:\+|添加|添加附件|附件|更多附件|添加文件)$/i.test(label(el)));
+ const plus=controls.filter(el=>/^(?:\+|添加|添加附件|附件|更多附件|添加文件)$/i.test(label(el)))
+    .sort((a,b)=>b.getBoundingClientRect().top-a.getBoundingClientRect().top)[0];
  if(!plus)return {ok:false,message:'未找到聊天框附件“＋”按钮'};
  plus.click();return {ok:true,message:'已打开附件操作菜单'};
 }

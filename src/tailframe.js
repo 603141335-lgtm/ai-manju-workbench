@@ -12,7 +12,16 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function findPredecessor(data,episodeId,segmentId){
  const ep=data.episodes.find(e=>e.id===episodeId);if(!ep)return null;
  const index=ep.segments.findIndex(s=>s.id===segmentId);
- return index>0?{ep,seg:ep.segments[index-1]}:null;
+ if(index<0)return null;
+ const current=ep.segments[index];
+ if(current.previousSegmentId){
+   const prev=ep.segments.find(s=>s.id===current.previousSegmentId);
+   if(prev)return {ep,seg:prev};
+   const deleted=(data.trash||[]).find(t=>t.kind==='segment'&&t.episodeId===ep.id&&t.item?.id===current.previousSegmentId);
+   if(deleted)return {ep,seg:deleted.item};
+   return null;
+ }
+ return Object.prototype.hasOwnProperty.call(current,'previousSegmentId')?null:(index>0?{ep,seg:ep.segments[index-1]}:null);
 }
 function safeSegment(s){return /^[\w-]{1,160}$/.test(String(s))?String(s):createHash('sha256').update(String(s)).digest('hex').slice(0,32)}
 function validVideo(p){try{const st=fs.statSync(p);return path.isAbsolute(p)&&VIDEO_EXT.has(path.extname(p).toLowerCase())&&st.isFile()&&st.size>200;}catch{return false}}
@@ -69,8 +78,8 @@ class TailFrameStore{
  row(epId,segId){return this.rows[`${safeSegment(epId)}:${safeSegment(segId)}`]||null;}
  status(data,episodeId,segmentId){
   const prev=findPredecessor(data,episodeId,segmentId);if(!prev)return {state:'first',message:'本集第一段，无上段尾帧'};
-  const row=this.row(prev.ep.id,prev.seg.id);if(!row)return {state:'none',sourceSegment:prev.seg.n,message:`第${prev.seg.n}段尚未指定最终视频，可手动绑定`};
   if(this.busy.has(`${safeSegment(prev.ep.id)}:${safeSegment(prev.seg.id)}`))return {state:'extracting',message:'上一段尾帧正在提取'};
+  const row=this.row(prev.ep.id,prev.seg.id);if(!row)return {state:'none',sourceSegment:prev.seg.n,message:`第${prev.seg.n}段尚未指定最终视频，可手动绑定`};
   if(row.error)return {state:'error',message:row.error,videoPath:row.videoPath};
   if(!fs.existsSync(row.framePath))return {state:'missing',message:'提取的尾帧图片已移动或丢失',videoPath:row.videoPath};
   if(!fs.existsSync(row.videoPath))return {state:'stale',message:'上一段原视频文件已移动',framePath:row.framePath};
@@ -78,18 +87,24 @@ class TailFrameStore{
   return {state:'ready',code:'尾帧',file:{path:row.framePath,name:path.basename(row.framePath)},sourceSegment:prev.seg.n,sourceSegmentId:prev.seg.id,videoPath:row.videoPath,seekSecond:row.seekSecond,message:`第${prev.seg.n}段尾帧已绑定为本段图1`};
  }
  async setFinal(data,episodeId,segmentId,videoPath,{auto=false}={}){
-  const ep=data.episodes.find(e=>e.id===episodeId);const seg=ep?.segments.find(s=>s.id===segmentId);
+  const ep=data.episodes.find(e=>e.id===episodeId);const seg=ep?.segments.find(s=>s.id===segmentId)||(data.trash||[]).find(t=>t.kind==='segment'&&t.episodeId===episodeId&&t.item?.id===segmentId)?.item;
   if(!seg)throw Error('无法找到视频对应的剧集和段落');
   if(!validVideo(videoPath))throw Error('请选择存在的 MP4/MOV/WEBM/MKV 成品视频');
   const key=`${safeSegment(episodeId)}:${safeSegment(segmentId)}`;
-  if(auto&&this.rows[key])return {state:'kept',message:'已经有选定的最终版，下载其他视频不会自动覆盖它'};
+  // Extract a candidate even if the selected final version is locked.
   if(this.busy.has(key))return {state:'busy',message:'本段尾帧正在处理'};
   this.busy.add(key);
   const st=await fsp.stat(videoPath);const target=path.join(this.folder,safeSegment(episodeId),safeSegment(segmentId)+'-'+createHash('sha256').update(videoPath+'|'+st.mtimeMs+'|'+st.size).digest('hex').slice(0,14)+'.png');
   try{
    const out=await extractLastValidFrame(videoPath,target,this.tools);
-   this.rows[key]={episodeId,segmentId,videoPath,framePath:target,sourceMtime:st.mtimeMs,sourceSize:st.size,seekSecond:out.second,createdAt:new Date().toISOString(),error:null};
-   await this.save();return {state:'ready',message:`第${seg.n}段尾帧已提取，将用于下一段图1`,framePath:target,second:out.second};
+   const previous=this.rows[key];
+   const snapshot={episodeId,segmentId,videoPath,framePath:target,sourceMtime:st.mtimeMs,sourceSize:st.size,seekSecond:out.second,createdAt:new Date().toISOString(),locked:!auto,error:null};
+   const candidates=Array.isArray(previous?.versions)?previous.versions.slice(-48):(previous?.framePath?[{videoPath:previous.videoPath,framePath:previous.framePath,createdAt:previous.createdAt}]:[]);
+   if(!candidates.some(v=>v.framePath===target))candidates.push({videoPath,framePath:target,createdAt:snapshot.createdAt});
+   const selected=!(auto&&previous?.locked);
+   this.rows[key]=selected?{...snapshot,versions:candidates}:{...previous,versions:candidates};
+   await this.save();
+   return {state:selected?'ready':'kept',message:selected?`第${seg.n}段尾帧已提取，将用于下一段图1`:`第${seg.n}段新尾帧已提取为候选，原锁定最终版不变`,framePath:target,second:out.second};
   }catch(e){
    // Preserve previously working final video/frame if a replacement extraction fails.
    return {state:'error',message:'提取尾帧失败：'+e.message};
