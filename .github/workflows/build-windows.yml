@@ -2,6 +2,8 @@ name: Build real Doubao Browser Workbench (No Canvas) v0.9.4
 on:
   push:
     branches: [feature/doubao-creative-hub-v0.9.4]
+  pull_request:
+    branches: [doubao-creative-hub-STABLE-v0.9.3]
   workflow_dispatch:
 permissions:
   contents: write
@@ -60,7 +62,17 @@ jobs:
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt
+      - name: Upload v0.9.4 installer to workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Doubao-Creative-Hub-Setup-v0.9.4-x64
+          path: |
+            release/Doubao-Creative-Hub-Setup-v0.9.4-x64.exe
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
       - name: Publish private GitHub Release (avoids Actions artifact quota)
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: doubao-browser-v0.9.4
