@@ -15,6 +15,7 @@ const {createImportEngine}=require('./import-engine');
 const {VoiceBindingsStore}=require('./voice-bindings');
 const {TailFrameStore,binaries,findPredecessor}=require('./tailframe');
 const {detectSegmentCodes}=require('./parser');
+const videoMode=require('./video-mode');
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
 const MAX_LIVE_VIEWS=3;
@@ -48,6 +49,20 @@ function getDownloadPath(filename){
   let candidate=path.join(folder,safe),i=1;
   while(fs.existsSync(candidate))candidate=path.join(folder,`${stem} (${i++})${ext}`);
   return candidate;
+}
+const pendingVideoChecks=new Map();
+async function ensureVideoMode(id=activeId){
+  const wc=views.get(id)?.view?.webContents;
+  if(!wc||wc.isDestroyed())throw Error('豆包网页尚未加载');
+  if(pendingVideoChecks.has(id))return pendingVideoChecks.get(id);
+  const task=videoMode.ensure(wc).then(result=>{
+    tell('video:status',{accountId:id,...result});
+    return result;
+  }).finally(()=>pendingVideoChecks.delete(id));
+  pendingVideoChecks.set(id,task);return task;
+}
+function scheduleVideoCheck(id){
+  setTimeout(()=>{if(views.has(id))ensureVideoMode(id).catch(e=>tell('video:status',{accountId:id,ready:false,message:e.message}))},900);
 }
 function setupSession(sess,accountId){
   if(sess.__creativeHubReady)return;
@@ -91,8 +106,8 @@ function configureView(id){
     return {action:'allow',overrideBrowserWindowOptions:{width:1100,height:760,autoHideMenuBar:true,webPreferences:{session:sess,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}}};
   });
   wc.on('did-start-loading',()=>{importEngine?.cancel();tell('web:status',{id,status:'正在加载…'})});
-  wc.on('did-navigate-in-page',()=>importEngine?.cancel());
-  wc.on('did-stop-loading',()=>tell('web:status',{id,status:'网页已加载'}));
+  wc.on('did-navigate-in-page',()=>{importEngine?.cancel();scheduleVideoCheck(id)});
+  wc.on('did-stop-loading',()=>{tell('web:status',{id,status:'网页已加载'});scheduleVideoCheck(id)});
   wc.on('did-fail-load',(_e,code,description,url,isMainFrame)=>{if(isMainFrame&&code!==-3)tell('web:status',{id,status:`加载失败 (${code})：${description}`,url})});
   wc.on('render-process-gone',(_e,details)=>{tell('web:status',{id,status:`网页进程退出：${details.reason}，可点刷新重试`})});
   wc.loadURL(DOUBAO_URL).catch(e=>{log(e);tell('web:status',{id,status:'豆包打开失败：'+e.message})});
@@ -282,6 +297,13 @@ function registerHandlers(){
   ipcMain.handle('app:dataPath',()=>app.getPath('userData'));
   ipcMain.handle('app:openData',()=>shell.openPath(app.getPath('userData')));
   // V0.2 workspace IPC is deliberately separate from v0.1 account config and session partitions.
+  ipcMain.handle('video:ensure',()=>ensureVideoMode());
+  ipcMain.handle('ws:delete',async(_e,eid,sid)=>{
+    const r=await workspace.deleteItem(eid,sid||null);
+    tell('app:toast','已移入回收站；原始视频和参考图未删除');
+    return r;
+  });
+  ipcMain.handle('ws:restoreItem',(_e,id)=>workspace.restoreItem(id));
   ipcMain.handle('ws:state',()=>workspace.snapshot());
   ipcMain.handle('ws:importText',async(_e,text,filename)=>workspace.addText(text,filename));
   ipcMain.handle('ws:importFiles',async()=>{
@@ -351,8 +373,16 @@ function registerHandlers(){
   });
   ipcMain.handle('import:draft',(_e,eid,sid,prompt)=>importEngine.getDraft({episodeId:eid,segmentId:sid,previewText:prompt}));
   ipcMain.handle('import:sync-text',(_e,eid,sid,replaceDraft)=>importEngine.syncText({episodeId:eid,segmentId:sid,replaceDraft:!!replaceDraft}));
-  ipcMain.handle('import:preflight',(_e,eid,sid)=>importEngine.getPlan({episodeId:eid,segmentId:sid}));
-  ipcMain.handle('import:execute',(_e,eid,sid,options)=>importEngine.execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false}));
+  ipcMain.handle('import:preflight',async(_e,eid,sid)=>{
+    const mode=await ensureVideoMode();
+    if(!mode.ready)return {ready:false,blocked:true,error:mode.message||'视频生成模式未就绪'};
+    return importEngine.getPlan({episodeId:eid,segmentId:sid});
+  });
+  ipcMain.handle('import:execute',async(_e,eid,sid,options)=>{
+    const mode=await ensureVideoMode();
+    if(!mode.ready)throw Error(mode.message||'视频生成模式未就绪');
+    return importEngine.execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false});
+  });
   ipcMain.handle('import:cancel',()=>importEngine.cancel());
   ipcMain.handle('import:confirm',(_e,approved)=>importEngine.confirm(approved===true));
   ipcMain.handle('mention:preflight',(_e,eid,sid)=>mentionRunner.preflight({episodeId:eid,segmentId:sid}));
