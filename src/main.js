@@ -58,7 +58,7 @@ function setupSession(sess,accountId){
   sess.__creativeHubReady=true;
   sess.on('will-download',(_ev,item)=>{
     try{
-      const match=downloadAssociations.find(accountId);
+      const selected=workspace.current();const match=downloadAssociations.find(accountId,{episodeId:selected.ep?.id,segmentId:selected.seg?.id});
       const acc=cfg.accounts.find(a=>a.id===accountId);
       let ep=null,seg=null;
       if(match.state==='matched'){ep=workspace.data.episodes.find(e=>e.id===match.context.episodeId);seg=ep?.segments.find(s=>s.id===match.context.segmentId);}
