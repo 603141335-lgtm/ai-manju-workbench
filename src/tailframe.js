@@ -87,7 +87,7 @@ class TailFrameStore{
   return {state:'ready',code:'尾帧',file:{path:row.framePath,name:path.basename(row.framePath)},sourceSegment:prev.seg.n,sourceSegmentId:prev.seg.id,videoPath:row.videoPath,seekSecond:row.seekSecond,message:`第${prev.seg.n}段尾帧已绑定为本段图1`};
  }
  async setFinal(data,episodeId,segmentId,videoPath,{auto=false}={}){
-  const ep=data.episodes.find(e=>e.id===episodeId);const seg=ep?.segments.find(s=>s.id===segmentId);
+  const ep=data.episodes.find(e=>e.id===episodeId);const seg=ep?.segments.find(s=>s.id===segmentId)||(data.trash||[]).find(t=>t.kind==='segment'&&t.episodeId===episodeId&&t.item?.id===segmentId)?.item;
   if(!seg)throw Error('无法找到视频对应的剧集和段落');
   if(!validVideo(videoPath))throw Error('请选择存在的 MP4/MOV/WEBM/MKV 成品视频');
   const key=`${safeSegment(episodeId)}:${safeSegment(segmentId)}`;
