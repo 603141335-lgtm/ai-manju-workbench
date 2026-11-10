@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   wsShowHidden:show=>ipcRenderer.invoke('ws:showHidden',show),
   wsHideDone:()=>ipcRenderer.invoke('ws:hideDone'),
   wsDelete:(eid,sid)=>ipcRenderer.invoke('ws:delete',eid,sid),
-  wsRestore:id=>ipcRenderer.invoke('ws:restoreItem',id),
+  wsRestoreTrash:id=>ipcRenderer.invoke('ws:restoreItem',id),
   wsTreeEpisode:eid=>ipcRenderer.invoke('ws:treeEpisode',eid),
   wsSetSelection:(eid,sid,paths)=>ipcRenderer.invoke('ws:selection',eid,sid,paths),
   wsChooseVersion:(code,path)=>ipcRenderer.invoke('ws:version',code,path),
