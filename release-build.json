@@ -1,0 +1,54 @@
+{
+  "appId": "com.manju.doubao.creativehub",
+  "productName": "豆包创作舱",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "src/**/*",
+    "package.json",
+    "!src/canvas/**",
+    "!**/*.map",
+    "!**/*.pdb"
+  ],
+  "asar": true,
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "Doubao-Creative-Hub-Setup-v${version}-x64.${ext}",
+    "icon": "assets/app.ico"
+  },
+  "compression": "maximum",
+  "electronFuses": {
+    "runAsNode": false,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "enableEmbeddedAsarIntegrityValidation": true,
+    "onlyLoadAppFromAsar": true
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "extraResources": [
+    {
+      "from": "vendor/bin",
+      "to": "bin",
+      "filter": [
+        "ffmpeg.exe",
+        "ffprobe.exe",
+        "COPYING.LGPLv2.1",
+        "FFMPEG_NOTICE.txt"
+      ]
+    }
+  ]
+}
