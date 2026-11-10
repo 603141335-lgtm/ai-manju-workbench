@@ -1,7 +1,7 @@
-name: Build real Doubao Browser Workbench (No Canvas) v0.9.3
+name: Build real Doubao Browser Workbench (No Canvas) v0.9.4
 on:
   push:
-    branches: [release/doubao-browser-draft-episodes-v0.9.3]
+    branches: [feature/doubao-creative-hub-v0.9.4]
   workflow_dispatch:
 permissions:
   contents: write
@@ -25,6 +25,8 @@ jobs:
         run: node scripts/harden.js
       - name: Verify obfuscated parser/renderer/workspace
         run: npm run check
+      - name: New v0.9.4 regression tests
+        run: node --test tests/v094.test.js
       - name: Fetch official-third-party LGPL FFmpeg Windows binaries for tailframes
         run: |
           New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
@@ -53,7 +55,7 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Setup-v0.9.3-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Setup-v0.9.4-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
@@ -61,14 +63,14 @@ jobs:
       - name: Publish private GitHub Release (avoids Actions artifact quota)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: doubao-browser-v0.9.3
+          tag_name: doubao-browser-v0.9.4
           target_commitish: ${{ github.sha }}
-          name: 豆包创作舱 v0.9.3（浏览器登录·同步提速·姓名识别·剧集折叠）
+          name: 豆包创作舱 v0.9.4（视频模式·尾帧自动化·方形剧集目录·可恢复删除）
           prerelease: true
           body: |
-            正确基于 01_豆包创作舱_v0.5_单独包.zip 的浏览器工作台，支持 WebContentsView 豆包网页版登录、账号独立持久化分区，去除画布。保留人物声音绑定、图片批量上传、顶部内联原生@尝试和跨段尾帧。新增 A01小李 等人物名称拆分、发送稿预览与单独文字重同步、全宽剧集折叠目录、已完成段落缩小卡。内置 LGPL FFmpeg 独立可执行程序，见许可证说明。未应用商业 Themida/VMProtect 加壳；原生 @ 及批量上传尚未在用户已登录的真实豆包页面完成验收。
+            基于 v0.9.3 正式源码增量升级。新增视频生成模式检测与参数选择、下载尾帧自动更新、上下两层方形剧集段落目录、可恢复删除。原有25账号与素材保持兼容。网页自动操作依赖豆包真实DOM，请在已登录的Windows环境中复核。
           files: |
-            release/Doubao-Creative-Hub-Setup-v0.9.3-x64.exe
+            release/Doubao-Creative-Hub-Setup-v0.9.4-x64.exe
             release/SHA256SUMS.txt
             release/latest.yml
             release/*.blockmap
