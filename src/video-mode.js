@@ -14,7 +14,7 @@ function scanAndAct(target){
   const duration=controls.some(x=>/15\s*s|15秒/i.test(x));
   if(target==='probe')return {video,model,ratio,duration,controls:controls.slice(0,60)};
   if(target==='menu'){
-    const choices=els.filter(x=>/^(?:AI创作|创作|更多|\\+|添加)$/i.test(label(x)));
+    const choices=els.filter(x=>/^(?:AI创作|创作|更多|\+|添加)$/i.test(label(x)));
     const el=choices.sort((a,b)=>b.getBoundingClientRect().top-a.getBoundingClientRect().top)[0];
     if(!el)return {ok:false,reason:'没有找到创作模式选择菜单'};
     el.click();return {ok:true,clicked:label(el)};
