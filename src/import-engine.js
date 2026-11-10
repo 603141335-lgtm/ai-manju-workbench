@@ -64,7 +64,15 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   return plan;
  }
  async function getPlan({episodeId,segmentId}){
-  const a=currentActive(),seg=getSegment(episodeId,segmentId),plan=getDraft({episodeId,segmentId});
+  const a=currentActive(),seg=getSegment(episodeId,segmentId);
+  let plan=getDraft({episodeId,segmentId});
+  // Automatically wait for a just-downloaded video's tailframe before importing.
+  if(plan.tailStatus?.state==='extracting'){
+   for(let n=0;n<55;n++){
+    await pause(450);plan=getDraft({episodeId,segmentId});
+    if(plan.tailStatus?.state!=='extracting')break;
+   }
+  }
   const snap=await probe(a.webContents);
   if(!snap.ready)return {...plan,ready:false,error:'豆包网页暂未找到可用的聊天输入框'};
   const trimmed=(snap.prompt||'').trim(),unchanged=seg.text.trim(),draft=plan.previewText.trim();
