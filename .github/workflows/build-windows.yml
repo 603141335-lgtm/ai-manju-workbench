@@ -1,12 +1,12 @@
-name: Build Doubao Creative Hub PUBLIC v0.9.6
+name: Build Doubao Creative Hub PUBLIC v0.9.7
 concurrency:
-  group: "public-v096-${{ github.ref }}"
+  group: "public-v097-${{ github.ref }}"
   cancel-in-progress: true
 on:
   push:
-    branches: [feature/doubao-public-v0.9.6-ready]
+    branches: [feature/doubao-public-v0.9.7-video-api]
   pull_request:
-    branches: [feature/doubao-public-v0.9.5-framework]
+    branches: [feature/doubao-public-v0.9.6-ready]
   workflow_dispatch:
 permissions:
   contents: write
@@ -32,8 +32,8 @@ jobs:
         run: npm run check
       - name: v0.9.4 compatibility tests
         run: node --test tests/v094.test.js
-      - name: Public distribution privacy, notice, thumbnail and cleanup tests
-        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js
+      - name: Public edition and video/API regression tests
+        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js
       - name: Fetch official-third-party LGPL FFmpeg Windows binaries for tailframes
         run: |
           New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
@@ -66,7 +66,7 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.6-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.7-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
@@ -75,14 +75,14 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: doubao-public-v0.9.6
-          target_commitish: feature/doubao-public-v0.9.6-ready
-          name: 豆包创作舱 v0.9.6 公开优化版（数据隔离·远程公告·低内存）
+          tag_name: doubao-public-v0.9.7
+          target_commitish: feature/doubao-public-v0.9.7-video-api
+          name: 豆包创作舱 v0.9.7（视频模式识别修复·API接口·公告同步）
           prerelease: true
           body: |
-            v0.9.6 修复旧版发布附件路径；独立空白工作区与25个登录位，不迁移作者工作数据；社群公告远程配置框架；低内存缓存预览；显式释放和账号保护，不擅自关闭后台生成页面。公告内置固定的待开通公开入口，在单独公告仓库上线前显示占位，后续可远程修改。真实豆包登录操作尚需 Windows 真机验证。
+            v0.9.7 修复豆包视频模式误判，参数未全部确认只提示不阻拦素材预检；增加左上角 API 配置与本机加密密钥、连接和文本测试；移除性能模式界面，保留原图与缓存预览；联网公告每5分钟刷新，公共公告仓库仍需单独开通。公开版与创作者原账户完全隔离，真实豆包操作仍需真机验证。
           files: |
-            release/Doubao-Creative-Hub-Public-Setup-v0.9.6-x64.exe
+            release/Doubao-Creative-Hub-Public-Setup-v0.9.7-x64.exe
             release/SHA256SUMS.txt
             release/*.blockmap
           fail_on_unmatched_files: true

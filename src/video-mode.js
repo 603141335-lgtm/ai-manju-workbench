@@ -1,80 +1,80 @@
 'use strict';
-/** Doubao video composer adapter. Never sends a message or changes uploaded media. */
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function scanAndAct(target){
-  const visible=el=>{if(!el||!el.getBoundingClientRect)return false;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>8&&r.height>8&&s.display!=='none'&&s.visibility!=='hidden'};
-  const label=el=>[el.getAttribute('aria-label'),el.getAttribute('title'),el.textContent].filter(Boolean).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean)[0]||'';
-  const els=[...document.querySelectorAll('button,[role="button"],[role="option"],[role="menuitem"],[aria-haspopup],label')].filter(visible);
-  const find=(pattern)=>els.find(el=>pattern.test(label(el))&&label(el).length<100&&!el.disabled);
-  const controls=els.map(x=>label(x)).filter(Boolean);
-  const body=document.body?.innerText||'';
-  const video=controls.some(x=>/^(?:视频生成|AI视频生成|视频创作)(?:\s*[×✕])?$/.test(x))||/视频生成\s*[×✕]/.test(body);
-  const model=controls.some(x=>/Seedance\s*2\.0\s*Fast/i.test(x));
-  const ratio=controls.some(x=>/16\s*:\s*9\s*[·•]\s*15\s*s/i.test(x))||controls.some(x=>/^(?:16\s*:\s*9|横屏)/.test(x));
-  const duration=controls.some(x=>/15\s*s|15秒/i.test(x));
-  if(target==='probe')return {video,model,ratio,duration,controls:controls.slice(0,60)};
-  if(target==='menu'){
-    const choices=els.filter(x=>/^(?:AI创作|创作|更多|\+|添加)$/i.test(label(x)));
-    const el=choices.sort((a,b)=>b.getBoundingClientRect().top-a.getBoundingClientRect().top)[0];
-    if(!el)return {ok:false,reason:'没有找到创作模式选择菜单'};
-    el.click();return {ok:true,clicked:label(el)};
-  }
-  if(target==='video'){
-    if(video)return {ok:true,already:true};
-    const b=find(/^(?:视频生成|AI视频生成|视频创作)$/)||find(/视频生成/);
-    if(!b)return {ok:false,reason:'没有找到视频生成选项（可能需要手动打开创作菜单）'};
-    b.click();return {ok:true,clicked:label(b)};
-  }
-  if(target==='model'){
-    if(model)return {ok:true,already:true};
-    const b=find(/Seedance|模型|选择模型/);
-    if(!b)return {ok:false,reason:'未找到模型菜单'};
-    b.click();return {ok:true,clicked:label(b)};
-  }
-  if(target==='fast'){
-    const b=find(/Seedance\s*2\.0\s*Fast/i);
-    if(!b)return {ok:false,reason:'当前账号未显示 Seedance 2.0 Fast'};
-    b.click();return {ok:true,clicked:label(b)};
-  }
-  if(target==='settings'){
-    const b=find(/16\s*:\s*9|\d+\s*s|参数|比例|时长|设置/);
-    if(!b)return {ok:false,reason:'未找到视频参数菜单'};
-    b.click();return {ok:true,clicked:label(b)};
-  }
-  if(target==='ratio'){
-    const b=find(/^(?:16\s*:\s*9|横屏)(?:\s|$)/);
-    if(!b)return {ok:false,reason:'未找到16:9比例'};
-    b.click();return {ok:true,clicked:label(b)};
-  }
-  if(target==='duration'){
-    const b=find(/^(?:15\s*s|15\s*秒)(?:\s|$)/i);
-    if(!b)return {ok:false,reason:'未找到15秒选项'};
-    b.click();return {ok:true,clicked:label(b)};
-  }
-  return {ok:false,reason:'未知检测项'};
+/**
+ * Read-only Doubao video composer detection.
+ * NEVER click unrelated model/settings menus: they may represent choices, not selected values.
+ * 'ready' confirms the VIDEO composer only; model/aspect/duration are separate warnings.
+ */
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function scanAndAct(target='probe'){
+  const visible=el=>{
+    if(!el||typeof el.getBoundingClientRect!=='function')return false;
+    const r=el.getBoundingClientRect(),s=getComputedStyle(el);
+    return r.width>8&&r.height>8&&s.display!=='none'&&s.visibility!=='hidden';
+  };
+  const text=el=>String(el?.textContent||'').replace(/\s+/g,' ').trim();
+  const attr=(el,k)=>String(el?.getAttribute?.(k)||'').trim();
+  const labels=el=>[text(el),attr(el,'aria-label'),attr(el,'title')].filter(Boolean);
+  const controls=[...document.querySelectorAll('button,[role="button"],[role="tab"],[role="option"],[role="menuitem"],label,[aria-pressed],[aria-selected]')]
+    .filter(visible).slice(0,550);
+  const allLabels=controls.flatMap(labels).filter(x=>x.length<140);
+  const editors=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"],[data-placeholder],[placeholder]')]
+    .filter(visible).slice(0,80);
+  const placeholders=editors.flatMap(el=>[
+    attr(el,'placeholder'),attr(el,'data-placeholder'),attr(el,'aria-placeholder'),attr(el,'aria-label')
+  ]).filter(Boolean);
+  const videoComposer=placeholders.some(x=>/描述.{0,18}视频|想要的.{0,10}视频|视频.{0,8}(?:创作|描述|生成)|describe.{0,20}video/i.test(x));
+  const activeVideoChip=controls.some(el=>{
+    const label=labels(el).find(v=>/视频生成|视频创作|AI视频生成/.test(v));
+    if(!label||label.length>60)return false;
+    if(attr(el,'aria-pressed')==='true'||attr(el,'aria-selected')==='true'||attr(el,'data-state')==='active')return true;
+    const className=String(el.className||'');
+    if(/(?:^|[\s_-])(?:selected|active|checked)(?:$|[\s_-])/i.test(className))return true;
+    // The currently selected removable chip in Doubao contains a close control.
+    const hasClose=/[×✕✖]/.test(text(el))||
+      !!el.querySelector?.('[aria-label*="移除"],[aria-label*="关闭"],[aria-label*="清除"]');
+    return hasClose;
+  });
+  // Some Doubao versions use a selected chip inside a plain non-button container.
+  const chips=[...document.querySelectorAll('[class*="chip"],[class*="tag"],[data-state="active"]')]
+    .filter(visible).slice(0,100);
+  const chipVideo=chips.some(el=>{
+    const t=text(el);
+    return t.length<60&&/视频生成|视频创作/.test(t)&&(/[×✕✖]/.test(t)||attr(el,'data-state')==='active');
+  });
+  const video=videoComposer||activeVideoChip||chipVideo;
+  const model=allLabels.some(v=>/Seedance\s*2(?:\.0)?\s*Fast/i.test(v));
+  const ratio=allLabels.some(v=>/(?:^|[\s·•,，(（])16\s*:\s*9(?:$|[\s·•,，)）])/i.test(v)||/^16\s*:\s*9$/.test(v));
+  const duration=allLabels.some(v=>/(?:^|[\s·•,，(（])15\s*(?:秒|s)(?:$|[\s·•,，)）])/i.test(v)||/^15\s*(?:秒|s)$/i.test(v));
+  const genericComposer=placeholders.some(v=>/发消息|按住空格说话|问我任何问题/.test(v));
+  return {
+    video,model,ratio,duration,videoComposer,activeVideoChip,chipVideo,genericComposer,
+    source:videoComposer?'视频输入框':activeVideoChip?'已选中的视频标签':chipVideo?'视频模式标签':'未识别到已选中的视频模式',
+    controls:allLabels.slice(0,50),placeholders:placeholders.slice(0,15)
+  };
 }
 async function ensure(wc){
-  if(!wc||wc.isDestroyed())return {ready:false,message:'页面不存在'};
+  if(!wc||wc.isDestroyed())return {ready:false,message:'豆包网页尚未加载'};
   const url=wc.getURL();
   if(!/^https:\/\/(?:www\.)?doubao\.com\//i.test(url))return {ready:false,message:'请打开并登录豆包官方网站'};
-  const exec=async target=>wc.executeJavaScript('('+scanAndAct.toString()+')('+JSON.stringify(target)+')',true);
+  const exec=()=>wc.executeJavaScript('('+scanAndAct.toString()+')("probe")',true);
   try{
-    let p=await exec('probe');
-    if(!p.video){
-      let selected=await exec('video');
-      if(!selected.ok){await exec('menu');await sleep(280);selected=await exec('video')}
-      await sleep(650);p=await exec('probe');
-    }
-    if(!p.video)return {ready:false,message:'没有确认视频生成模式，请在豆包网页手动选择「视频生成」',details:p};
-    if(!p.model){await exec('model');await sleep(280);await exec('fast');await sleep(430);p=await exec('probe')}
-    if(!p.ratio||!p.duration){
-      await exec('settings');await sleep(300);
-      if(!p.ratio){await exec('ratio');await sleep(250)}
-      if(!p.duration){await exec('settings');await sleep(180);await exec('duration');await sleep(280)}
-      p=await exec('probe');
-    }
-    const ready=p.video&&p.model&&p.ratio&&p.duration;
-    return {ready,video:p.video,model:p.model,ratio:p.ratio,duration:p.duration,message:ready?'视频生成 · Seedance 2.0 Fast · 16:9 · 15秒 已确认':'视频模式已打开，但模型/比例/时长未全部确认，请在网页中检查设置',details:p};
-  }catch(err){return {ready:false,message:'视频模式切换失败：'+err.message};}
+    let p=await exec();
+    // Wait once for Doubao's asynchronous SPA editor transition, without clicking other controls.
+    if(!p.video){await sleep(300);p=await exec();}
+    const missing=[];
+    if(!p.model)missing.push('Seedance 2.0 Fast');
+    if(!p.ratio)missing.push('16:9');
+    if(!p.duration)missing.push('15秒');
+    const ready=!!p.video;
+    return {
+      ready,video:ready,model:!!p.model,ratio:!!p.ratio,duration:!!p.duration,
+      settingsVerified:ready&&missing.length===0,
+      manual:false,
+      message:ready
+        ?(missing.length?'已识别视频生成；请在豆包检查 '+missing.join('、')+'（不阻止导入）':'视频生成、Seedance 2.0 Fast、16:9、15秒均已识别')
+        :'未识别到已选中的视频模式；如网页已打开视频生成，请点「人工确认模式」',
+      details:p
+    };
+  }catch(e){return {ready:false,video:false,message:'检测豆包网页失败，请重试或人工确认：'+e.message};}
 }
 module.exports={scanAndAct,ensure};

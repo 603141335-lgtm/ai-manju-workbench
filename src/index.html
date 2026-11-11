@@ -11,9 +11,10 @@
 <body>
 <div class="app" id="app">
   <header class="topbar">
-    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge" id="appVersionBadge">v0.9.6 公开版</span></div>
+    <button class="apiHeadBtn" id="btnApi" title="配置 API 服务商、模型与 Key">API 接口</button>
+    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge" id="appVersionBadge">v0.9.7 公开版</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
-    <div class="topactions"><button class="ghost compact" id="btnPerformance" title="浏览器占用和性能模式">性能</button><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="ghost" id="btnData">数据目录</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
+    <div class="topactions"><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="ghost" id="btnData">数据目录</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
   <main class="layout" id="layout">
     <aside class="sidebar" id="accountsPanel">
@@ -32,7 +33,7 @@
         <section class="browserPanel" id="browserPanel">
           <div class="browserhead"><div class="navBtns"><button class="iconBtn" data-nav="back" title="后退">←</button><button class="iconBtn" data-nav="forward" title="前进">→</button><button class="iconBtn" data-nav="reload" title="刷新豆包">↻</button><button class="iconBtn" data-nav="home" title="首页">⌂</button></div><div class="address"><span class="secure">●</span><span id="addressText">doubao.com</span></div><button class="iconBtn" data-nav="zoomOut">−</button><span class="zoomLabel">网页</span><button class="iconBtn" data-nav="zoomIn">＋</button><button class="ghost compact" id="btnMaxBrowser">专注</button></div>
           <div class="webHost" id="webHost"><div class="underlay">正在加载真实豆包网页，请在网页里登录后开始制作。</div></div>
-          <div class="browserfoot"><span id="webStatus">正在初始化浏览器…</span><button id="btnEdge" class="linkBtn" title="兼容备用：打开对应 Edge 配置文件">用 Edge 打开</button></div>
+          <div class="browserfoot"><span id="webStatus">正在初始化浏览器…</span><button id="btnVideoRetry" class="linkBtn" title="重新识别当前豆包的视频模式">重查视频模式</button><button id="btnVideoManual" class="linkBtn" hidden title="网页已在视频生成，但检测器未识别时人工确认">人工确认模式</button><button id="btnEdge" class="linkBtn" title="兼容备用：打开对应 Edge 配置文件">用 Edge 打开</button></div>
         </section>
         <div class="resizer vertical" id="rightResizer" title="调整素材区域宽度"></div>
         <aside class="assetsPanel" id="assetsPanel">
@@ -105,29 +106,45 @@
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="noticeHint" class="noticeHint" hidden><span id="noticeHintText">官方公告更新</span><button id="noticeHintOpen" class="smallBtn">查看</button><button id="noticeHintClose" class="iconBtn" aria-label="关闭提醒">×</button></div>
+<dialog id="apiDialog" class="noticeDialog apiDialog">
+  <div class="dialogbody">
+    <div class="dialoghead"><h2>API 接口 · 本地设置</h2><button class="iconBtn" id="apiClose" aria-label="关闭 API 设置">×</button></div>
+    <p class="apiIntro">支持 OpenAI 兼容的文本接口，用于独立 API 测试；不改变豆包网页版登录和视频生成。API Key 只保存在当前电脑的 Windows 加密存储中。</p>
+    <label for="apiProvider">接口服务商</label>
+    <select id="apiProvider">
+      <option value="openai">OpenAI（文本 API）</option>
+      <option value="deepseek">DeepSeek</option>
+      <option value="volcengine">火山方舟 / 豆包 API</option>
+      <option value="custom">自定义 OpenAI 兼容接口</option>
+    </select>
+    <label for="apiEndpoint">API 基础地址（HTTPS）</label>
+    <input id="apiEndpoint" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false"/>
+    <label for="apiModel">模型 ID</label>
+    <input id="apiModel" placeholder="例如 deepseek-chat 或你的推理接入点 ID" autocomplete="off" spellcheck="false"/>
+    <label for="apiKey">API Key</label>
+    <input id="apiKey" type="password" placeholder="输入新的 Key；留空则保留已保存的 Key" autocomplete="new-password" spellcheck="false"/>
+    <p id="apiKeyStatus" class="noticeSource">尚未设置 API Key</p>
+    <div class="apiButtons"><button id="apiSave" class="primary">保存 API 设置</button><button id="apiCheck" class="ghost">测试连接（/models）</button><button id="apiClearKey" class="ghost">删除已存 Key</button></div>
+    <div class="apiTestArea">
+      <label for="apiTestPrompt">文字模型测试（手动发送，可能产生 Token 费用）</label>
+      <textarea id="apiTestPrompt" rows="3" maxlength="4000" placeholder="例如：请用一句话介绍你自己。此处文字仅在点击发送后传给配置的 API。"></textarea>
+      <button class="ghost" id="apiAsk">发送测试请求</button>
+      <pre id="apiTestResult" class="apiResult" aria-live="polite">尚未测试</pre>
+    </div>
+    <p class="noticePrivacy">API 配置对每位用户独立。软件不自动发送漫剧项目、提示词、参考图、豆包账号或 Cookie 到 API。密钥加密后落在当前 Windows 用户目录里，不会被打入对外分享的安装包。</p>
+    <div class="dialogActions"><button id="apiDone" class="primary">返回工作台</button></div>
+  </div>
+</dialog>
 <dialog id="noticeDialog" class="noticeDialog"><div class="dialogbody">
   <div class="dialoghead"><h2>社群中心 · 官方公告</h2><button id="btnNoticeClose" class="iconBtn" aria-label="关闭">×</button></div>
   <p class="noticeSource" id="noticeSource">尚未连接公告服务器</p>
-  <div class="noticeTile"><span class="noticeKicker">最新版本</span><strong id="noticeRelease">当前版本 v0.9.6</strong><p id="noticeReleaseNotes">暂未发布远程版本消息。</p><button id="btnNoticeDownload" class="primary" hidden>在浏览器打开最新版下载页面</button></div>
+  <div class="noticeTile"><span class="noticeKicker">最新版本</span><strong id="noticeRelease">当前版本 v0.9.7</strong><p id="noticeReleaseNotes">暂未发布远程版本消息。</p><button id="btnNoticeDownload" class="primary" hidden>在浏览器打开最新版下载页面</button></div>
   <div class="noticeTile"><span class="noticeKicker">公告消息</span><strong id="noticeTitle">官方消息</strong><p id="noticeBody">此区域未来会联网同步最新活动与教程。</p></div>
   <div class="noticeTile"><span class="noticeKicker">社群宣传</span><strong id="noticeCommunity">创作交流</strong><p id="noticeCommunityDesc">社群信息由管理员远程配置。</p>
   <p id="noticeWechat" hidden></p><img id="noticeQR" alt="社群二维码" loading="lazy" referrerpolicy="no-referrer" hidden/>
   <div class="noticeActions"><button id="btnNoticeQQ" class="ghost" hidden>QQ群链接</button><button id="btnNoticeQR" class="ghost" hidden>查看二维码</button></div></div>
   <p class="noticePrivacy">仅此公告模块联网读取公共信息。本地账号、Cookie、剧本、参考图和素材不会上传到公告服务器。</p>
   <div class="dialogActions"><button id="btnNoticeRefresh" class="ghost">刷新公告</button><button id="btnNoticeDone" class="primary">返回创作</button></div>
-</div></dialog>
-<dialog id="performanceDialog" class="noticeDialog"><div class="dialogbody">
-  <div class="dialoghead"><h2>性能与内存管理</h2><button id="btnPerformanceClose" class="iconBtn" aria-label="关闭">×</button></div>
-  <p id="performanceSummary">正在读取浏览器状态…</p>
-  <div class="performanceControls">
-    <label class="protectRow"><input type="checkbox" id="protectActiveAccount"/> <span>保护当前账号的后台网页（不参与释放）</span></label>
-    <button class="ghost" id="btnCleanupViews">检查并释放闲置后台网页</button>
-  </div>
-  <p id="performanceWarning" class="noticePrivacy">手动释放前会列出候选账号；不会自动关闭正在生成的页面。</p>
-  <label for="performanceMode">后台浏览器目标数量（不会自动清理）</label>
-  <select id="performanceMode" class="performanceSelect"><option value="performance">多任务模式 · 最多保留3个网页</option><option value="balanced">均衡模式 · 最多保留2个网页（默认）</option><option value="light">省内存模式 · 最多保留1个网页</option></select>
-  <p class="noticePrivacy">正在上传文件或生成视频的后台网页不能可靠地自动识别。超过上限不会自动关闭。点击“释放闲置后台网页”后，系统排除手动保护和正在下载的账号，再列出候选账号要求确认；官方豆包的云端生成状态无法自动确认。关闭视图不删除登录状态，但可能影响任务进度的显示。</p>
-  <div class="dialogActions"><button id="btnPerformanceDone" class="primary">完成</button></div>
 </div></dialog>
 <dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>豆包创作舱｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 底部每集单独一整行，点击集名展开分段，点击段落切换；点右上角「已完成」自动缩成小卡。高级隐藏/锁定在「更多」菜单。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
 <dialog id="voiceDialog"><div class="dialogbody"><div class="dialoghead"><h2>绑定人物声音到参考图</h2><button id="btnVoiceClose" class="iconBtn">×</button></div>
@@ -137,7 +154,7 @@
     <p class="tiny">Seedance 2.0 参考音频：每段2—15秒、同一任务最多3段、总长最多15秒；模型限制不等于豆包聊天框已经支持音频上传。</p>
     <div class="dialogActions"><button class="ghost" id="btnVoiceCancel">取消</button><button class="primary" id="btnVoiceChoose">选择音频并绑定</button></div></div></dialog>
 <dialog id="pasteDialog"><div class="dialogbody"><div class="dialoghead"><h2>粘贴完整多集提示词</h2><button id="closePaste" class="iconBtn">×</button></div><p>按“第X集｜标题”“第X段｜标题”识别，每段原文存储；导入不影响旧项目。</p><textarea id="pasteText" placeholder="将一集或多集完整提示词粘贴到这里" spellcheck="false"></textarea><div class="dialogActions"><button id="submitPaste" class="primary">解析并加入项目</button></div></div></dialog>
-<dialog id="toolsDialog"><div class="dialogbody"><div class="dialoghead"><h2>项目管理</h2><button id="closeTools" class="iconBtn">×</button></div><div class="toolGrid"><button id="btnRescan" class="ghost">重扫参考图目录</button><button id="btnProjectBackup" class="ghost">备份漫剧项目</button><button id="btnProjectRestore" class="ghost">恢复漫剧项目</button><button id="btnExportSegment" class="ghost">导出当前段</button><button id="btnProjectName" class="ghost">重命名当前项目</button><button id="btnShowPaths" class="ghost">查看素材统计</button></div><details class="advancedLegacy"><summary>高级项目管理：隐藏、锁定及旧数据兼容</summary>
+<dialog id="toolsDialog"><div class="dialogbody"><div class="dialoghead"><h2>项目管理</h2><button id="closeTools" class="iconBtn">×</button></div><div class="toolGrid"><button id="btnCleanupViews" class="ghost" title="会先确认再关闭无任务的后台页面，不删除账号 Cookie">清理闲置后台网页</button><button id="btnRescan" class="ghost">重扫参考图目录</button><button id="btnProjectBackup" class="ghost">备份漫剧项目</button><button id="btnProjectRestore" class="ghost">恢复漫剧项目</button><button id="btnExportSegment" class="ghost">导出当前段</button><button id="btnProjectName" class="ghost">重命名当前项目</button><button id="btnShowPaths" class="ghost">查看素材统计</button></div><details class="advancedLegacy"><summary>高级项目管理：隐藏、锁定及旧数据兼容</summary>
 <div class="legacyActions"><button id="btnEpisodeTree" class="smallBtn" hidden>剧集目录</button><span id="episodeMiniStat" class="tiny"></span>
 <button id="btnHideDone" class="smallBtn">批量隐藏已完成（旧版）</button><button id="btnShowHidden" class="smallBtn">显示已隐藏</button>
 <button id="btnHideEpisode" class="smallBtn">隐藏本集</button><button id="btnLockEpisode" class="smallBtn">锁定本集</button>

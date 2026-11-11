@@ -1,5 +1,5 @@
 'use strict';
-const {app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, clipboard, nativeImage, session} = require('electron');
+const {app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, clipboard, nativeImage, session, safeStorage} = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -16,6 +16,7 @@ const {VoiceBindingsStore}=require('./voice-bindings');
 const {TailFrameStore,binaries,findPredecessor}=require('./tailframe');
 const {detectSegmentCodes}=require('./parser');
 const videoMode=require('./video-mode');
+const {ApiSettings}=require('./api-settings');
 const {NoticeService,safeHttps}=require('./notice-service');
 const {ThumbnailCache}=require('./thumbnail-cache');
 const publicConfig=require('./public-config.json');
@@ -35,7 +36,7 @@ const activeDownloads=new Map();
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
 const loadedExtensions=new Map();
 const views=new Map(); // account ID -> {view,lastUsed}
-let mentionRunner=null,importEngine=null,tailframes=null,voiceBindings=null,thumbnailCache=null;
+let mentionRunner=null,importEngine=null,tailframes=null,voiceBindings=null,thumbnailCache=null,apiSettings=null;
 const now=()=>Date.now();
 const exists=(p)=>{try{return fs.statSync(p).isFile()}catch{return false}};
 function log(err){try{fs.appendFileSync(path.join(app.getPath('userData'),'diagnostic.log'),`\n${new Date().toISOString()} ${String(err?.stack||err)}\n`)}catch{}}
@@ -64,12 +65,19 @@ function getDownloadPath(filename){
   return candidate;
 }
 const pendingVideoChecks=new Map();
+const manualVideoSessions=new Map(); // account -> {webContentsId, confirmedAt}
 const lastPreparedByAccount=new Map();
 async function ensureVideoMode(id=activeId){
   const wc=views.get(id)?.view?.webContents;
-  if(!wc||wc.isDestroyed())throw Error('豆包网页尚未加载');
+  if(!wc||wc.isDestroyed())return {ready:false,message:'豆包网页尚未加载'};
   if(pendingVideoChecks.has(id))return pendingVideoChecks.get(id);
   const task=videoMode.ensure(wc).then(result=>{
+    const manual=manualVideoSessions.get(id);
+    if(!result.ready&&manual&&manual.webContentsId===wc.id&&Date.now()-manual.confirmedAt<30*60*1000){
+      // User explicitly confirmed on this account/page; never label settings as automatically verified.
+      result={...result,ready:true,video:true,manual:true,settingsVerified:false,
+        message:'已人工确认当前账号的视频模式；模型、16:9和15秒仍需你在豆包网页检查'};
+    }
     tell('video:status',{accountId:id,...result});
     return result;
   }).finally(()=>pendingVideoChecks.delete(id));
@@ -132,8 +140,8 @@ function configureView(id){
     return {action:'allow',overrideBrowserWindowOptions:{width:1100,height:760,autoHideMenuBar:true,webPreferences:{session:sess,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}}};
   });
   wc.on('did-start-loading',()=>{importEngine?.cancel();tell('web:status',{id,status:'正在加载…'})});
-  wc.on('did-navigate-in-page',()=>{importEngine?.cancel();scheduleVideoCheck(id)});
-  wc.on('did-stop-loading',()=>{tell('web:status',{id,status:'网页已加载'});scheduleVideoCheck(id)});
+  wc.on('did-navigate-in-page',()=>{manualVideoSessions.delete(id);importEngine?.cancel();scheduleVideoCheck(id)});
+  wc.on('did-stop-loading',()=>{manualVideoSessions.delete(id);tell('web:status',{id,status:'网页已加载'});scheduleVideoCheck(id)});
   wc.on('did-fail-load',(_e,code,description,url,isMainFrame)=>{if(isMainFrame&&code!==-3)tell('web:status',{id,status:`加载失败 (${code})：${description}`,url})});
   wc.on('render-process-gone',(_e,details)=>{tell('web:status',{id,status:`网页进程退出：${details.reason}，可点刷新重试`})});
   wc.loadURL(DOUBAO_URL).catch(e=>{log(e);tell('web:status',{id,status:'豆包打开失败：'+e.message})});
@@ -254,6 +262,10 @@ function initializeUpdater(){
 
 function registerHandlers(){
   ipcMain.handle('cfg:get',()=>cfg);
+  ipcMain.handle('api:get',()=>apiSettings.snapshot());
+  ipcMain.handle('api:save',(_event,settings)=>apiSettings.save(settings));
+  ipcMain.handle('api:check',()=>apiSettings.check());
+  ipcMain.handle('api:chat',(_event,prompt)=>apiSettings.chat(prompt));
   ipcMain.handle('perf:get',()=>performanceState());
   ipcMain.handle('perf:set',async(_e,mode)=>{
     if(!Object.prototype.hasOwnProperty.call(LIVE_LIMITS,mode))throw Error('无效的性能模式');
@@ -310,6 +322,7 @@ function registerHandlers(){
     if(cfg.accounts.length<=1)throw Error('至少保留一个账号');
     if(activeId===id)selectAccount(cfg.accounts.find(a=>a.id!==id).id);
     const slot=views.get(id);if(slot){try{win.contentView.removeChildView(slot.view);slot.view.webContents.close()}catch(e){log(e)}views.delete(id)}
+    manualVideoSessions.delete(id);
     protectedAccounts.delete(id);
     // Deliberately does not delete a profile directory or its cookies; accidental removal is reversible via backup.
     return update(()=>{cfg.accounts=cfg.accounts.filter(a=>a.id!==id)});
@@ -393,6 +406,21 @@ function registerHandlers(){
   ipcMain.handle('app:openData',()=>shell.openPath(app.getPath('userData')));
   // V0.2 workspace IPC is deliberately separate from v0.1 account config and session partitions.
   ipcMain.handle('video:ensure',()=>ensureVideoMode());
+  ipcMain.handle('video:manualConfirm',async()=>{
+    const id=activeId,wc=views.get(id)?.view?.webContents;
+    if(!wc||wc.isDestroyed()||!/^https:\/\/(?:www\.)?doubao\.com\//i.test(wc.getURL()))throw Error('请先打开豆包官网');
+    const {response}=await dialog.showMessageBox(win,{
+      type:'warning',buttons:['取消','我已在豆包网页确认视频生成模式'],defaultId:0,cancelId:0,
+      title:'人工确认视频模式',
+      message:'请检查豆包输入框已切换成「视频生成」',
+      detail:'并确认使用 Seedance 2.0 Fast、16:9、15秒。此操作只解除当前账号此页的模式识别限制，有效30分钟或页面重新加载之前；不会替代参考图/附件上传的真实性验证，也不会自动发送视频生成任务。'
+    });
+    if(response!==1)return {cancelled:true};
+    manualVideoSessions.set(id,{webContentsId:wc.id,confirmedAt:Date.now()});
+    const result=await ensureVideoMode(id);
+    tell('video:status',{accountId:id,...result});
+    return result;
+  });
   ipcMain.handle('ws:delete',async(_e,eid,sid)=>{
     const r=await workspace.deleteItem(eid,sid||null);
     tell('app:toast','已移入回收站；原始视频和参考图未删除');
@@ -470,8 +498,9 @@ function registerHandlers(){
   ipcMain.handle('import:sync-text',(_e,eid,sid,replaceDraft)=>importEngine.syncText({episodeId:eid,segmentId:sid,replaceDraft:!!replaceDraft}));
   ipcMain.handle('import:preflight',async(_e,eid,sid)=>{
     const mode=await ensureVideoMode();
-    if(!mode.ready)return {ready:false,blocked:true,error:mode.message||'视频生成模式未就绪'};
-    return importEngine.getPlan({episodeId:eid,segmentId:sid});
+    if(!mode.ready)return {ready:false,blocked:true,error:mode.message||'视频生成模式未就绪',videoCheck:mode};
+    const plan=await importEngine.getPlan({episodeId:eid,segmentId:sid});
+    return {...plan,videoCheck:{ready:mode.ready,settingsVerified:mode.settingsVerified,message:mode.message}};
   });
   ipcMain.handle('import:execute',async(_e,eid,sid,options)=>{
     const mode=await ensureVideoMode();
@@ -568,6 +597,6 @@ if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus()}});
   process.on('uncaughtException',log);process.on('unhandledRejection',log);
-  app.whenReady().then(async()=>{cfg=readCfg();noticeService=new NoticeService({url:publicConfig.noticeUrl,cachePath:path.join(app.getPath('userData'),'notice-cache.json'),version:app.getVersion()});thumbnailCache=new ThumbnailCache({root:path.join(app.getPath('userData'),'preview-cache'),createThumbnail:async(source,size)=>{const img=await nativeImage.createThumbnailFromPath(source,size);return img.isEmpty()?null:img.toPNG()}});workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱-公开版','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();voiceBindings=await new VoiceBindingsStore(path.join(app.getPath('userData'),'voice-bindings.json'),{ffprobe:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath}).ffprobe}).load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});importEngine=createImportEngine({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},getSegment:(eid,sid)=>workspace.findSegment(eid,sid).seg,resolveRows:(eid,sid)=>workspace.resolveSegment(eid,sid),getChosenPaths:()=>workspace.data.chosenPaths,getCurrentSelection:()=>({episodeId:workspace.data.activeEpisodeId,segmentId:workspace.data.activeSegmentId}),getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),getVoiceForImages:items=>voiceBindings.plan(items),notify:info=>tell('import:status',info)});registerHandlers();initializeUpdater();createWindow();setTimeout(()=>thumbnailCache.prune().catch(log),18000);noticeTimer=setInterval(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),60*60*1000);noticeTimer.unref?.();setTimeout(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),1300)}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
+  app.whenReady().then(async()=>{cfg=readCfg();noticeService=new NoticeService({url:publicConfig.noticeUrl,cachePath:path.join(app.getPath('userData'),'notice-cache.json'),version:app.getVersion()});apiSettings=new ApiSettings({file:path.join(app.getPath('userData'),'api-settings.json'),safeStorage});thumbnailCache=new ThumbnailCache({root:path.join(app.getPath('userData'),'preview-cache'),createThumbnail:async(source,size)=>{const img=await nativeImage.createThumbnailFromPath(source,size);return img.isEmpty()?null:img.toPNG()}});workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱-公开版','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();voiceBindings=await new VoiceBindingsStore(path.join(app.getPath('userData'),'voice-bindings.json'),{ffprobe:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath}).ffprobe}).load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});importEngine=createImportEngine({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},getSegment:(eid,sid)=>workspace.findSegment(eid,sid).seg,resolveRows:(eid,sid)=>workspace.resolveSegment(eid,sid),getChosenPaths:()=>workspace.data.chosenPaths,getCurrentSelection:()=>({episodeId:workspace.data.activeEpisodeId,segmentId:workspace.data.activeSegmentId}),getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),getVoiceForImages:items=>voiceBindings.plan(items),notify:info=>tell('import:status',info)});registerHandlers();initializeUpdater();createWindow();setTimeout(()=>thumbnailCache.prune().catch(log),18000);noticeTimer=setInterval(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),5*60*1000);noticeTimer.unref?.();setTimeout(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),1300)}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
   app.on('window-all-closed',()=>app.quit());
 }
