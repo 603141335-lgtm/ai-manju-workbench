@@ -6,7 +6,7 @@ on:
   push:
     branches: [feature/doubao-public-v0.9.7-video-api]
   pull_request:
-    branches: [feature/doubao-public-v0.9.7-ready]
+    branches: [feature/doubao-public-v0.9.6-ready]
   workflow_dispatch:
 permissions:
   contents: write
