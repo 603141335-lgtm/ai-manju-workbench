@@ -1,9 +1,9 @@
-name: Build real Doubao Browser Workbench (No Canvas) v0.9.4
+name: Build Doubao Creative Hub PUBLIC v0.9.5
 on:
   push:
-    branches: [feature/doubao-creative-hub-v0.9.4]
+    branches: [feature/doubao-public-v0.9.5-framework]
   pull_request:
-    branches: [doubao-creative-hub-STABLE-v0.9.3]
+    branches: [feature/doubao-creative-hub-v0.9.4]
   workflow_dispatch:
 permissions:
   contents: write
@@ -27,8 +27,10 @@ jobs:
         run: node scripts/harden.js
       - name: Verify obfuscated parser/renderer/workspace
         run: npm run check
-      - name: New v0.9.4 regression tests
+      - name: v0.9.4 compatibility tests
         run: node --test tests/v094.test.js
+      - name: Public distribution privacy and notice tests
+        run: node --test tests/v095-public.test.js
       - name: Fetch official-third-party LGPL FFmpeg Windows binaries for tailframes
         run: |
           New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
@@ -46,6 +48,10 @@ jobs:
           Add-Content $env:GITHUB_PATH "$env:GITHUB_WORKSPACE/vendor/bin"
       - name: Verify actual tail-frame extraction (bundled FFmpeg)
         run: node --test tests/v090.test.js
+      - name: Prepare remote notice endpoint (optional; may be empty)
+        env:
+          DOUBAO_NOTICE_URL: ${{ vars.DOUBAO_NOTICE_URL }}
+        run: node scripts/prepare-public-notice.js
       - name: Prepare optional public update feed
         env:
           DOUBAO_UPDATE_URL: ${{ vars.DOUBAO_UPDATE_URL }}
@@ -57,21 +63,21 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Setup-v0.9.4-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.5-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt
       - name: Publish private GitHub Release (avoids Actions artifact quota)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: doubao-browser-v0.9.4
-          target_commitish: feature/doubao-creative-hub-v0.9.4
-          name: 豆包创作舱 v0.9.4（视频模式·尾帧自动化·方形剧集目录·可恢复删除）
+          tag_name: doubao-public-v0.9.5
+          target_commitish: feature/doubao-public-v0.9.5-framework
+          name: 豆包创作舱 v0.9.5 公开分发框架（空白用户·远程公告·内存模式）
           prerelease: true
           body: |
-            基于 v0.9.3 正式源码增量升级。新增视频生成模式检测与参数选择、下载尾帧自动更新、上下两层方形剧集段落目录、可恢复删除。原有25账号与素材保持兼容。网页自动操作依赖豆包真实DOM，请在已登录的Windows环境中复核。
+            独立公开版：不迁移作者工作版数据；首次空白工作区与25个登录位；远程只读社群公告与版本链接框架；可选内存模式且关闭后台网页前必须确认。尚未配置 DOUBAO_NOTICE_URL 时公告使用占位内容。需在 Windows 真实豆包环境中复核。
           files: |
             release/Doubao-Creative-Hub-Setup-v0.9.4-x64.exe
             release/SHA256SUMS.txt
