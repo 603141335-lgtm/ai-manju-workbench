@@ -64,12 +64,19 @@ function getDownloadPath(filename){
   return candidate;
 }
 const pendingVideoChecks=new Map();
+const manualVideoSessions=new Map(); // account -> {webContentsId, confirmedAt}
 const lastPreparedByAccount=new Map();
 async function ensureVideoMode(id=activeId){
   const wc=views.get(id)?.view?.webContents;
-  if(!wc||wc.isDestroyed())throw Error('豆包网页尚未加载');
+  if(!wc||wc.isDestroyed())return {ready:false,message:'豆包网页尚未加载'};
   if(pendingVideoChecks.has(id))return pendingVideoChecks.get(id);
   const task=videoMode.ensure(wc).then(result=>{
+    const manual=manualVideoSessions.get(id);
+    if(!result.ready&&manual&&manual.webContentsId===wc.id&&Date.now()-manual.confirmedAt<30*60*1000){
+      // User explicitly confirmed on this account/page; never label settings as automatically verified.
+      result={...result,ready:true,video:true,manual:true,settingsVerified:false,
+        message:'已人工确认当前账号的视频模式；模型、16:9和15秒仍需你在豆包网页检查'};
+    }
     tell('video:status',{accountId:id,...result});
     return result;
   }).finally(()=>pendingVideoChecks.delete(id));
@@ -132,8 +139,8 @@ function configureView(id){
     return {action:'allow',overrideBrowserWindowOptions:{width:1100,height:760,autoHideMenuBar:true,webPreferences:{session:sess,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}}};
   });
   wc.on('did-start-loading',()=>{importEngine?.cancel();tell('web:status',{id,status:'正在加载…'})});
-  wc.on('did-navigate-in-page',()=>{importEngine?.cancel();scheduleVideoCheck(id)});
-  wc.on('did-stop-loading',()=>{tell('web:status',{id,status:'网页已加载'});scheduleVideoCheck(id)});
+  wc.on('did-navigate-in-page',()=>{manualVideoSessions.delete(id);importEngine?.cancel();scheduleVideoCheck(id)});
+  wc.on('did-stop-loading',()=>{manualVideoSessions.delete(id);tell('web:status',{id,status:'网页已加载'});scheduleVideoCheck(id)});
   wc.on('did-fail-load',(_e,code,description,url,isMainFrame)=>{if(isMainFrame&&code!==-3)tell('web:status',{id,status:`加载失败 (${code})：${description}`,url})});
   wc.on('render-process-gone',(_e,details)=>{tell('web:status',{id,status:`网页进程退出：${details.reason}，可点刷新重试`})});
   wc.loadURL(DOUBAO_URL).catch(e=>{log(e);tell('web:status',{id,status:'豆包打开失败：'+e.message})});
@@ -310,6 +317,7 @@ function registerHandlers(){
     if(cfg.accounts.length<=1)throw Error('至少保留一个账号');
     if(activeId===id)selectAccount(cfg.accounts.find(a=>a.id!==id).id);
     const slot=views.get(id);if(slot){try{win.contentView.removeChildView(slot.view);slot.view.webContents.close()}catch(e){log(e)}views.delete(id)}
+    manualVideoSessions.delete(id);
     protectedAccounts.delete(id);
     // Deliberately does not delete a profile directory or its cookies; accidental removal is reversible via backup.
     return update(()=>{cfg.accounts=cfg.accounts.filter(a=>a.id!==id)});
@@ -393,6 +401,21 @@ function registerHandlers(){
   ipcMain.handle('app:openData',()=>shell.openPath(app.getPath('userData')));
   // V0.2 workspace IPC is deliberately separate from v0.1 account config and session partitions.
   ipcMain.handle('video:ensure',()=>ensureVideoMode());
+  ipcMain.handle('video:manualConfirm',async()=>{
+    const id=activeId,wc=views.get(id)?.view?.webContents;
+    if(!wc||wc.isDestroyed()||!/^https:\/\/(?:www\.)?doubao\.com\//i.test(wc.getURL()))throw Error('请先打开豆包官网');
+    const {response}=await dialog.showMessageBox(win,{
+      type:'warning',buttons:['取消','我已在豆包网页确认视频生成模式'],defaultId:0,cancelId:0,
+      title:'人工确认视频模式',
+      message:'请检查豆包输入框已切换成「视频生成」',
+      detail:'并确认使用 Seedance 2.0 Fast、16:9、15秒。此操作只解除当前账号此页的模式识别限制，有效30分钟或页面重新加载之前；不会替代参考图/附件上传的真实性验证，也不会自动发送视频生成任务。'
+    });
+    if(response!==1)return {cancelled:true};
+    manualVideoSessions.set(id,{webContentsId:wc.id,confirmedAt:Date.now()});
+    const result=await ensureVideoMode(id);
+    tell('video:status',{accountId:id,...result});
+    return result;
+  });
   ipcMain.handle('ws:delete',async(_e,eid,sid)=>{
     const r=await workspace.deleteItem(eid,sid||null);
     tell('app:toast','已移入回收站；原始视频和参考图未删除');
