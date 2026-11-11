@@ -17,7 +17,7 @@
   },
   "build": {
     "appId": "com.manju.doubao.creativehub.public",
-    "productName": "豆包创作舱",
+    "productName": "豆包创作舱（公开版）",
     "directories": {
       "output": "release"
     },
