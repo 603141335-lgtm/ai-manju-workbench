@@ -16,7 +16,7 @@ test('v0.9.1 图号锚点属于开头参考图栏目，不是正文末尾',()=>{
   items.forEach((x,i)=>{
     const anchor=core.makeMapping([x],i);
     assert.equal(composed.split(anchor).length,2,'唯一的图号锚点：'+anchor);
-    assert(composed.indexOf(anchor)>first&&composed.indexOf(anchor)<last,'图号需位于最顶部：'+anchor);
+    assert(composed.indexOf(anchor)<first&&first<last,'图号需位于原文之前：'+anchor);
   });
   assert(composed.endsWith('0—3秒｜台词：不要改！\n'));
 });
