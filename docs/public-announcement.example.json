@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-11-11",
+  "release": {
+    "version": "0.9.5",
+    "title": "豆包创作舱新版",
+    "notes": "公开版框架已准备。未来可填写新版功能、下载地址。",
+    "url": ""
+  },
+  "notice": {
+    "id": "welcome-001",
+    "title": "欢迎使用豆包创作舱",
+    "body": "社群活动、教程通知与更新公告，将从这里远程同步。",
+    "showHint": false
+  },
+  "community": {
+    "title": "AI 漫剧创作交流",
+    "description": "请在发布后台配置社群说明与二维码。",
+    "wechat": "",
+    "qqUrl": "",
+    "qrUrl": ""
+  }
+}
