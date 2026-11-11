@@ -17,7 +17,8 @@ function validateEndpoint(value){
   if(!clean)throw Error('API 地址必须是公网 HTTPS 地址，不能使用本地或内网地址');
   const url=new URL(clean);
   if(url.search||url.hash||/\/(?:chat\/completions|models)\/?$/i.test(url.pathname))throw Error('请填写 API 基础地址，例如 https://api.example.com/v1');
-  if(/(?:^|\.)local$/i.test(url.hostname))throw Error('不支持本地网络地址');
+  const host=url.hostname.toLowerCase().replace(/^\[|\]$/g,'');
+  if(host.includes(':')||/(?:^|\.)(?:local|localhost|internal)$/i.test(host))throw Error('不支持本地网络地址');
   return url.origin+url.pathname.replace(/\/+$/,'');
 }
 const shortText=(v,n)=>String(v||'').trim().slice(0,n);
