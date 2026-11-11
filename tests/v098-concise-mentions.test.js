@@ -61,9 +61,10 @@ test('v0.9.8: no changes to installed public profile identity or import click ha
  const pkg=require('../package.json');
  assert.equal(pkg.build.appId,'com.manju.doubao.creativehub.public');
  const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');
- const renderer=fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8');
+ const preload=fs.readFileSync(path.join(__dirname,'../src/preload.js'),'utf8');
  const main=fs.readFileSync(path.join(__dirname,'../src/main.js'),'utf8');
  assert(html.includes('id="btnOneClickImport"'));
- assert(renderer.includes('importExecute'));
+ assert(preload.includes('importExecute'));
+ // Renderer code is obfuscated in packaged builds, so its identifier names are not stable.
  assert(main.includes("'import:execute'"));
 });
