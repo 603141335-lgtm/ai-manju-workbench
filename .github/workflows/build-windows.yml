@@ -1,12 +1,12 @@
-name: Build Doubao Creative Hub PUBLIC v0.9.7
+name: Build Doubao Creative Hub PUBLIC v0.9.8
 concurrency:
-  group: "public-v097-${{ github.ref }}"
+  group: "public-v098-${{ github.ref }}"
   cancel-in-progress: true
 on:
   push:
-    branches: [feature/doubao-public-v0.9.7-video-api]
+    branches: [feature/doubao-v0.9.8-concise-mentions]
   pull_request:
-    branches: [feature/doubao-public-v0.9.6-ready]
+    branches: [feature/doubao-public-v0.9.7-video-api]
   workflow_dispatch:
 permissions:
   contents: write
@@ -33,7 +33,7 @@ jobs:
       - name: v0.9.4 compatibility tests
         run: node --test tests/v094.test.js
       - name: Public edition and video/API regression tests
-        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js
+        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js tests/v098-concise-mentions.test.js
       - name: Fetch official-third-party LGPL FFmpeg Windows binaries for tailframes
         run: |
           New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
@@ -66,23 +66,23 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.7-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.8-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt
       - name: Publish private GitHub Release (avoids Actions artifact quota)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: doubao-public-v0.9.7
-          target_commitish: feature/doubao-public-v0.9.7-video-api
-          name: 豆包创作舱 v0.9.7（视频模式识别修复·API接口·公告同步）
+          tag_name: doubao-public-v0.9.8
+          target_commitish: feature/doubao-v0.9.8-concise-mentions
+          name: 豆包创作舱 v0.9.8（简洁参考图艾特·保持其他功能不变）
           prerelease: true
           body: |
-            v0.9.7 修复豆包视频模式误判，参数未全部确认只提示不阻拦素材预检；增加左上角 API 配置与本机加密密钥、连接和文本测试；移除性能模式界面，保留原图与缓存预览；联网公告每5分钟刷新，公共公告仓库仍需单独开通。公开版与创作者原账户完全隔离，真实豆包操作仍需真机验证。
+            v0.9.8 只升级顶部参考图蓝色原生@定位文本：尾帧优先，人物/场景/食材分类排序，每图一行；保留 v0.9.7 API、公告、账号、剧集、下载、尾帧、音频和独立公开版数据目录。自动测试验证代码与安装包，但真实豆包登录界面的原生蓝色@成功率仍需 Windows 实机核验。
           files: |
-            release/Doubao-Creative-Hub-Public-Setup-v0.9.7-x64.exe
+            release/Doubao-Creative-Hub-Public-Setup-v0.9.8-x64.exe
             release/SHA256SUMS.txt
             release/*.blockmap
           fail_on_unmatched_files: true

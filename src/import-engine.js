@@ -4,7 +4,7 @@
  */
 const fs=require('node:fs');
 const path=require('node:path');
-const {parseCodes,composeText}=require('./import-core');
+const {parseCodes,composeText,sortReferenceItems}=require('./import-core');
 const {isAllowedDoubaoUrl,codeInName}=require('./mention-core');
 const oldPage=require('./mention-page');
 const inlinePage=require('./inline-mention-page');
@@ -34,7 +34,7 @@ function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null,labels={
   if(items.some(x=>x.file?.path===tail.file.path))items.splice(items.findIndex(x=>x.file.path===tail.file.path),1);
   items.unshift({code:'尾帧',kind:'tail',status:'ready',message:tail.message,file:{path:tail.file.path,name:tail.file.name},versions:1});
  }
- return {codes,items,tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
+ return {codes,items:sortReferenceItems(items),tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
 }
 function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
  let running=null;
