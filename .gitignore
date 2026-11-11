@@ -15,3 +15,15 @@ workbench.json
 参考图/
 素材/
 剧本/
+
+# Local runtime profiles and personal data must never enter a public build
+workspace.json
+config.json
+notice-cache.json
+download-settings.json
+voice-bindings.json
+Cookies
+User Data/
+*.sqlite
+*.sqlite3
+*.db

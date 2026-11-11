@@ -6,7 +6,7 @@ function createInitialData(makeId) {
     id:makeId(), groupId:g.id, name:`豆包 ${String(gi*5+j+1).padStart(2,'0')}`, done:0
   })));
   const segments = [{id:makeId(), name:'第1段', prompt:'', images:[]}];
-  return {version:1,groups,accounts,segments,activeAccountId:accounts[0].id,activeSegmentId:segments[0].id, target:2};
+  return {version:1,groups,accounts,segments,activeAccountId:accounts[0].id,activeSegmentId:segments[0].id, target:2, performanceMode:'balanced'};
 }
 function normalizeName(v, max=48){
   if(typeof v!=='string')throw new Error('名称必须是文字');

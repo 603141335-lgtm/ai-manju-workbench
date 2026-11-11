@@ -111,3 +111,24 @@
 .segmentSquareActions .tileDone{border:1px solid #446387;border-radius:5px;background:#1b3455;color:#a9c4ea;cursor:pointer;min-width:25px;height:19px}
 .segmentSquareActions .tileDone.checked{color:#80deb0;border-color:#438674}
 @media(max-width:1140px){.segmentSquareGrid{grid-template-columns:repeat(auto-fill,minmax(95px,1fr))}}
+
+
+/* Public distribution: restrained cloud notices and memory settings. */
+.noticeDot{color:#88b8ff;font-size:13px;margin-left:2px}
+.noticeDot[hidden],.noticeHint[hidden],#noticeQR[hidden]{display:none!important}
+.noticeHint{position:fixed;right:20px;top:76px;z-index:105;display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #3c6092;background:#182f50;color:#e6efff;border-radius:12px;max-width:min(340px,80vw);box-shadow:0 12px 30px #07101db0}
+.noticeHint span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.noticeHint button{flex-shrink:0}
+.noticeDialog{width:min(530px,93vw);max-height:82vh;overflow:auto;border:1px solid var(--line);border-radius:18px;background:#102039;color:var(--ink);box-shadow:0 20px 80px #050c1aeb}
+.noticeDialog::backdrop{background:#060c18ae}
+.noticeDialog .dialogbody{display:flex;flex-direction:column;gap:12px}
+.noticeDialog p{margin:5px 0;line-height:1.6}
+.noticeTile{background:#162b48;border:1px solid #2a4366;border-radius:12px;padding:15px;display:flex;flex-direction:column;gap:5px}
+.noticeTile strong{font-size:14px}
+.noticeKicker{font-size:11px;letter-spacing:.5px;color:#96b1d8;font-weight:600}
+.noticeSource,.noticePrivacy{color:#9bb3d3;font-size:12px}
+.noticePrivacy{background:#0e1b31;border-radius:8px;padding:10px 12px}
+.noticeActions{display:flex;gap:9px;flex-wrap:wrap;margin-top:5px}
+#noticeQR{width:136px;height:136px;object-fit:contain;background:white;border-radius:10px;padding:4px;margin:6px 0}
+.performanceSelect{min-height:38px;width:100%;border-radius:9px}
+@media(max-width:1180px){.topactions{gap:4px}.topactions>button{padding:7px 8px}}

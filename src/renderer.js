@@ -429,11 +429,76 @@ function initVoiceBindings(){
   await refreshVoiceBindings();await refreshDraftPreview();
  });
 }
+
+let currentNotice=null;
+function updateNoticeDisplay(v){
+  if(!v)return;
+  currentNotice=v;
+  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.5')+' 公开版';
+  const source={online:'已同步最新云端公告',cache:'正在显示本地缓存的公告',offline:'暂时无法连接公告服务',unconfigured:'宣传公告地址尚未配置'}[v.source]||'公告状态未知';
+  $('noticeSource').textContent=source;
+  const hasUpdate=!!v.hasUpdate;
+  $('noticeRelease').textContent=hasUpdate?'发现新版本 v'+v.release.version:'当前版本 v'+v.currentVersion;
+  $('noticeReleaseNotes').textContent=v.release?.notes||'尚无新版本消息，可正常使用本地创作功能。';
+  $('btnNoticeDownload').hidden=!hasUpdate;
+  $('noticeTitle').textContent=v.notice?.title||'官方公告';
+  $('noticeBody').textContent=v.notice?.body||'公告内容将在管理员配置网络地址后显示。';
+  $('noticeCommunity').textContent=v.community?.title||'创作交流';
+  $('noticeCommunityDesc').textContent=v.community?.description||'后续可通过云端配置社群信息，不需要更新安装包。';
+  $('noticeWechat').hidden=!v.community?.wechat;
+  $('noticeWechat').textContent=v.community?.wechat?'微信：'+v.community.wechat:'';
+  $('btnNoticeQQ').hidden=!v.community?.qqUrl;
+  $('btnNoticeQR').hidden=!v.community?.qrUrl;
+  $('noticeQR').hidden=!v.community?.qrUrl;
+  if(v.community?.qrUrl)$('noticeQR').src=v.community.qrUrl;
+  else $('noticeQR').removeAttribute('src');
+  $('noticeDot').hidden=!(hasUpdate||v.notice?.id);
+  const id=v.notice?.id;
+  if(v.notice?.showHint&&id&&v.notice.body){
+    let previouslyDismissed=false;
+    try{previouslyDismissed=localStorage.getItem('notice-dismiss-'+id)==='1'}catch{}
+    if(!previouslyDismissed){
+      $('noticeHintText').textContent=v.notice.title||'官方公告更新';
+      $('noticeHint').hidden=false;
+    }
+  }
+}
+function hideNoticeHint(){
+  $('noticeHint').hidden=true;
+  if(currentNotice?.notice?.id){
+    try{localStorage.setItem('notice-dismiss-'+currentNotice.notice.id,'1')}catch{}
+  }
+}
+function updatePerformanceDisplay(v){
+  if(!v)return;
+  $('performanceMode').value=v.mode;
+  $('performanceSummary').textContent='当前保留 '+v.liveViews+' 个豆包网页 · 本工作台相关 Electron 进程工作集约 '+v.memoryMb+' MB（估算值，不是系统整体内存用量）';
+}
+function initPublicFeatures(){
+  const nd=$('noticeDialog'),pd=$('performanceDialog');
+  const close=d=>{if(d.open)dialogClose(d)};
+  $('btnNotice').onclick=()=>{hideNoticeHint();modal(nd)};
+  $('btnNoticeClose').onclick=$('btnNoticeDone').onclick=()=>close(nd);
+  $('btnNoticeRefresh').onclick=()=>safe(async()=>updateNoticeDisplay(await B.refreshNotice()));
+  $('btnNoticeDownload').onclick=()=>safe(()=>B.openNoticeLink('download'));
+  $('btnNoticeQQ').onclick=()=>safe(()=>B.openNoticeLink('qq'));
+  $('btnNoticeQR').onclick=()=>safe(()=>B.openNoticeLink('qr'));
+  $('noticeHintOpen').onclick=()=>{hideNoticeHint();modal(nd)};
+  $('noticeHintClose').onclick=hideNoticeHint;
+  $('btnPerformance').onclick=()=>safe(async()=>{updatePerformanceDisplay(await B.getPerformance());modal(pd)});
+  $('btnPerformanceClose').onclick=$('btnPerformanceDone').onclick=()=>close(pd);
+  $('performanceMode').onchange=e=>safe(async()=>updatePerformanceDisplay(await B.setPerformance(e.target.value)));
+  for(const d of [nd,pd])d.addEventListener('cancel',e=>{e.preventDefault();close(d)});
+  B.onNoticeUpdated(updateNoticeDisplay);
+  B.onPerformanceChanged(updatePerformanceDisplay);
+  B.getNotice().then(updateNoticeDisplay).catch(error);
+}
+
 async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Electron Windows 桌面程序中操作真实豆包';return}
   try{
     cfg=await B.getCfg();ws=await B.wsState();expandGroups=new Set(cfg.groups.map(g=>g.id));
     renderGroups();renderWorkspaceShell();applyLayout();await renderImages();refreshHeader();
-    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();await refreshDownloads();await refreshExtension();
+    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();initPublicFeatures();await refreshDownloads();await refreshExtension();
     if(cfg.activeAccountId)await switchAccount(cfg.activeAccountId);setTimeout(bounds,250);
     if(ws.warning)toast(ws.warning);
   }catch(e){error(e);$('webStatus').textContent='初始化失败：'+e.message+'。打开数据目录检查 diagnostic.log'}

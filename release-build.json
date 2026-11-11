@@ -1,6 +1,6 @@
 {
-  "appId": "com.manju.doubao.creativehub",
-  "productName": "豆包创作舱",
+  "appId": "com.manju.doubao.creativehub.public",
+  "productName": "豆包创作舱（公开版）",
   "directories": {
     "output": "release"
   },
@@ -8,6 +8,17 @@
     "src/**/*",
     "package.json",
     "!src/canvas/**",
+    "!src/**/workspace.json",
+    "!src/**/config.json",
+    "!src/**/download-settings.json",
+    "!src/**/voice-bindings.json",
+    "!src/**/Cookies",
+    "!src/**/User Data/**",
+    "!src/**/*.sqlite",
+    "!src/**/*.sqlite3",
+    "!src/**/*.db",
+    "!src/**/.env*",
+    "!src/**/*.local.json",
     "!**/*.map",
     "!**/*.pdb"
   ],
@@ -21,7 +32,7 @@
         ]
       }
     ],
-    "artifactName": "Doubao-Creative-Hub-Setup-v${version}-x64.${ext}",
+    "artifactName": "Doubao-Creative-Hub-Public-Setup-v${version}-x64.${ext}",
     "icon": "assets/app.ico"
   },
   "compression": "maximum",

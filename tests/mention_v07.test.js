@@ -28,11 +28,11 @@ test('absent reference image stops before upload',async()=>{
  assert.equal((await runner.preflight({episodeId:'e',segmentId:'s'})).rows[0].state,'missing');
  await assert.rejects(()=>runner.execute({episodeId:'e',segmentId:'s'}),/缺图/);
 });
-test('real browser IPC added; no canvas and app identity stable',()=>{
+test('real browser IPC added; no canvas and public installer has a separate identity',()=>{
  const root=path.join(__dirname,'..');const read=p=>fs.readFileSync(path.join(root,p),'utf8');
  assert.match(read('src/index.html'),/id="btnMention"/);
  assert.match(read('src/main.js'),/mention:execute/);
  assert.match(read('src/preload.js'),/mentionExecute/);
  assert(!fs.existsSync(path.join(root,'src/canvas')));
- assert.equal(JSON.parse(read('package.json')).build.appId,'com.manju.doubao.creativehub');
+ assert.equal(JSON.parse(read('package.json')).build.appId,'com.manju.doubao.creativehub.public');
 });
