@@ -18,6 +18,7 @@ test('public: public installer and public userData are separate from private v0.
  const pkg=JSON.parse(source('package.json'));
  assert.equal(pkg.version,'0.9.5');
  assert.equal(build.appId,'com.manju.doubao.creativehub.public');
+ assert.equal(build.productName,'豆包创作舱（公开版）');
  assert.equal(pkg.build.appId,build.appId);
  const main=source('src/main.js');
  assert.match(main,/const publicUserDataDir=path\.join\(app\.getPath\('appData'\),'DoubaoCreativeHubPublic'\)/);
