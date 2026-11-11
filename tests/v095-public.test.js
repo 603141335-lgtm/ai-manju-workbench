@@ -9,14 +9,14 @@ const source=(p)=>fs.readFileSync(path.join(root,p),'utf8');
 test('public: empty promotion config does not call a network endpoint',async()=>{
  const cfg=JSON.parse(source('src/public-config.json'));
  assert.equal(cfg.noticeUrl,'');
- const service=new NoticeService({url:cfg.noticeUrl,version:'0.9.5'});
+ const service=new NoticeService({url:cfg.noticeUrl,version:'0.9.6'});
  const before=service.snapshot();assert.equal(before.configured,false);
  const after=await service.refresh();assert.equal(after.source,'unconfigured');
 });
 test('public: public installer and public userData are separate from private v0.9.4',()=>{
  const build=JSON.parse(source('release-build.json'));
  const pkg=JSON.parse(source('package.json'));
- assert.equal(pkg.version,'0.9.5');
+ assert.equal(pkg.version,'0.9.6');
  assert.equal(build.appId,'com.manju.doubao.creativehub.public');
  assert.equal(build.productName,'豆包创作舱（公开版）');
  assert.equal(pkg.build.appId,build.appId);
