@@ -20,7 +20,7 @@ test('All canvas UI, code and dependencies removed from production app',()=>{
 test('Public installer isolates new users while preserving their own userData',()=>{
  const pkg=require('../package.json');
  assert.equal(pkg.name,'doubao-creative-hub');
- assert.equal(pkg.build.productName,'豆包创作舱');
+ assert.equal(pkg.build.productName,'豆包创作舱（公开版）');
  assert.equal(pkg.build.appId,'com.manju.doubao.creativehub.public');
  assert.equal(pkg.build.win.target[0].target,'nsis');
  assert.equal(pkg.build.nsis.deleteAppDataOnUninstall,false);
