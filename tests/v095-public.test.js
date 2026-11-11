@@ -24,7 +24,7 @@ test('public: public installer and public userData are separate from private v0.
  assert.match(main,/fs\.mkdirSync\(publicUserDataDir,\{recursive:true\}\)/);
  assert.match(main,/app\.setPath\('userData',publicUserDataDir\)/);
  assert.match(main,/persist:doubao_\$\{id\}/);
- assert(!build.files.some(x=>/workspace\.json|config\.json|Cookies|User Data|AppData/.test(x)));
+ assert(!build.files.some(x=>!x.startsWith('!')&&/workspace\.json|config\.json|Cookies|User Data|AppData/.test(x)));
  assert(build.files.includes('src/**/*'));
 });
 test('public: remote content accepts text and HTTPS only, not HTML/script',()=>{
