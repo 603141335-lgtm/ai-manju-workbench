@@ -50,7 +50,8 @@ test('v0.9.6: memory cleanup only responds to explicit click; active and downloa
  assert.match(main,/dialog\.showMessageBox\(win/);
  assert.doesNotMatch(main,/cfg\.activeAccountId=id;save\(\);void prune\(\)/);
  assert.match(html,/id="btnCleanupViews"/);
- assert.match(html,/id="protectActiveAccount"/);
+ assert.doesNotMatch(html,/id="performanceDialog"/);
+ assert.doesNotMatch(html,/id="btnPerformance"/);
  assert.match(preload,/protectAccount/);
  assert.match(preload,/cleanupMemory/);
 });
