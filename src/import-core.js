@@ -50,39 +50,50 @@
       blocked:!items.length||items.some(i=>i.status!=='ready'),
       summary:{ready:items.filter(i=>i.status==='ready').length,missing:items.filter(i=>i.status==='missing').length,conflict:items.filter(i=>i.status==='conflict').length}};
   }
-  function makeMapping(items,initialIndex=0){
-    return items.map((r,i)=>{const tail=r.kind==='tail'||r.code==='尾帧';
-      return tail?`图${initialIndex+i+1} = 上一段尾帧（${r.file?.name||'尾帧.png'}，跨段衔接）`:`图${initialIndex+i+1} = ${r.code}${r.label?' '+r.label:''}（${r.file?.name||'文件未确认'}）`;
-    }).join('\n');
+  /** Stable group priority: tailframe, characters, scenes, food, other. */
+  function sortReferenceItems(items){
+    function priority(row){
+      const code=String(row?.code||'').toUpperCase();
+      if(row?.kind==='tail'||code==='尾帧')return -1;
+      if(/^(?:AG|A)\d/.test(code))return 0;
+      if(/^(?:BL|B)\d/.test(code))return 1;
+      if(/^C\d/.test(code))return 2;
+      return 3;
+    }
+    return (items||[]).map((item,index)=>({item,index,priority:priority(item)}))
+      .sort((a,b)=>a.priority-b.priority||a.index-b.index).map(x=>x.item);
   }
-  /** Insert mapping at the reference image section without mutating original text.
-   * No duplicate footer and no modifications to any dialogue, timing or limitations.
-   * Return a new draft only; never persist it to the original segment.
+  /** Plain anchor, not a counterfeit blue @. A verified native chip follows it. */
+  function referenceLine(row,index){
+    const prefix='图'+String(index+1),code=String(row?.code||'').toUpperCase();
+    if(row?.kind==='tail'||code==='尾帧')return prefix+'承接上一段尾帧：';
+    if(/^(?:AG|A)\d/.test(code)){
+      const name=String(row?.label||'').replace(/[\r\n：:]/g,'').trim();
+      return prefix+'锁定人物'+name+'：';
+    }
+    if(/^(?:BL|B)\d/.test(code))return prefix+'场景参考：';
+    if(/^C\d/.test(code))return prefix+'食材参考：';
+    return prefix+'参考图：';
+  }
+  function makeMapping(items,initialIndex=0){
+    return sortReferenceItems(items).map((row,index)=>referenceLine(row,initialIndex+index)).join('\n');
+  }
+  /** Prepend one short line per image and preserve the original prompt verbatim.
+   * Real @filename chips are created only by the verified website-native menu.
    */
   function composeText(prompt,items,offset=0,voices=[]){
     const raw=String(prompt||'');
-    const voiceText=voices.length?'\n【人物音色绑定｜参考音频】\n'+voices.map((v,i)=>`音频${i+1} = ${v.code}${v.characterName?' '+v.characterName:''}（${String(v.label||'人物声音').replace(/[\r\n]/g,' ')}：${v.filename||v.path?.split(/[\\/]/).pop()||'未命名音频'}）`).join('\n')+'\n'+voices.map((v,i)=>`图${v.imageIndex}（${v.code}）中的人物使用音频${i+1}作为声音/音色参考；说话人对口型，台词依照本段分镜。`).join('\n'):'';
-    const mapping=`【图片顺序对应｜实际上传顺序】\n${makeMapping(items,offset)}${voiceText}`;
-    const lines=raw.match(/[^\n]*\n|[^\n]+$/g)||[];
-    const head=lines.findIndex(line=>/(?:需要参考图|参考图(?:编号|列表)?|所需参考图|引用参考图)\s*[:：]?/i.test(line));
-    let insertAt=0;
-    if(head>=0){
-      insertAt=lines.slice(0,head+1).join('').length;
-      // Keep original multi-line reference numbers adjacent, before mapping.
-      for(let i=head+1;i<Math.min(lines.length,head+13);i++){
-        const text=lines[i].trim();
-        if(!text||/^(?:连续性|场景|画风|限制|分镜|音效|时间|承接|镜头|台词|\d+[—-]\d+秒|第\d+段)/.test(text)||/[。！？]/.test(text))break;
-        if(!tokens(text).length)break;
-        insertAt+=lines[i].length;
-      }
-    }else{
-      const first=lines[0]||'';
-      insertAt=first&&/^第.{1,40}(?:段|镜)/.test(first)?first.length:0;
-    }
-    const left=raw.slice(0,insertAt),right=raw.slice(insertAt);
-    return `${left}${left&&!left.endsWith('\n')?'\n':''}${mapping}\n${right&&!right.startsWith('\n')?'\n':''}${right}`;
+    const voiceText=voices.length?'\n【人物音色绑定｜参考音频】\n'+voices.map((v,i)=>
+      '音频'+(i+1)+' = '+v.code+(v.characterName?' '+v.characterName:'')+
+      '（'+String(v.label||'人物声音').replace(/[\r\n]/g,' ')+'：'+
+      (v.filename||v.path?.split(/[\\/]/).pop()||'未命名音频')+'）'
+    ).join('\n')+'\n'+voices.map((v,i)=>
+      '图'+v.imageIndex+'（'+v.code+'）中的人物使用音频'+(i+1)+'作为声音/音色参考；说话人对口型，台词依照本段分镜。'
+    ).join('\n'):'';
+    const top=makeMapping(items,offset)+voiceText;
+    return top ? (top+'\n'+raw) : raw;
   }
-  const api={parseCodes,codeFromFile,buildPlan,makeMapping,composeText,tokens,norm};
+  const api={parseCodes,codeFromFile,buildPlan,makeMapping,composeText,sortReferenceItems,tokens,norm};
   if(typeof module==='object'&&module.exports)module.exports=api;
   if(global)global.DoubaoImportCore=api;
 })(typeof globalThis==='object'?globalThis:null);
