@@ -6,12 +6,13 @@ const path=require('node:path');
 const {normalize,safeHttps,compareVersion,NoticeService}=require('../src/notice-service');
 const root=path.join(__dirname,'..');
 const source=(p)=>fs.readFileSync(path.join(root,p),'utf8');
-test('public: empty promotion config does not call a network endpoint',async()=>{
+test('public: stable future endpoint is baked in without making startup request',async()=>{
  const cfg=JSON.parse(source('src/public-config.json'));
- assert.equal(cfg.noticeUrl,'');
+ assert.equal(cfg.noticeUrl,'https://raw.githubusercontent.com/603141335-lgtm/doubao-creative-hub-notices/main/notice.json');
  const service=new NoticeService({url:cfg.noticeUrl,version:'0.9.6'});
- const before=service.snapshot();assert.equal(before.configured,false);
- const after=await service.refresh();assert.equal(after.source,'unconfigured');
+ const before=service.snapshot();assert.equal(before.configured,true);
+ assert.equal(before.hasUpdate,false);
+ assert.equal(before.source,'unconfigured'); // no request until refresh is explicitly called
 });
 test('public: public installer and public userData are separate from private v0.9.4',()=>{
  const build=JSON.parse(source('release-build.json'));
