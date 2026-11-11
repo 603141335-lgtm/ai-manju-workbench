@@ -11,7 +11,7 @@
 <body>
 <div class="app" id="app">
   <header class="topbar">
-    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge" id="appVersionBadge">v0.9.5 公开版</span></div>
+    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge" id="appVersionBadge">v0.9.6 公开版</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
     <div class="topactions"><button class="ghost compact" id="btnPerformance" title="浏览器占用和性能模式">性能</button><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="ghost" id="btnData">数据目录</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
@@ -108,7 +108,7 @@
 <dialog id="noticeDialog" class="noticeDialog"><div class="dialogbody">
   <div class="dialoghead"><h2>社群中心 · 官方公告</h2><button id="btnNoticeClose" class="iconBtn" aria-label="关闭">×</button></div>
   <p class="noticeSource" id="noticeSource">尚未连接公告服务器</p>
-  <div class="noticeTile"><span class="noticeKicker">最新版本</span><strong id="noticeRelease">当前版本 v0.9.5</strong><p id="noticeReleaseNotes">暂未发布远程版本消息。</p><button id="btnNoticeDownload" class="primary" hidden>在浏览器打开最新版下载页面</button></div>
+  <div class="noticeTile"><span class="noticeKicker">最新版本</span><strong id="noticeRelease">当前版本 v0.9.6</strong><p id="noticeReleaseNotes">暂未发布远程版本消息。</p><button id="btnNoticeDownload" class="primary" hidden>在浏览器打开最新版下载页面</button></div>
   <div class="noticeTile"><span class="noticeKicker">公告消息</span><strong id="noticeTitle">官方消息</strong><p id="noticeBody">此区域未来会联网同步最新活动与教程。</p></div>
   <div class="noticeTile"><span class="noticeKicker">社群宣传</span><strong id="noticeCommunity">创作交流</strong><p id="noticeCommunityDesc">社群信息由管理员远程配置。</p>
   <p id="noticeWechat" hidden></p><img id="noticeQR" alt="社群二维码" loading="lazy" referrerpolicy="no-referrer" hidden/>
@@ -119,9 +119,14 @@
 <dialog id="performanceDialog" class="noticeDialog"><div class="dialogbody">
   <div class="dialoghead"><h2>性能与内存管理</h2><button id="btnPerformanceClose" class="iconBtn" aria-label="关闭">×</button></div>
   <p id="performanceSummary">正在读取浏览器状态…</p>
-  <label for="performanceMode">后台浏览器保留策略</label>
+  <div class="performanceControls">
+    <label class="protectRow"><input type="checkbox" id="protectActiveAccount"/> <span>保护当前账号的后台网页（不参与释放）</span></label>
+    <button class="ghost" id="btnCleanupViews">检查并释放闲置后台网页</button>
+  </div>
+  <p id="performanceWarning" class="noticePrivacy">手动释放前会列出候选账号；不会自动关闭正在生成的页面。</p>
+  <label for="performanceMode">后台浏览器目标数量（不会自动清理）</label>
   <select id="performanceMode" class="performanceSelect"><option value="performance">多任务模式 · 最多保留3个网页</option><option value="balanced">均衡模式 · 最多保留2个网页（默认）</option><option value="light">省内存模式 · 最多保留1个网页</option></select>
-  <p class="noticePrivacy">正在上传文件或生成视频的后台网页不能可靠地自动识别。超过上限时软件会征求确认，未经确认不会关闭后台网页。关闭视图不删除登录状态，但可能影响任务进度的显示。</p>
+  <p class="noticePrivacy">正在上传文件或生成视频的后台网页不能可靠地自动识别。超过上限不会自动关闭。点击“释放闲置后台网页”后，系统排除手动保护和正在下载的账号，再列出候选账号要求确认；官方豆包的云端生成状态无法自动确认。关闭视图不删除登录状态，但可能影响任务进度的显示。</p>
   <div class="dialogActions"><button id="btnPerformanceDone" class="primary">完成</button></div>
 </div></dialog>
 <dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>豆包创作舱｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 底部每集单独一整行，点击集名展开分段，点击段落切换；点右上角「已完成」自动缩成小卡。高级隐藏/锁定在「更多」菜单。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
