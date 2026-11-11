@@ -43,20 +43,22 @@ test('v0.9.6: invalid and missing thumbnail sources fail closed',async()=>{
  assert.equal(await cache.get(valid),valid);
 });
 test('v0.9.6: memory cleanup only responds to explicit click; active and downloading pages excluded',()=>{
- const main=source('src/main.js'),renderer=source('src/renderer.js'),preload=source('src/preload.js');
+ const main=source('src/main.js'),html=source('src/index.html'),preload=source('src/preload.js');
  assert.match(main,/ipcMain\.handle\('perf:cleanup',\(\)=>prune\(\)\)/);
  assert.match(main,/protectedAccounts\.has\(id\)/);
  assert.match(main,/activeDownloads\.has\(id\)/);
  assert.match(main,/dialog\.showMessageBox\(win/);
  assert.doesNotMatch(main,/cfg\.activeAccountId=id;save\(\);void prune\(\)/);
- assert.match(renderer,/btnCleanupViews/);
- assert.match(renderer,/protectAccount/);
+ assert.match(html,/id="btnCleanupViews"/);
+ assert.match(html,/id="protectActiveAccount"/);
+ assert.match(preload,/protectAccount/);
  assert.match(preload,/cleanupMemory/);
 });
 test('v0.9.6: thumbnail file used only for preview, not uploading',()=>{
- const main=source('src/main.js'),renderer=source('src/renderer.js');
+ const main=source('src/main.js'),html=source('src/index.html');
  assert.match(main,/thumbUrl/);
- assert.match(renderer,/r\.file\.thumbUrl\|\|r\.file\.url/);
+ assert.match(html,/id="imageGrid"/);
+ assert.match(main,/file:r\.file\?\{\.\.\.r\.file,url:originalUrl,thumbUrl\}/);
  assert.match(main,/source=r\.file\?\.path/);
  assert.match(main,/thumbnailCache=new ThumbnailCache/);
  assert.match(main,/createThumbnailFromPath/);
