@@ -43,13 +43,13 @@ test('v0.9.4: no tail is not a blocker, extracting tail can wait',()=>{
  assert.equal(createPlan({...base,tail:{state:'none'}}).blocked,false);
  assert.equal(createPlan({...base,tail:{state:'extracting'}}).blocked,false);
 });
-test('v0.9.4: video adapter never falsely confirms without all four parameters',async()=>{
+test('v0.9.4 legacy: video composer readiness is independent from optional parameter verification',async()=>{
  assert.match(scanAndAct.toString(),/视频生成/);
  let called=0;
  const wc={getURL:()=> 'https://www.doubao.com/chat/',isDestroyed:()=>false,
    executeJavaScript:async()=>{called++;return {video:true,model:true,ratio:true,duration:false}}};
  const res=await ensure(wc);
- assert.equal(res.ready,false);assert(called>=1);
+ assert.equal(res.ready,true);assert.equal(res.settingsVerified,false);assert(called>=1);
 });
 
 test('v0.9.4: deleted-item recovery does not shadow existing project JSON recovery',()=>{
