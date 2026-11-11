@@ -132,3 +132,23 @@
 #noticeQR{width:136px;height:136px;object-fit:contain;background:white;border-radius:10px;padding:4px;margin:6px 0}
 .performanceSelect{min-height:38px;width:100%;border-radius:9px}
 @media(max-width:1180px){.topactions{gap:4px}.topactions>button{padding:7px 8px}}
+
+
+/* v0.9.7: compact top-left API entrance, no memory mode selector */
+.apiHeadBtn{flex:none;min-width:70px;border:1px solid #4d74bc;background:#1e3a64;color:#deebff;border-radius:10px;font-size:11px;font-weight:700;padding:9px 11px;white-space:nowrap}
+.apiHeadBtn:hover{background:#294b7b;border-color:#7a9ee5}
+.apiDialog{width:min(560px,94vw)}
+.apiDialog .dialogbody{display:flex;flex-direction:column;gap:9px}
+.apiDialog label{color:#ccdcf7;font-size:12px;font-weight:650;margin-top:3px}
+.apiDialog input,.apiDialog select,.apiDialog textarea{width:100%;padding:10px 12px;min-height:39px;background:#0e1c31;border:1px solid #395275;color:#edf4ff;border-radius:9px;outline-offset:2px}
+.apiDialog textarea{resize:vertical;min-height:75px}
+.apiDialog input:focus-visible,.apiDialog textarea:focus-visible,.apiDialog select:focus-visible{border-color:#83a6f7}
+.apiDialog .apiIntro{font-size:12px;line-height:1.65;color:#a5bedb}
+.apiButtons{display:flex;flex-wrap:wrap;gap:8px;margin-top:5px}
+.apiButtons button{min-width:120px;flex:1}
+.apiTestArea{margin-top:6px;border-top:1px solid #304966;padding-top:11px;display:flex;flex-direction:column;gap:9px}
+.apiResult{white-space:pre-wrap;overflow-wrap:anywhere;max-height:160px;overflow:auto;background:#0b182c;border:1px solid #273e61;border-radius:9px;color:#c9daf5;font-size:12px;padding:12px;min-height:52px}
+.browserfoot #webStatus{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.browserfoot #btnVideoRetry,.browserfoot #btnVideoManual{white-space:nowrap}
+@media(max-width:1270px){.apiHeadBtn{min-width:56px;padding:7px 8px}.brand small{display:none}}
+@media(max-width:1060px){.apiHeadBtn{font-size:10px}.topactions #btnBackup{display:none}}
