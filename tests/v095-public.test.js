@@ -53,7 +53,7 @@ test('public: version comparison does not invent upgrades',()=>{
 test('public: background views require opt-in before eviction',()=>{
  const main=source('src/main.js');
  assert.match(main,/showMessageBox\(win,/);
- assert.match(main,/if\(response!==1\)return;/);
+ assert.match(main,/if\(response!==1\)return performanceState\(\);/);
  assert.match(main,/LIVE_LIMITS=Object\.freeze\(\{light:1,balanced:2,performance:3\}\)/);
  assert.match(main,/noticeService=new NoticeService/);
  assert.match(source('src/preload.js'),/openNoticeLink/);
