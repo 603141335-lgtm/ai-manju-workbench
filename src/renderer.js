@@ -434,7 +434,7 @@ let currentNotice=null;
 function updateNoticeDisplay(v){
   if(!v)return;
   currentNotice=v;
-  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.5')+' 公开版';
+  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.6')+' 公开版';
   const source={online:'已同步最新云端公告',cache:'正在显示本地缓存的公告',offline:'暂时无法连接公告服务',unconfigured:'宣传公告地址尚未配置'}[v.source]||'公告状态未知';
   $('noticeSource').textContent=source;
   const hasUpdate=!!v.hasUpdate;
@@ -472,7 +472,11 @@ function hideNoticeHint(){
 function updatePerformanceDisplay(v){
   if(!v)return;
   $('performanceMode').value=v.mode;
-  $('performanceSummary').textContent='当前保留 '+v.liveViews+' 个豆包网页 · 本工作台相关 Electron 进程工作集约 '+v.memoryMb+' MB（估算值，不是系统整体内存用量）';
+  $('protectActiveAccount').checked=!!v.activeProtected;
+  $('performanceSummary').textContent='已打开 '+v.liveViews+' 个豆包网页 / 目标 '+v.limit+' 个 · 工作集约 '+v.memoryMb+' MB（估算，包含 Electron 相关进程）';
+  $('performanceWarning').textContent=v.overLimit
+    ?'目前多出 '+v.overLimit+' 个网页。可点击下方“检查并释放”，始终由你确认；被保护账号和正在下载的页面不会进入候选名单。'
+    :'当前数量符合目标。切换账号不会自动关闭后台任务，仍可在此手动清理。';
 }
 function initPublicFeatures(){
   const nd=$('noticeDialog'),pd=$('performanceDialog');
@@ -488,6 +492,8 @@ function initPublicFeatures(){
   $('btnPerformance').onclick=()=>safe(async()=>{updatePerformanceDisplay(await B.getPerformance());modal(pd)});
   $('btnPerformanceClose').onclick=$('btnPerformanceDone').onclick=()=>close(pd);
   $('performanceMode').onchange=e=>safe(async()=>updatePerformanceDisplay(await B.setPerformance(e.target.value)));
+  $('protectActiveAccount').onchange=e=>safe(async()=>updatePerformanceDisplay(await B.protectAccount(e.target.checked)));
+  $('btnCleanupViews').onclick=()=>safe(async()=>updatePerformanceDisplay(await B.cleanupMemory()));
   for(const d of [nd,pd])d.addEventListener('cancel',e=>{e.preventDefault();close(d)});
   B.onNoticeUpdated(updateNoticeDisplay);
   B.onPerformanceChanged(updatePerformanceDisplay);
