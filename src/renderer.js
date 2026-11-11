@@ -165,7 +165,7 @@ async function renderImages(){const ep=getEp(),seg=getSeg(),seq=++renderSeq;
   $('imageGrid').innerHTML=imageRows.map((r,i)=>{
     const p=r.file?.path,has=p&&!r.missing,cho=has&&selected.has(p);
     const vers=r.versions.length>1?`<select class="versionSelect" data-code="${enc(r.code)}" title="多个版本，选择正确原图">${r.versions.map(v=>`<option value="${enc(v.path)}" ${v.path===p?'selected':''}>${enc(v.relative)}</option>`).join('')}</select>`:'';
-    return `<div class="imageCard ${cho?'selected':''} ${!has?'missing':''}" data-path="${enc(p||'')}" data-index="${i}" draggable="${has?'true':'false'}" title="${enc(r.file?.relative||r.code+'（缺图）')}"><div class="thumb">${has&&r.file.url?`<img alt="${enc(r.code)}" src="${enc(r.file.url)}" loading="lazy">`:'缺图'}</div><label>${enc(r.code)}</label>${cho?'<span class="check">✓</span>':''}${vers}</div>`;
+    return `<div class="imageCard ${cho?'selected':''} ${!has?'missing':''}" data-path="${enc(p||'')}" data-index="${i}" draggable="${has?'true':'false'}" title="${enc(r.file?.relative||r.code+'（缺图）')}"><div class="thumb">${has&&r.file.url?`<img alt="${enc(r.code)}" src="${enc(r.file.thumbUrl||r.file.url)}" loading="lazy" decoding="async">`:'缺图'}</div><label>${enc(r.code)}</label>${cho?'<span class="check">✓</span>':''}${vers}</div>`;
   }).join('')||'<div class="emptySeg" style="padding:22px 0">本段暂无图片编号；可用「补充图片」。</div>';
   const warn=[];if(missing.length)warn.push(`缺少 ${missing.length} 张：${missing.map(x=>x.code).join('、')}`);if(dups.length)warn.push(`${dups.length} 个编号有多个版本，请核对`);if(imageRows.length>9)warn.push(`本段 ${imageRows.length} 张超过常用9图限制，软件不会删图`);
   $('imageWarning').hidden=!warn.length;$('imageWarning').textContent=warn.join('；');selectionLabels();
