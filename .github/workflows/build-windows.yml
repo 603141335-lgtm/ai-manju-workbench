@@ -1,9 +1,12 @@
-name: Build Doubao Creative Hub PUBLIC v0.9.5
+name: Build Doubao Creative Hub PUBLIC v0.9.6
+concurrency:
+  group: "public-v096-${{ github.ref }}"
+  cancel-in-progress: true
 on:
   push:
-    branches: [feature/doubao-public-v0.9.5-framework]
+    branches: [feature/doubao-public-v0.9.6-ready]
   pull_request:
-    branches: [feature/doubao-creative-hub-v0.9.4]
+    branches: [feature/doubao-public-v0.9.5-framework]
   workflow_dispatch:
 permissions:
   contents: write
@@ -29,8 +32,8 @@ jobs:
         run: npm run check
       - name: v0.9.4 compatibility tests
         run: node --test tests/v094.test.js
-      - name: Public distribution privacy and notice tests
-        run: node --test tests/v095-public.test.js
+      - name: Public distribution privacy, notice, thumbnail and cleanup tests
+        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js
       - name: Fetch official-third-party LGPL FFmpeg Windows binaries for tailframes
         run: |
           New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
@@ -63,24 +66,23 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.5-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.6-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt
       - name: Publish private GitHub Release (avoids Actions artifact quota)
-        if: github.event_name == 'push'
+        if: github.event_name == 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: doubao-public-v0.9.5
-          target_commitish: feature/doubao-public-v0.9.5-framework
-          name: 豆包创作舱 v0.9.5 公开分发框架（空白用户·远程公告·内存模式）
+          tag_name: doubao-public-v0.9.6
+          target_commitish: feature/doubao-public-v0.9.6-ready
+          name: 豆包创作舱 v0.9.6 公开优化版（数据隔离·远程公告·低内存）
           prerelease: true
           body: |
-            独立公开版：不迁移作者工作版数据；首次空白工作区与25个登录位；远程只读社群公告与版本链接框架；可选内存模式且关闭后台网页前必须确认。尚未配置 DOUBAO_NOTICE_URL 时公告使用占位内容。需在 Windows 真实豆包环境中复核。
+            v0.9.6 修复旧版发布附件路径；独立空白工作区与25个登录位，不迁移作者工作数据；社群公告远程配置框架；低内存缓存预览；显式释放和账号保护，不擅自关闭后台生成页面。公告内置固定的待开通公开入口，在单独公告仓库上线前显示占位，后续可远程修改。真实豆包登录操作尚需 Windows 真机验证。
           files: |
-            release/Doubao-Creative-Hub-Setup-v0.9.4-x64.exe
+            release/Doubao-Creative-Hub-Public-Setup-v0.9.6-x64.exe
             release/SHA256SUMS.txt
-            release/latest.yml
             release/*.blockmap
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true

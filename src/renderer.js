@@ -165,7 +165,7 @@ async function renderImages(){const ep=getEp(),seg=getSeg(),seq=++renderSeq;
   $('imageGrid').innerHTML=imageRows.map((r,i)=>{
     const p=r.file?.path,has=p&&!r.missing,cho=has&&selected.has(p);
     const vers=r.versions.length>1?`<select class="versionSelect" data-code="${enc(r.code)}" title="多个版本，选择正确原图">${r.versions.map(v=>`<option value="${enc(v.path)}" ${v.path===p?'selected':''}>${enc(v.relative)}</option>`).join('')}</select>`:'';
-    return `<div class="imageCard ${cho?'selected':''} ${!has?'missing':''}" data-path="${enc(p||'')}" data-index="${i}" draggable="${has?'true':'false'}" title="${enc(r.file?.relative||r.code+'（缺图）')}"><div class="thumb">${has&&r.file.url?`<img alt="${enc(r.code)}" src="${enc(r.file.url)}" loading="lazy">`:'缺图'}</div><label>${enc(r.code)}</label>${cho?'<span class="check">✓</span>':''}${vers}</div>`;
+    return `<div class="imageCard ${cho?'selected':''} ${!has?'missing':''}" data-path="${enc(p||'')}" data-index="${i}" draggable="${has?'true':'false'}" title="${enc(r.file?.relative||r.code+'（缺图）')}"><div class="thumb">${has&&r.file.url?`<img alt="${enc(r.code)}" src="${enc(r.file.thumbUrl||r.file.url)}" loading="lazy" decoding="async">`:'缺图'}</div><label>${enc(r.code)}</label>${cho?'<span class="check">✓</span>':''}${vers}</div>`;
   }).join('')||'<div class="emptySeg" style="padding:22px 0">本段暂无图片编号；可用「补充图片」。</div>';
   const warn=[];if(missing.length)warn.push(`缺少 ${missing.length} 张：${missing.map(x=>x.code).join('、')}`);if(dups.length)warn.push(`${dups.length} 个编号有多个版本，请核对`);if(imageRows.length>9)warn.push(`本段 ${imageRows.length} 张超过常用9图限制，软件不会删图`);
   $('imageWarning').hidden=!warn.length;$('imageWarning').textContent=warn.join('；');selectionLabels();
@@ -434,7 +434,7 @@ let currentNotice=null;
 function updateNoticeDisplay(v){
   if(!v)return;
   currentNotice=v;
-  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.5')+' 公开版';
+  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.6')+' 公开版';
   const source={online:'已同步最新云端公告',cache:'正在显示本地缓存的公告',offline:'暂时无法连接公告服务',unconfigured:'宣传公告地址尚未配置'}[v.source]||'公告状态未知';
   $('noticeSource').textContent=source;
   const hasUpdate=!!v.hasUpdate;
@@ -472,7 +472,11 @@ function hideNoticeHint(){
 function updatePerformanceDisplay(v){
   if(!v)return;
   $('performanceMode').value=v.mode;
-  $('performanceSummary').textContent='当前保留 '+v.liveViews+' 个豆包网页 · 本工作台相关 Electron 进程工作集约 '+v.memoryMb+' MB（估算值，不是系统整体内存用量）';
+  $('protectActiveAccount').checked=!!v.activeProtected;
+  $('performanceSummary').textContent='已打开 '+v.liveViews+' 个豆包网页 / 目标 '+v.limit+' 个 · 工作集约 '+v.memoryMb+' MB（估算，包含 Electron 相关进程）';
+  $('performanceWarning').textContent=v.overLimit
+    ?'目前多出 '+v.overLimit+' 个网页。可点击下方“检查并释放”，始终由你确认；被保护账号和正在下载的页面不会进入候选名单。'
+    :'当前数量符合目标。切换账号不会自动关闭后台任务，仍可在此手动清理。';
 }
 function initPublicFeatures(){
   const nd=$('noticeDialog'),pd=$('performanceDialog');
@@ -488,6 +492,8 @@ function initPublicFeatures(){
   $('btnPerformance').onclick=()=>safe(async()=>{updatePerformanceDisplay(await B.getPerformance());modal(pd)});
   $('btnPerformanceClose').onclick=$('btnPerformanceDone').onclick=()=>close(pd);
   $('performanceMode').onchange=e=>safe(async()=>updatePerformanceDisplay(await B.setPerformance(e.target.value)));
+  $('protectActiveAccount').onchange=e=>safe(async()=>updatePerformanceDisplay(await B.protectAccount(e.target.checked)));
+  $('btnCleanupViews').onclick=()=>safe(async()=>updatePerformanceDisplay(await B.cleanupMemory()));
   for(const d of [nd,pd])d.addEventListener('cancel',e=>{e.preventDefault();close(d)});
   B.onNoticeUpdated(updateNoticeDisplay);
   B.onPerformanceChanged(updatePerformanceDisplay);

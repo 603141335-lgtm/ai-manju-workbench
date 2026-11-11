@@ -94,6 +94,8 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   onLayout:fn=>ipcRenderer.on('app:layout',()=>fn()),
   onToast:fn=>ipcRenderer.on('app:toast',(_e,text)=>fn(text)),
   getPerformance:()=>ipcRenderer.invoke('perf:get'),
+  cleanupMemory:()=>ipcRenderer.invoke('perf:cleanup'),
+  protectAccount:enabled=>ipcRenderer.invoke('perf:protect',!!enabled),
   setPerformance:mode=>ipcRenderer.invoke('perf:set',mode),
   onPerformanceChanged:fn=>ipcRenderer.on('perf:changed',(_e,v)=>fn(v)),
   getNotice:()=>ipcRenderer.invoke('notice:get'),
