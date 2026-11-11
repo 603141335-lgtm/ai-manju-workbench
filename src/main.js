@@ -16,9 +16,17 @@ const {VoiceBindingsStore}=require('./voice-bindings');
 const {TailFrameStore,binaries,findPredecessor}=require('./tailframe');
 const {detectSegmentCodes}=require('./parser');
 const videoMode=require('./video-mode');
+const {NoticeService,safeHttps}=require('./notice-service');
+const publicConfig=require('./public-config.json');
+
+// Public distribution never reads the author's legacy workspace or sessions.
+// Each Windows user receives a fresh isolated profile; existing workspaces never auto-migrate.
+app.setPath('userData',path.join(app.getPath('appData'),'DoubaoCreativeHubPublic'));
+
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
-const MAX_LIVE_VIEWS=3;
+const LIVE_LIMITS=Object.freeze({light:1,balanced:2,performance:3});
+let noticeService=null,noticeTimer=null,pruneInProgress=false;
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
 const loadedExtensions=new Map();
 const views=new Map(); // account ID -> {view,lastUsed}
@@ -123,14 +131,35 @@ function configureView(id){
   wc.loadURL(DOUBAO_URL).catch(e=>{log(e);tell('web:status',{id,status:'豆包打开失败：'+e.message})});
   return {view,lastUsed:now()};
 }
-function prune(){
-  while(views.size>MAX_LIVE_VIEWS){
+function performanceState(){
+  const mode=LIVE_LIMITS[cfg?.performanceMode]?cfg.performanceMode:'performance';
+  const memoryKb=(app.getAppMetrics()||[]).reduce((sum,m)=>sum+Math.max(0,m.memory?.workingSetSize||0),0);
+  return {mode,limit:LIVE_LIMITS[mode],liveViews:views.size,memoryMb:Math.round(memoryKb/1024)};
+}
+async function prune(){
+  if(pruneInProgress)return;
+  const max=performanceState().limit;
+  if(views.size<=max)return;
+  pruneInProgress=true;
+  try{
     const candidates=[...views.entries()].filter(([id])=>id!==activeId).sort((a,b)=>a[1].lastUsed-b[1].lastUsed);
-    if(!candidates.length)break;
-    const [id,slot]=candidates[0];
-    try{win.contentView.removeChildView(slot.view);slot.view.webContents.close()}catch(e){log(e)}
-    views.delete(id);
-  }
+    if(!candidates.length)return;
+    // A Doubao task may continue after upload with no local indicator. Never evict a live page silently.
+    const {response}=await dialog.showMessageBox(win,{
+      type:'warning',buttons:['保留后台页面','确认释放后台页面'],defaultId:0,cancelId:0,
+      title:'省内存模式：确认关闭后台网页',
+      message:'释放后台豆包网页可能打断上传或生成状态显示',
+      detail:'仅关闭最久未使用的后台网页，不删除账号登录信息和本地项目。请先确认这些账号没有正在执行的任务。'
+    });
+    if(response!==1)return;
+    while(views.size>max){
+      const eligible=[...views.entries()].filter(([id])=>id!==activeId).sort((a,b)=>a[1].lastUsed-b[1].lastUsed);
+      if(!eligible.length)break;
+      const [id,slot]=eligible[0];
+      try{win.contentView.removeChildView(slot.view);slot.view.webContents.close()}catch(e){log(e)}
+      views.delete(id);
+    }
+  }finally{pruneInProgress=false;tell('perf:changed',performanceState());}
 }
 function selectAccount(id){
   account(id);
@@ -145,7 +174,7 @@ function selectAccount(id){
   slot.lastUsed=now();
   if(!overlayShown)win.contentView.addChildView(slot.view);
   if(lastBounds)slot.view.setBounds(lastBounds);
-  cfg.activeAccountId=id;save();prune();
+  cfg.activeAccountId=id;save();void prune();
   tell('web:selected',{id});
   return {id};
 }
@@ -195,6 +224,25 @@ function initializeUpdater(){
 
 function registerHandlers(){
   ipcMain.handle('cfg:get',()=>cfg);
+  ipcMain.handle('perf:get',()=>performanceState());
+  ipcMain.handle('perf:set',async(_e,mode)=>{
+    if(!Object.prototype.hasOwnProperty.call(LIVE_LIMITS,mode))throw Error('无效的性能模式');
+    update(()=>{cfg.performanceMode=mode});
+    await prune();
+    const result=performanceState();tell('perf:changed',result);return result;
+  });
+  ipcMain.handle('notice:get',()=>noticeService.snapshot());
+  ipcMain.handle('notice:refresh',async()=>{
+    const result=await noticeService.refresh();tell('notice:updated',result);return result;
+  });
+  ipcMain.handle('notice:open',async(_e,target)=>{
+    const data=noticeService.snapshot();
+    const href=target==='download'?data.release.url:target==='qq'?data.community.qqUrl:target==='qr'?data.community.qrUrl:'';
+    if(!safeHttps(href))throw Error('此入口尚未配置有效的 HTTPS 链接');
+    // Only on explicit user action. Never auto-download, run an EXE, or evaluate cloud text.
+    await shell.openExternal(href);return true;
+  });
+
   ipcMain.handle('app:updateStatus',()=>updateStatus);
   ipcMain.handle('app:checkUpdate',async()=>{
     if(!updater)return updateStatus;
@@ -469,6 +517,6 @@ if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus()}});
   process.on('uncaughtException',log);process.on('unhandledRejection',log);
-  app.whenReady().then(async()=>{cfg=readCfg();workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();voiceBindings=await new VoiceBindingsStore(path.join(app.getPath('userData'),'voice-bindings.json'),{ffprobe:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath}).ffprobe}).load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});importEngine=createImportEngine({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},getSegment:(eid,sid)=>workspace.findSegment(eid,sid).seg,resolveRows:(eid,sid)=>workspace.resolveSegment(eid,sid),getChosenPaths:()=>workspace.data.chosenPaths,getCurrentSelection:()=>({episodeId:workspace.data.activeEpisodeId,segmentId:workspace.data.activeSegmentId}),getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),getVoiceForImages:items=>voiceBindings.plan(items),notify:info=>tell('import:status',info)});registerHandlers();initializeUpdater();createWindow()}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
+  app.whenReady().then(async()=>{cfg=readCfg();noticeService=new NoticeService({url:publicConfig.noticeUrl,cachePath:path.join(app.getPath('userData'),'notice-cache.json'),version:app.getVersion()});workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();voiceBindings=await new VoiceBindingsStore(path.join(app.getPath('userData'),'voice-bindings.json'),{ffprobe:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath}).ffprobe}).load();mentionRunner=createMentionRunner({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});importEngine=createImportEngine({getActive:()=>{const slot=views.get(activeId);return slot?{accountId:activeId,webContents:slot.view.webContents}:null},getSegment:(eid,sid)=>workspace.findSegment(eid,sid).seg,resolveRows:(eid,sid)=>workspace.resolveSegment(eid,sid),getChosenPaths:()=>workspace.data.chosenPaths,getCurrentSelection:()=>({episodeId:workspace.data.activeEpisodeId,segmentId:workspace.data.activeSegmentId}),getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),getVoiceForImages:items=>voiceBindings.plan(items),notify:info=>tell('import:status',info)});registerHandlers();initializeUpdater();createWindow();noticeTimer=setInterval(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),60*60*1000);noticeTimer.unref?.();setTimeout(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),1300)}).catch(err=>{log(err);dialog.showErrorBox('豆包创作舱启动失败',String(err.stack||err));app.quit()});
   app.on('window-all-closed',()=>app.quit());
 }
