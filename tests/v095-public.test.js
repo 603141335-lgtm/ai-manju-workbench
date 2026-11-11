@@ -20,7 +20,9 @@ test('public: public installer and public userData are separate from private v0.
  assert.equal(build.appId,'com.manju.doubao.creativehub.public');
  assert.equal(pkg.build.appId,build.appId);
  const main=source('src/main.js');
- assert.match(main,/app\.setPath\('userData',path\.join\(app\.getPath\('appData'\),'DoubaoCreativeHubPublic'\)\)/);
+ assert.match(main,/const publicUserDataDir=path\.join\(app\.getPath\('appData'\),'DoubaoCreativeHubPublic'\)/);
+ assert.match(main,/fs\.mkdirSync\(publicUserDataDir,\{recursive:true\}\)/);
+ assert.match(main,/app\.setPath\('userData',publicUserDataDir\)/);
  assert.match(main,/persist:doubao_\$\{id\}/);
  assert(!build.files.some(x=>/workspace\.json|config\.json|Cookies|User Data|AppData/.test(x)));
  assert(build.files.includes('src/**/*'));
