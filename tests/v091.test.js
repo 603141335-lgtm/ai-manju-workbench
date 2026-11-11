@@ -31,9 +31,9 @@ test('内联定位不会回退到编辑器末尾，且每个函数可序列化�
     assert(inline[name].toString().startsWith('function '));
   }
 });
-test('浏览器版安装身份未改变，不引入画布',()=>{
+test('公开分发版安装身份隔离，不引入画布',()=>{
   const pkg=require('../package.json');
   assert.match(pkg.version,/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/); // Version changes must not break the install identity test
-  assert.equal(pkg.build.appId,'com.manju.doubao.creativehub');
+  assert.equal(pkg.build.appId,'com.manju.doubao.creativehub.public');
   assert(!fs.existsSync(path.join(root,'src/canvas')));
 });
