@@ -2,6 +2,10 @@
 const {contextBridge, ipcRenderer, webUtils}=require('electron');
 contextBridge.exposeInMainWorld('bridge',Object.freeze({
   getCfg:()=>ipcRenderer.invoke('cfg:get'),
+  apiGet:()=>ipcRenderer.invoke('api:get'),
+  apiSave:settings=>ipcRenderer.invoke('api:save',settings),
+  apiCheck:()=>ipcRenderer.invoke('api:check'),
+  apiChat:text=>ipcRenderer.invoke('api:chat',text),
   wsState:()=>ipcRenderer.invoke('ws:state'),
   wsImportText:(text,filename)=>ipcRenderer.invoke('ws:importText',text,filename),
   wsImportFiles:()=>ipcRenderer.invoke('ws:importFiles'),
@@ -32,6 +36,7 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   voiceRemove:(code,id)=>ipcRenderer.invoke('voice:remove',code,id),
   voicePlay:(code,id)=>ipcRenderer.invoke('voice:play',code,id),
   videoEnsure:()=>ipcRenderer.invoke('video:ensure'),
+  videoManualConfirm:()=>ipcRenderer.invoke('video:manualConfirm'),
   importDraft:(eid,sid,text)=>ipcRenderer.invoke('import:draft',eid,sid,text),
   importSyncText:(eid,sid,replaceDraft)=>ipcRenderer.invoke('import:sync-text',eid,sid,!!replaceDraft),
   importPreflight:(eid,sid)=>ipcRenderer.invoke('import:preflight',eid,sid),
