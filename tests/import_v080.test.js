@@ -39,10 +39,10 @@ test('未找到正确素材时，一键导入不会触碰浏览器网页',async(
  const engine=createImportEngine({getActive:()=>({accountId:'acct1',webContents:wc}),getSegment:()=>({text:'需要参考图：A99'}),resolveRows:()=>fixtures});
  await assert.rejects(()=>engine.execute({episodeId:'e',segmentId:'s'}),/缺图/);assert.equal(calls,1);
 });
-test('无网内载画布，保留原安装ID和独立登录分区',()=>{
+test('无网内载画布，公开版安装ID隔离且独立登录分区',()=>{
  const read=p=>fs.readFileSync(path.resolve(__dirname,'..',p),'utf8');
  const pkg=JSON.parse(read('package.json'));
- assert.equal(pkg.build.appId,'com.manju.doubao.creativehub');
+ assert.equal(pkg.build.appId,'com.manju.doubao.creativehub.public');
  assert.match(read('src/main.js'),/persist:doubao_\$\{id\}/);
  assert.match(read('src/index.html'),/id="btnOneClickImport"/);
  assert.match(read('src/preload.js'),/importExecute/);
