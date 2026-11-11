@@ -1,5 +1,5 @@
 {
-  "appId": "com.manju.doubao.creativehub",
+  "appId": "com.manju.doubao.creativehub.public",
   "productName": "豆包创作舱",
   "directories": {
     "output": "release"
@@ -21,7 +21,7 @@
         ]
       }
     ],
-    "artifactName": "Doubao-Creative-Hub-Setup-v${version}-x64.${ext}",
+    "artifactName": "Doubao-Creative-Hub-Public-Setup-v${version}-x64.${ext}",
     "icon": "assets/app.ico"
   },
   "compression": "maximum",
