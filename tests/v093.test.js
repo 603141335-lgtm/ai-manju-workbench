@@ -24,7 +24,7 @@ test('图片图号、音频字符名映射位于上方，原文分镜完整保�
  const items=[{code:'A01',label:'小李',file:img('A01')},{code:'A15',label:'杜不凡',file:img('A15')}];
  const voices=[{code:'A01',label:'少年男声',characterName:'小李',filename:'小李.wav',imageIndex:1}];
  const out=composeText(original,items,0,voices);
- assert.match(out,/图1 = A01 小李（A01\.png）/);assert.match(out,/图2 = A15 杜不凡（A15\.png）/);
+ assert.match(out,/图1锁定人物小李：/);assert.match(out,/图2锁定人物杜不凡：/);
  assert.match(out,/音频1 = A01 小李（少年男声：小李\.wav）/);
  assert(out.indexOf('音频1 = A01')<out.indexOf('连续性参考'));
  assert(out.endsWith('限制：禁止背景音乐和字幕'));
@@ -36,7 +36,7 @@ test('离线无登录也可生成发送稿预览，声音自动对应A01',()=>{
  const engine=createImportEngine({getSegment:()=>({text}),resolveRows:()=>rows,getTailForSegment:()=>({state:'none'}),getVoiceForImages:items=>({items:[{code:'A01',label:'少年音色',path:path.join(root,'小李.wav'),filename:'小李.wav',imageIndex:1}],blocked:false})});
  const result=engine.getDraft({episodeId:'e',segmentId:'s'});
  assert.equal(result.items[0].label,'小李');assert.equal(result.items[1].label,'杜不凡');
- assert.match(result.previewText,/图1 = A01 小李/);
+ assert.match(result.previewText,/图1锁定人物小李：/);
  assert.match(result.previewText,/音频1 = A01 小李/);
  assert.equal(result.blocked,false);
 });
