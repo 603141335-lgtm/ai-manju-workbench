@@ -322,6 +322,7 @@ async function runOneClickImport(checkOnly=false){
  $('btnOneClickImport').disabled=true;
  try{
   const plan=await B.importPreflight(ep.id,seg.id);showImportStatus(plan);
+   if(plan.videoCheck?.ready&&!plan.videoCheck.settingsVerified)toast(plan.videoCheck.message);
   if(!plan.ready){toast(plan.error||'豆包网页当前不可用');return;}
   if(plan.blocked){toast(plan.voiceErrors?.length?plan.voiceErrors.join('；'):plan.overLimit?'加上上一段尾帧超过9张，请先调整':'缺图、重复编号、图片格式或尾帧存在异常，请先处理');return;}
   if(checkOnly){toast('预检：'+plan.items.length+'张图片、'+(plan.voicePlan?.items.length||0)+'段已绑定声音；原文不改变');return;}
@@ -389,7 +390,9 @@ function initGlobal(){const help=$('helpDialog');$('btnHelp').onclick=()=>modal(
   for(const id of ['helpDialog','pasteDialog','toolsDialog'])$(id).addEventListener('cancel',e=>{e.preventDefault();dialogClose($(id))});
   setupResize($('leftResizer'),'left');setupResize($('rightResizer'),'right');setupResize($('bottomResizer'),'bottom');
   new ResizeObserver(bounds).observe($('webHost'));window.addEventListener('resize',bounds);
-  B.onStatus(x=>{if(x.id===cfg?.activeAccountId)$('webStatus').textContent=x.status});B.onVideoStatus(x=>{if(x.accountId===cfg?.activeAccountId)$('webStatus').textContent=x.message||'视频模式未就绪'});B.onToast(toast);B.onLayout(bounds);B.onDownloadChange(x=>{downloadsState=x;renderDownloads()});
+  $('btnVideoRetry').onclick=()=>safe(async()=>{const v=await B.videoEnsure();$('webStatus').textContent=v.message;$('btnVideoManual').hidden=!!v.ready;toast(v.message)});
+  $('btnVideoManual').onclick=()=>safe(async()=>{const v=await B.videoManualConfirm();if(v&&!v.cancelled){$('webStatus').textContent=v.message;$('btnVideoManual').hidden=!!v.ready;toast(v.message)}});
+  B.onStatus(x=>{if(x.id===cfg?.activeAccountId)$('webStatus').textContent=x.status});B.onVideoStatus(x=>{if(x.accountId===cfg?.activeAccountId){$('webStatus').textContent=x.message||'视频模式待检测';$('btnVideoManual').hidden=!!x.ready;}});B.onToast(toast);B.onLayout(bounds);B.onDownloadChange(x=>{downloadsState=x;renderDownloads()});
   window.addEventListener('beforeunload',()=>{if(promptTimer){const e=getEp(),s=getSeg();if(s){s.text=$('promptText').value;B.wsEditText(e.id,s.id,s.text)}}});
   document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='PageDown'){e.preventDefault();safe(nextAccount)}if(e.altKey&&e.key==='ArrowRight'){e.preventDefault();safe(()=>moveSegment(1))}if(e.altKey&&e.key==='ArrowLeft'){e.preventDefault();safe(()=>moveSegment(-1))}if(e.key==='Escape'&&focus){focus=false;$('layout').classList.remove('focus');$('btnMaxBrowser').textContent='专注';bounds()}});
 }
@@ -434,7 +437,7 @@ let currentNotice=null;
 function updateNoticeDisplay(v){
   if(!v)return;
   currentNotice=v;
-  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.6')+' 公开版';
+  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.7')+' 公开版';
   const source={online:'已同步最新云端公告',cache:'正在显示本地缓存的公告',offline:'暂时无法连接公告服务',unconfigured:'宣传公告地址尚未配置'}[v.source]||'公告状态未知';
   $('noticeSource').textContent=source;
   const hasUpdate=!!v.hasUpdate;
@@ -469,17 +472,8 @@ function hideNoticeHint(){
     try{localStorage.setItem('notice-dismiss-'+currentNotice.notice.id,'1')}catch{}
   }
 }
-function updatePerformanceDisplay(v){
-  if(!v)return;
-  $('performanceMode').value=v.mode;
-  $('protectActiveAccount').checked=!!v.activeProtected;
-  $('performanceSummary').textContent='已打开 '+v.liveViews+' 个豆包网页 / 目标 '+v.limit+' 个 · 工作集约 '+v.memoryMb+' MB（估算，包含 Electron 相关进程）';
-  $('performanceWarning').textContent=v.overLimit
-    ?'目前多出 '+v.overLimit+' 个网页。可点击下方“检查并释放”，始终由你确认；被保护账号和正在下载的页面不会进入候选名单。'
-    :'当前数量符合目标。切换账号不会自动关闭后台任务，仍可在此手动清理。';
-}
 function initPublicFeatures(){
-  const nd=$('noticeDialog'),pd=$('performanceDialog');
+  const nd=$('noticeDialog');
   const close=d=>{if(d.open)dialogClose(d)};
   $('btnNotice').onclick=()=>{hideNoticeHint();modal(nd)};
   $('btnNoticeClose').onclick=$('btnNoticeDone').onclick=()=>close(nd);
@@ -489,22 +483,63 @@ function initPublicFeatures(){
   $('btnNoticeQR').onclick=()=>safe(()=>B.openNoticeLink('qr'));
   $('noticeHintOpen').onclick=()=>{hideNoticeHint();modal(nd)};
   $('noticeHintClose').onclick=hideNoticeHint;
-  $('btnPerformance').onclick=()=>safe(async()=>{updatePerformanceDisplay(await B.getPerformance());modal(pd)});
-  $('btnPerformanceClose').onclick=$('btnPerformanceDone').onclick=()=>close(pd);
-  $('performanceMode').onchange=e=>safe(async()=>updatePerformanceDisplay(await B.setPerformance(e.target.value)));
-  $('protectActiveAccount').onchange=e=>safe(async()=>updatePerformanceDisplay(await B.protectAccount(e.target.checked)));
-  $('btnCleanupViews').onclick=()=>safe(async()=>updatePerformanceDisplay(await B.cleanupMemory()));
-  for(const d of [nd,pd])d.addEventListener('cancel',e=>{e.preventDefault();close(d)});
+  $('btnCleanupViews').onclick=()=>safe(async()=>{
+    const state=await B.cleanupMemory();
+    toast('当前保留 '+state.liveViews+' 个豆包网页');
+  });
+  nd.addEventListener('cancel',e=>{e.preventDefault();close(nd)});
   B.onNoticeUpdated(updateNoticeDisplay);
-  B.onPerformanceChanged(updatePerformanceDisplay);
   B.getNotice().then(updateNoticeDisplay).catch(error);
 }
-
+function initApiSettings(){
+  const dlg=$('apiDialog'),close=()=>{if(dlg.open)dialogClose(dlg)};
+  const endpoints={openai:'https://api.openai.com/v1',deepseek:'https://api.deepseek.com/v1',volcengine:'https://ark.cn-beijing.volces.com/api/v3'};
+  const result=$('apiTestResult');
+  const setStatus=v=>{
+    $('apiKeyStatus').textContent=v.hasKey?'✓ 当前 Windows 用户已加密保存 API Key':'尚未保存 API Key';
+    if(v.secureStorageAvailable===false)$('apiKeyStatus').textContent+='；当前 Windows 加密存储不可用';
+  };
+  const load=async()=>{
+    const v=await B.apiGet();setStatus(v);
+    $('apiProvider').value=v.provider||'custom';
+    $('apiEndpoint').value=v.endpoint||endpoints[v.provider]||'';
+    $('apiModel').value=v.model||'';$('apiKey').value='';
+    result.textContent='连接测试读取模型列表；下方文字对话测试可能产生 Token 费用。';
+  };
+  const save=async clearKey=>{
+    const settings={provider:$('apiProvider').value,endpoint:$('apiEndpoint').value.trim(),
+      model:$('apiModel').value.trim(),...(clearKey?{clearKey:true}:{key:$('apiKey').value})};
+    const v=await B.apiSave(settings);setStatus(v);$('apiKey').value='';
+    toast(clearKey?'已删除本机保存的 API Key':'API 设置已保存在本机');
+  };
+  $('btnApi').onclick=()=>safe(async()=>{await load();modal(dlg)});
+  $('apiClose').onclick=$('apiDone').onclick=close;
+  dlg.addEventListener('cancel',e=>{e.preventDefault();close()});
+  $('apiProvider').onchange=()=>{const preset=endpoints[$('apiProvider').value];if(preset)$('apiEndpoint').value=preset;};
+  $('apiSave').onclick=()=>safe(()=>save(false));
+  $('apiClearKey').onclick=()=>safe(async()=>{
+    if(!(await confirmAction('删除本机 API Key','将删除当前 Windows 用户保存的 API Key，不影响其他用户。确认？')))return;
+    await save(true);
+  });
+  $('apiCheck').onclick=()=>safe(async()=>{
+    result.textContent='正在检查 API 基础地址上的 /models 接口…';
+    try{const r=await B.apiCheck();result.textContent=r.message}
+    catch(err){result.textContent='连接失败：'+(err?.message||err);throw err}
+  });
+  $('apiAsk').onclick=()=>safe(async()=>{
+    const prompt=$('apiTestPrompt').value.trim();if(!prompt)return toast('先输入测试文字');
+    result.textContent='正在发送测试文字，可能产生 Token 费用…';
+    try{
+      const r=await B.apiChat(prompt);
+      result.textContent=r.text+(r.usage?.total_tokens?'\n\nToken：'+r.usage.total_tokens:'');
+    }catch(err){result.textContent='请求失败：'+(err?.message||err);throw err;}
+  });
+}
 async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Electron Windows 桌面程序中操作真实豆包';return}
   try{
     cfg=await B.getCfg();ws=await B.wsState();expandGroups=new Set(cfg.groups.map(g=>g.id));
     renderGroups();renderWorkspaceShell();applyLayout();await renderImages();refreshHeader();
-    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();initPublicFeatures();await refreshDownloads();await refreshExtension();
+    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();initPublicFeatures();initApiSettings();await refreshDownloads();await refreshExtension();
     if(cfg.activeAccountId)await switchAccount(cfg.activeAccountId);setTimeout(bounds,250);
     if(ws.warning)toast(ws.warning);
   }catch(e){error(e);$('webStatus').textContent='初始化失败：'+e.message+'。打开数据目录检查 diagnostic.log'}
