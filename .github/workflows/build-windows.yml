@@ -72,7 +72,7 @@ jobs:
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt
       - name: Publish private GitHub Release (avoids Actions artifact quota)
-        if: github.event_name == 'push'
+        if: github.event_name == 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: doubao-public-v0.9.6
