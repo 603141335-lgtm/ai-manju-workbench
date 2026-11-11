@@ -11,7 +11,7 @@ const file=code=>{const f=path.join(dir,code+'.png');fs.writeFileSync(f,'pixels'
 test('映射前置：原参考图栏目、完整台词和限制逐字不变，无尾部映射',()=>{
  const original='第3段｜第3场｜15秒\n需要参考图：A15、A32\n连续性参考：上一镜结束动作\n0—3秒｜台词：不要改变！\n限制：禁止字幕\n';
  const out=core.composeText(original,[{code:'尾帧',kind:'tail',file:{name:'尾帧.png'}},{code:'A15',file:{name:'A15.png'}},{code:'A32',file:{name:'A32.png'}}]);
- assert(out.includes('图1 = 上一段尾帧'));assert(out.includes('图2 = A15'));assert(out.includes('图3 = A32'));
+ assert(out.includes('图1承接上一段尾帧：'));assert(out.includes('图2锁定人物：'));assert(out.includes('图3锁定人物：'));
  assert(out.indexOf('图3 = A32')<out.indexOf('连续性参考'));assert(out.endsWith('限制：禁止字幕\n'));
  assert.equal(out.split('需要参考图：A15、A32').length,2);
 });
