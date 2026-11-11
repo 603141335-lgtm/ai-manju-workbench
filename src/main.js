@@ -21,7 +21,9 @@ const publicConfig=require('./public-config.json');
 
 // Public distribution never reads the author's legacy workspace or sessions.
 // Each Windows user receives a fresh isolated profile; existing workspaces never auto-migrate.
-app.setPath('userData',path.join(app.getPath('appData'),'DoubaoCreativeHubPublic'));
+const publicUserDataDir=path.join(app.getPath('appData'),'DoubaoCreativeHubPublic');
+fs.mkdirSync(publicUserDataDir,{recursive:true});
+app.setPath('userData',publicUserDataDir);
 
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
