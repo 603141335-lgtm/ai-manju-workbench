@@ -80,10 +80,9 @@ jobs:
           name: 豆包创作舱 v0.9.6 公开优化版（数据隔离·远程公告·低内存）
           prerelease: true
           body: |
-            v0.9.6 修复旧版发布附件路径；独立空白工作区与25个登录位，不迁移作者工作数据；社群公告远程配置框架；低内存缓存预览；显式释放和账号保护，不擅自关闭后台生成页面。未设置 DOUBAO_NOTICE_URL 时公告为占位。真实豆包登录操作尚需 Windows 真机验证。
+            v0.9.6 修复旧版发布附件路径；独立空白工作区与25个登录位，不迁移作者工作数据；社群公告远程配置框架；低内存缓存预览；显式释放和账号保护，不擅自关闭后台生成页面。公告内置固定的待开通公开入口，在单独公告仓库上线前显示占位，后续可远程修改。真实豆包登录操作尚需 Windows 真机验证。
           files: |
             release/Doubao-Creative-Hub-Public-Setup-v0.9.6-x64.exe
             release/SHA256SUMS.txt
-            release/latest.yml
             release/*.blockmap
           fail_on_unmatched_files: true
