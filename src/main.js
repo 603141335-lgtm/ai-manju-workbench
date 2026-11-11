@@ -29,6 +29,8 @@ app.setPath('userData',publicUserDataDir);
 const DOUBAO_URL='https://www.doubao.com/chat/';
 const LIVE_LIMITS=Object.freeze({light:1,balanced:2,performance:3});
 let noticeService=null,noticeTimer=null,pruneInProgress=false;
+const protectedAccounts=new Set();
+const activeDownloads=new Map();
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
 const loadedExtensions=new Map();
 const views=new Map(); // account ID -> {view,lastUsed}
@@ -79,6 +81,9 @@ function setupSession(sess,accountId){
   if(sess.__creativeHubReady)return;
   sess.__creativeHubReady=true;
   sess.on('will-download',(_ev,item)=>{
+    activeDownloads.set(accountId,(activeDownloads.get(accountId)||0)+1);
+    tell('perf:changed',performanceState());
+    item.once('done',()=>{const n=(activeDownloads.get(accountId)||1)-1;if(n>0)activeDownloads.set(accountId,n);else activeDownloads.delete(accountId);tell('perf:changed',performanceState());});
     try{
       const selected=workspace.current();
       const prepared=lastPreparedByAccount.get(accountId);
@@ -135,33 +140,54 @@ function configureView(id){
 }
 function performanceState(){
   const mode=LIVE_LIMITS[cfg?.performanceMode]?cfg.performanceMode:'balanced';
-  const memoryKb=(app.getAppMetrics()||[]).reduce((sum,m)=>sum+Math.max(0,m.memory?.workingSetSize||0),0);
-  return {mode,limit:LIVE_LIMITS[mode],liveViews:views.size,memoryMb:Math.round(memoryKb/1024)};
+  const metrics=app.getAppMetrics()||[];
+  const memoryKb=metrics.reduce((sum,m)=>sum+Math.max(0,m.memory?.workingSetSize||0),0);
+  return {
+    mode,limit:LIVE_LIMITS[mode],liveViews:views.size,memoryMb:Math.round(memoryKb/1024),
+    protectedCount:protectedAccounts.size,
+    activeProtected:protectedAccounts.has(activeId),
+    activeDownloads:[...activeDownloads.values()].reduce((a,b)=>a+b,0),
+    overLimit:Math.max(0,views.size-LIVE_LIMITS[mode])
+  };
 }
 async function prune(){
-  if(pruneInProgress)return;
+  if(pruneInProgress)return performanceState();
   const max=performanceState().limit;
-  if(views.size<=max)return;
+  if(views.size<=max){tell('app:toast','当前浏览器数量已符合性能模式');return performanceState();}
   pruneInProgress=true;
   try{
-    const candidates=[...views.entries()].filter(([id])=>id!==activeId).sort((a,b)=>a[1].lastUsed-b[1].lastUsed);
-    if(!candidates.length)return;
-    // A Doubao task may continue after upload with no local indicator. Never evict a live page silently.
-    const {response}=await dialog.showMessageBox(win,{
-      type:'warning',buttons:['保留后台页面','确认释放后台页面'],defaultId:0,cancelId:0,
-      title:'省内存模式：确认关闭后台网页',
-      message:'释放后台豆包网页可能打断上传或生成状态显示',
-      detail:'仅关闭最久未使用的后台网页，不删除账号登录信息和本地项目。请先确认这些账号没有正在执行的任务。'
-    });
-    if(response!==1)return;
-    while(views.size>max){
-      const eligible=[...views.entries()].filter(([id])=>id!==activeId).sort((a,b)=>a[1].lastUsed-b[1].lastUsed);
-      if(!eligible.length)break;
-      const [id,slot]=eligible[0];
-      try{win.contentView.removeChildView(slot.view);slot.view.webContents.close()}catch(e){log(e)}
-      views.delete(id);
+    const candidates=[...views.entries()]
+      .filter(([id])=>id!==activeId&&!protectedAccounts.has(id)&&!activeDownloads.has(id))
+      .sort((a,b)=>a[1].lastUsed-b[1].lastUsed);
+    const needed=views.size-max;
+    const pick=candidates.slice(0,needed);
+    if(!pick.length){
+      tell('app:toast','后台网页受到保护，或存在正在下载的任务，没有可以安全候选的页面');
+      return performanceState();
     }
-  }finally{pruneInProgress=false;tell('perf:changed',performanceState());}
+    const names=pick.map(([id])=>cfg.accounts.find(a=>a.id===id)?.name||'未知账号');
+    const {response}=await dialog.showMessageBox(win,{
+      type:'warning',
+      buttons:['取消，保留所有网页','我已确认这些账号没有生成任务，释放网页'],
+      defaultId:0,cancelId:0,
+      title:'释放后台浏览器（需确认）',
+      message:'将释放 '+pick.length+' 个后台豆包网页',
+      detail:'候选账号：'+names.join('、')+
+        '\n\n官方豆包任务的后台生成状态无法可靠自动识别。请确保这些账号没有正在生成、上传或编辑中的内容。关闭后账号登录 Cookie 和本地剧集不会删除，但未保存的网页状态可能丢失。'
+    });
+    if(response!==1)return performanceState();
+    let count=0;
+    for(const [id,slot] of pick){
+      if(id===activeId||protectedAccounts.has(id)||activeDownloads.has(id)||!views.has(id))continue;
+      try{win.contentView.removeChildView(slot.view);slot.view.webContents.close()}catch(e){log(e)}
+      views.delete(id);count++;
+    }
+    tell('app:toast','已释放 '+count+' 个后台浏览器，账号登录信息保留');
+    return performanceState();
+  }finally{
+    pruneInProgress=false;
+    tell('perf:changed',performanceState());
+  }
 }
 function selectAccount(id){
   account(id);
@@ -176,7 +202,8 @@ function selectAccount(id){
   slot.lastUsed=now();
   if(!overlayShown)win.contentView.addChildView(slot.view);
   if(lastBounds)slot.view.setBounds(lastBounds);
-  cfg.activeAccountId=id;save();void prune();
+  cfg.activeAccountId=id;save();
+  tell('perf:changed',performanceState());
   tell('web:selected',{id});
   return {id};
 }
@@ -230,7 +257,13 @@ function registerHandlers(){
   ipcMain.handle('perf:set',async(_e,mode)=>{
     if(!Object.prototype.hasOwnProperty.call(LIVE_LIMITS,mode))throw Error('无效的性能模式');
     update(()=>{cfg.performanceMode=mode});
-    await prune();
+    const result=performanceState();tell('perf:changed',result);return result;
+  });
+  ipcMain.handle('perf:cleanup',()=>prune());
+  ipcMain.handle('perf:protect',(_e,enabled)=>{
+    if(!activeId||!cfg.accounts.some(a=>a.id===activeId))throw Error('尚未选中账号');
+    if(enabled===true)protectedAccounts.add(activeId);
+    else protectedAccounts.delete(activeId);
     const result=performanceState();tell('perf:changed',result);return result;
   });
   ipcMain.handle('notice:get',()=>noticeService.snapshot());
@@ -276,6 +309,7 @@ function registerHandlers(){
     if(cfg.accounts.length<=1)throw Error('至少保留一个账号');
     if(activeId===id)selectAccount(cfg.accounts.find(a=>a.id!==id).id);
     const slot=views.get(id);if(slot){try{win.contentView.removeChildView(slot.view);slot.view.webContents.close()}catch(e){log(e)}views.delete(id)}
+    protectedAccounts.delete(id);
     // Deliberately does not delete a profile directory or its cookies; accidental removal is reversible via backup.
     return update(()=>{cfg.accounts=cfg.accounts.filter(a=>a.id!==id)});
   });
