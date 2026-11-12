@@ -2,6 +2,8 @@
 The actual src/index.html, src/style.css, src/renderer.js are rendered.
 No Doubao credentials, browser cookies or user files are used.
 """
+import sys
+if hasattr(sys.stdout,'reconfigure'): sys.stdout.reconfigure(encoding='utf-8')
 from pathlib import Path
 from io import BytesIO
 import re
