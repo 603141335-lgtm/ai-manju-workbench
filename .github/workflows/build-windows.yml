@@ -5,8 +5,6 @@ concurrency:
 on:
   push:
     branches: [feature/dudu-ai-v1.1.0-tutorial-background]
-  pull_request:
-    branches: [dudu-ai-workbench-STABLE-v1.0.1]
   workflow_dispatch:
 permissions:
   contents: write
@@ -46,6 +44,13 @@ jobs:
         run: node --test tests/v094.test.js
       - name: Prior 0.9.5-0.9.9 feature regressions before hardening
         run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js tests/v098-concise-mentions.test.js tests/v099-community-inline.test.js tests/v100-runtime-smoke.test.js
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native-core/target
+          key: dudu-rust-windows-v110-${{ hashFiles('native-core/Cargo.toml') }}
       - uses: dtolnay/rust-toolchain@stable
       - name: Resolve Rust dependency lockfile for this build
         run: cargo generate-lockfile --manifest-path native-core/Cargo.toml
