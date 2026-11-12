@@ -103,6 +103,8 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   protectAccount:enabled=>ipcRenderer.invoke('perf:protect',!!enabled),
   setPerformance:mode=>ipcRenderer.invoke('perf:set',mode),
   onPerformanceChanged:fn=>ipcRenderer.on('perf:changed',(_e,v)=>fn(v)),
+  getNoticePreferences:()=>ipcRenderer.invoke('notice:preferences'),
+  saveNoticePreferences:prefs=>ipcRenderer.invoke('notice:savePreferences',prefs),
   getNotice:()=>ipcRenderer.invoke('notice:get'),
   refreshNotice:()=>ipcRenderer.invoke('notice:refresh'),
   openNoticeLink:target=>ipcRenderer.invoke('notice:open',target),
