@@ -14,7 +14,7 @@
     "verify:brand": "node --test tests/v100-runtime-smoke.test.js",
     "installer:art": "node scripts/generate-installer-art.js",
     "native:replace": "node scripts/replace-with-native.js",
-    "native:verify": "node --test tests/v101-native-core.test.js",
+    "native:verify": "node -e \"if(require('./native/dudu_core.node').securityBuildInfo()!=='dudu-native-core-1.0.1')process.exit(1)\" && node --test tests/v101-native-core.test.js",
     "verify:release": "node scripts/verify-package-boundary.js"
   },
   "devDependencies": {
