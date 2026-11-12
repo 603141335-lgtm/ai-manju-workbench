@@ -6,13 +6,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data:; script-src 'self'; style-src 'self'; img-src 'self' file: data: https:; connect-src 'none'; object-src 'none'; frame-src 'none'"/>
   <title>豆包创作舱｜内嵌豆包浏览器工作台</title>
   <link rel="stylesheet" href="./style.css"/>
+  <script src="./community-qr.js" defer></script>
   <script src="./renderer.js" defer></script>
 </head>
 <body>
 <div class="app" id="app">
   <header class="topbar">
     <button class="apiHeadBtn" id="btnApi" title="配置 API 服务商、模型与 Key">API 接口</button>
-    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge" id="appVersionBadge">v0.9.8 简洁艾特版</span></div>
+    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge" id="appVersionBadge">v0.9.9 精准艾特版</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
     <div class="topactions"><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="ghost" id="btnData">数据目录</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
@@ -47,8 +48,8 @@
           <div class="draftActions" id="draftActions" hidden><span id="draftPreviewInfo">发送稿只用于导入，不修改原始剧本</span><button class="smallBtn" id="btnCopyDraft">复制发送稿</button><button class="smallBtn" id="btnSyncDraft">仅同步文字到豆包</button></div>
           <div class="promptFooter"><span id="promptSaveStatus">原文按段保存，不自动改写</span><button class="textBtn" id="btnEditCodes">校正参考图编号</button></div>
           <section class="mentionWidget" id="importWidget" aria-label="一键导入提示词和图片">
-            <div class="mentionRow"><button class="mentionPrimary" id="btnOneClickImport" title="从本段自动上传参考图，完整填写提示词与图号表，再尝试真实@">⚡ 一键导入：提示词＋参考图＋@</button><button class="smallBtn" id="btnImportPreflight">预检</button><button class="smallBtn" id="btnImportConfirm" hidden>确认当前图片</button><button class="smallBtn" id="btnImportCancel" hidden>取消</button></div>
-            <div class="mentionNote" id="importNote">自动读取右侧本段提示词和参考图库，优先一次批量上传本段参考图；图号表放在参考图栏目后，成片尾帧自动排第1张。不自动发送。</div>
+            <div class="mentionRow"><button class="mentionPrimary" id="btnOneClickImport" title="按原参考图编号顺序上传图片，并在每行原文后插入豆包原生蓝色@">⚡ 一键导入：提示词＋参考图＋@</button><button class="smallBtn" id="btnImportPreflight">预检</button><button class="smallBtn" id="btnImportConfirm" hidden>确认当前图片</button><button class="smallBtn" id="btnImportCancel" hidden>取消</button></div>
+            <div class="mentionNote" id="importNote">自动读取右侧本段提示词和参考图库，优先一次批量上传本段参考图；不新增图1/图2等映射，只在原参考图编号说明后插入原生@；成片尾帧仍优先。不自动发送。</div>
             <div class="mentionProgress" id="importProgress" aria-live="polite" hidden></div>
             <div class="mentionDetails" id="importDetails" hidden></div>
           </section>
@@ -135,17 +136,55 @@
     <div class="dialogActions"><button id="apiDone" class="primary">返回工作台</button></div>
   </div>
 </dialog>
-<dialog id="noticeDialog" class="noticeDialog"><div class="dialogbody">
-  <div class="dialoghead"><h2>社群中心 · 官方公告</h2><button id="btnNoticeClose" class="iconBtn" aria-label="关闭">×</button></div>
-  <p class="noticeSource" id="noticeSource">尚未连接公告服务器</p>
-  <div class="noticeTile"><span class="noticeKicker">最新版本</span><strong id="noticeRelease">当前版本 v0.9.7</strong><p id="noticeReleaseNotes">暂未发布远程版本消息。</p><button id="btnNoticeDownload" class="primary" hidden>在浏览器打开最新版下载页面</button></div>
-  <div class="noticeTile"><span class="noticeKicker">公告消息</span><strong id="noticeTitle">官方消息</strong><p id="noticeBody">此区域未来会联网同步最新活动与教程。</p></div>
-  <div class="noticeTile"><span class="noticeKicker">社群宣传</span><strong id="noticeCommunity">创作交流</strong><p id="noticeCommunityDesc">社群信息由管理员远程配置。</p>
-  <p id="noticeWechat" hidden></p><img id="noticeQR" alt="社群二维码" loading="lazy" referrerpolicy="no-referrer" hidden/>
-  <div class="noticeActions"><button id="btnNoticeQQ" class="ghost" hidden>QQ群链接</button><button id="btnNoticeQR" class="ghost" hidden>查看二维码</button></div></div>
-  <p class="noticePrivacy">仅此公告模块联网读取公共信息。本地账号、Cookie、剧本、参考图和素材不会上传到公告服务器。</p>
-  <div class="dialogActions"><button id="btnNoticeRefresh" class="ghost">刷新公告</button><button id="btnNoticeDone" class="primary">返回创作</button></div>
-</div></dialog>
+<dialog id="noticeDialog" class="noticeDialog communityDialog" aria-labelledby="communityHeadline">
+  <div class="communityShell">
+    <header class="communityHeader">
+      <div><div class="communityEyebrow">✦ 豆包创作舱 · 官方创作者社群</div>
+        <h2 id="communityHeadline">加入 AI 漫剧创作交流群</h2>
+        <p id="communitySubtitle">交流创作经验 · 关注最新工具与漫剧资讯</p>
+      </div>
+      <button id="btnNoticeClose" class="iconBtn" aria-label="关闭社群弹窗">×</button>
+    </header>
+    <div class="communityMain">
+      <section class="communityBenefits" aria-label="社群交流内容">
+        <div class="communityPromoTitle"><span class="communityLiveDot"></span> 正在招募 AI 漫剧创作者</div>
+        <p id="noticeCommunityDesc" class="communityLead">创作交流、工具更新与制作经验分享</p>
+        <ul class="communityBenefitList" id="communityBenefitList">
+          <li>交流分镜、提示词和漫剧制作经验</li>
+          <li>关注 AI 漫剧新工具和行业动态</li>
+          <li>工作台更新、教程与实战技巧分享</li>
+        </ul>
+        <div class="communityContact">
+          <div><span class="contactLabel">添加微信交流 / 二维码过期可联系</span><strong id="noticeWechat">du4du44</strong></div>
+          <button id="btnNoticeCopy" class="primary" title="复制微信号">复制微信号</button>
+        </div>
+        <div class="communityButtons">
+          <button id="btnNoticeDone" class="primary communityEnter">进入工作台</button>
+          <button id="btnNoticeQQ" class="ghost" hidden>QQ群入口</button>
+        </div>
+        <label class="communitySkip"><input type="checkbox" id="communityNoStartup"/>以后启动不再自动弹出（可随时从右上角打开）</label>
+      </section>
+      <section class="communityQrPanel" aria-label="微信社群二维码">
+        <div class="qrTitle" id="noticeCommunity">AI 漫剧创作交流群</div>
+        <div class="qrCanvas">
+          <img id="noticeQR" alt="AI 漫剧交流群微信二维码" loading="eager" referrerpolicy="no-referrer" hidden/>
+          <div id="qrPlaceholder" class="qrPlaceholder">二维码暂不可用<br/>请添加微信 du4du44</div>
+        </div>
+        <strong id="qrStatus" class="qrStatus">扫码入群 · 交流 AI 漫剧</strong>
+        <span class="qrExpiry" id="qrExpiry">二维码有限期，过期后请添加微信</span>
+        <button id="btnNoticeQR" class="textBtn" hidden>在浏览器中查看二维码</button>
+      </section>
+    </div>
+    <div class="communityFooter">
+      <div class="communityUpdates">
+        <div class="communityUpdateItem"><span class="noticeKicker">版本更新</span><strong id="noticeRelease">当前版本 v0.9.9</strong><p id="noticeReleaseNotes">点击公告可了解新功能。</p><button id="btnNoticeDownload" class="smallBtn" hidden>下载最新版</button></div>
+        <div class="communityUpdateItem"><span class="noticeKicker">官方公告</span><strong id="noticeTitle">创作资讯</strong><p id="noticeBody">一起分享工具与创作经验。</p></div>
+      </div>
+      <div class="communityMeta"><span id="noticeSource" class="noticeSource">正在读取本地公告…</span><button id="btnNoticeRefresh" class="textBtn">刷新公告</button></div>
+      <p class="noticePrivacy">公告仅获取公开展示内容，不上传你的豆包登录状态、Cookie、剧本、参考图和视频素材。</p>
+    </div>
+  </div>
+</dialog>
 <dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>豆包创作舱｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 底部每集单独一整行，点击集名展开分段，点击段落切换；点右上角「已完成」自动缩成小卡。高级隐藏/锁定在「更多」菜单。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
 <dialog id="voiceDialog"><div class="dialogbody"><div class="dialoghead"><h2>绑定人物声音到参考图</h2><button id="btnVoiceClose" class="iconBtn">×</button></div>
     <p>先选择人物图号、填写角色名，再选择本机 WAV/MP3 声音样本。每个人物可以有多个样本，默认仅自动使用选定的一个。</p>

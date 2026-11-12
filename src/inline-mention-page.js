@@ -14,8 +14,16 @@ function focusReferenceSlot(payload){
  const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT);
  const texts=[];let content='',node;
  while((node=walker.nextNode())){const value=node.nodeValue||'';texts.push({node,start:content.length,end:content.length+value.length});content+=value;}
- let pos=content.indexOf(anchor);
- if(pos<0||content.indexOf(anchor,pos+anchor.length)>=0)return {ok:false,message:'没有找到唯一的图号对应行，已停止以防止艾特错位'};
+ const scoped=payload?.scope==='reference';
+ const referenceStart=scoped?content.search(/(?:需要参考图|所需参考图|引用参考图|参考图(?:编号|列表)?)/):-1;
+ if(scoped&&referenceStart<0)return {ok:false,message:'没有找到原文中的需要参考图栏目'};
+ const from=Math.max(0,referenceStart);
+ const afterSection=content.slice(from).search(/(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\s*[:：]/);
+ const to=scoped&&afterSection>=0?from+afterSection:content.length;
+ const pos=content.indexOf(anchor,from);
+ if(pos<0||pos+anchor.length>to||((()=>{const next=content.indexOf(anchor,pos+anchor.length);return next>=0&&next<to})()))
+   return {ok:false,message:'无法在原参考图栏目唯一定位该编号说明；未修改其他位置'};
+
  const after=pos+anchor.length;
  const target=texts.find(t=>t.end>=after&&t.start<=after);
  if(!target)return {ok:false,message:'无法确定图片编号所在的可编辑位置'};
@@ -36,7 +44,13 @@ function inspectInlineReference(payload){
  if(!editor||!anchor)return {lineFound:false,verified:false,message:'无法读取编辑器或图号定位标记'};
  // Use the innermost block, not a parent of the entire editor.
  const blocks=[...editor.querySelectorAll('p,li,div')];
- const matches=blocks.filter(el=>(el.textContent||'').includes(anchor))
+ // Reject an identical line in prose outside the original reference section.
+ const refStart=payload?.scope==='reference'
+    ? blocks.findIndex(el=>/(?:需要参考图|所需参考图|引用参考图|参考图(?:编号|列表)?)/.test(el.textContent||''))
+    : -1;
+ const nextSection=refStart>=0?blocks.findIndex((el,i)=>i>refStart&&/^(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\s*[:：]/.test((el.textContent||'').trim())):-1;
+ const scopedBlocks=refStart>=0?blocks.slice(refStart,nextSection>refStart?nextSection:undefined):blocks;
+ const matches=scopedBlocks.filter(el=>(el.textContent||'').includes(anchor))
    .filter(el=>![...el.querySelectorAll('p,li,div')].some(c=>(c.textContent||'').includes(anchor)));
  let line=matches.length===1?matches[0]:null;
  if(!line){const all=editor.textContent||'';if(all.includes(anchor))return {lineFound:true,verified:false,message:'已找到图号，但无法证明原生引用位于同一行'};return {lineFound:false,verified:false,message:'原始图号行已消失，可能被网页重新排版'};}
@@ -56,7 +70,13 @@ function clearPendingInlineAt(payload){
  const anchor=String(payload?.anchor||'');if(!editor||!anchor)return false;
  const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT);let texts=[],text='',node;
  while((node=walker.nextNode())){const s=node.nodeValue||'';texts.push({node,start:text.length,end:text.length+s.length});text+=s;}
- const start=text.indexOf(anchor);if(start<0||text.indexOf(anchor,start+anchor.length)>=0)return false;
+ const scoped=payload?.scope==='reference',scopeFrom=scoped?text.search(/(?:需要参考图|所需参考图|引用参考图|参考图(?:编号|列表)?)/):0;
+ if(scopeFrom<0)return false;
+ const endSection=scoped?text.slice(scopeFrom).search(/(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\s*[:：]/):-1;
+ const end=endSection>=0?scopeFrom+endSection:text.length;
+ const start=text.indexOf(anchor,scopeFrom);
+ if(start<0||start+anchor.length>end)return false;
+ const duplicate=text.indexOf(anchor,start+anchor.length);if(duplicate>=0&&duplicate<end)return false;
  const from=start+anchor.length;
  if(text.slice(from,from+2)!==' @')return false;
  const s=texts.find(t=>t.end>from&&t.start<=from),e=texts.find(t=>t.end>=from+2&&t.start<from+2);

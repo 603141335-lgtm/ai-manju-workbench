@@ -1,12 +1,12 @@
-name: Build Doubao Creative Hub PUBLIC v0.9.8
+name: Build Doubao Creative Hub PUBLIC v0.9.9
 concurrency:
-  group: "public-v098-${{ github.ref }}"
+  group: "public-v099-${{ github.ref }}"
   cancel-in-progress: true
 on:
   push:
-    branches: [feature/doubao-v0.9.8-concise-mentions]
+    branches: [feature/doubao-v0.9.9-inline-community]
   pull_request:
-    branches: [feature/doubao-public-v0.9.7-video-api]
+    branches: [feature/doubao-v0.9.8-concise-mentions]
   workflow_dispatch:
 permissions:
   contents: write
@@ -33,7 +33,7 @@ jobs:
       - name: v0.9.4 compatibility tests
         run: node --test tests/v094.test.js
       - name: Public edition and video/API regression tests
-        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js tests/v098-concise-mentions.test.js
+        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js tests/v098-concise-mentions.test.js tests/v099-community-inline.test.js
       - name: Fetch official-third-party LGPL FFmpeg Windows binaries for tailframes
         run: |
           New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
@@ -66,7 +66,7 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.8-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.9-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
@@ -75,14 +75,14 @@ jobs:
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: doubao-public-v0.9.8
-          target_commitish: feature/doubao-v0.9.8-concise-mentions
-          name: 豆包创作舱 v0.9.8（简洁参考图艾特·保持其他功能不变）
+          tag_name: doubao-public-v0.9.9
+          target_commitish: feature/doubao-v0.9.9-inline-community
+          name: 豆包创作舱 v0.9.9（原文行尾精准艾特·启动社群中心）
           prerelease: true
           body: |
-            v0.9.8 只升级顶部参考图蓝色原生@定位文本：尾帧优先，人物/场景/食材分类排序，每图一行；保留 v0.9.7 API、公告、账号、剧集、下载、尾帧、音频和独立公开版数据目录。自动测试验证代码与安装包，但真实豆包登录界面的原生蓝色@成功率仍需 Windows 实机核验。
+            v0.9.9 在原参考图编号描述行尾插入原生蓝色@，不新增图1图2、不中断原文顺序；开屏专业社群弹窗，微信号 du4du44、过期二维码自动隐藏、云端文案可更改和用户关闭记忆。保留 v0.9.8 其余功能；原生@仍需真实豆包 Windows 登录实测。
           files: |
-            release/Doubao-Creative-Hub-Public-Setup-v0.9.8-x64.exe
+            release/Doubao-Creative-Hub-Public-Setup-v0.9.9-x64.exe
             release/SHA256SUMS.txt
             release/*.blockmap
           fail_on_unmatched_files: true

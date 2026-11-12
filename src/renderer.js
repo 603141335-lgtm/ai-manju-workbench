@@ -433,29 +433,49 @@ function initVoiceBindings(){
  });
 }
 
+const BUNDLED_COMMUNITY_QR=window.BUNDLED_COMMUNITY_QR;
 let currentNotice=null;
+let startupPromoOpened=false;
 function updateNoticeDisplay(v){
   if(!v)return;
   currentNotice=v;
-  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.7')+' 公开版';
-  const source={online:'已同步最新云端公告',cache:'正在显示本地缓存的公告',offline:'暂时无法连接公告服务',unconfigured:'宣传公告地址尚未配置'}[v.source]||'公告状态未知';
+  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.9')+' 公开版';
+  const source={online:'● 公告已同步',cache:'○ 正在使用本地缓存',offline:'○ 离线模式 · 微信号仍可复制',unconfigured:'○ 本地公告 · 等待云端配置'}[v.source]||'本地公告';
   $('noticeSource').textContent=source;
   const hasUpdate=!!v.hasUpdate;
-  $('noticeRelease').textContent=hasUpdate?'发现新版本 v'+v.release.version:'当前版本 v'+v.currentVersion;
-  $('noticeReleaseNotes').textContent=v.release?.notes||'尚无新版本消息，可正常使用本地创作功能。';
+  $('noticeRelease').textContent=hasUpdate?'新版 v'+v.release.version+' 已发布':'当前版本 v'+v.currentVersion;
+  $('noticeReleaseNotes').textContent=v.release?.notes||'从社群中心了解新功能和版本动态。';
   $('btnNoticeDownload').hidden=!hasUpdate;
-  $('noticeTitle').textContent=v.notice?.title||'官方公告';
-  $('noticeBody').textContent=v.notice?.body||'公告内容将在管理员配置网络地址后显示。';
-  $('noticeCommunity').textContent=v.community?.title||'创作交流';
-  $('noticeCommunityDesc').textContent=v.community?.description||'后续可通过云端配置社群信息，不需要更新安装包。';
-  $('noticeWechat').hidden=!v.community?.wechat;
-  $('noticeWechat').textContent=v.community?.wechat?'微信：'+v.community.wechat:'';
-  $('btnNoticeQQ').hidden=!v.community?.qqUrl;
-  $('btnNoticeQR').hidden=!v.community?.qrUrl;
-  $('noticeQR').hidden=!v.community?.qrUrl;
-  if(v.community?.qrUrl)$('noticeQR').src=v.community.qrUrl;
-  else $('noticeQR').removeAttribute('src');
+  $('noticeTitle').textContent=v.notice?.title||'AI 漫剧创作动态';
+  $('noticeBody').textContent=v.notice?.body||'与更多创作者交流实际制作经验与工具更新。';
+  const community=v.community||{};
+  $('communityHeadline').textContent=community.headline||'加入 AI 漫剧创作交流群';
+  $('communitySubtitle').textContent=community.subtitle||'交流创作经验 · 关注最新工具与漫剧资讯';
+  $('noticeCommunity').textContent=community.title||'AI 漫剧创作交流群';
+  $('noticeCommunityDesc').textContent=community.description||'交流漫剧制作经验、工具与玩法';
+  const benefits=Array.isArray(community.benefits)?community.benefits.slice(0,4):[];
+  const list=$('communityBenefitList');list.replaceChildren();
+  for(const benefit of benefits){const li=document.createElement('li');li.textContent=String(benefit);list.appendChild(li);}
+  const wechat=community.wechat||'du4du44';
+  $('noticeWechat').textContent=wechat;
+  $('btnNoticeQQ').hidden=!community.qqUrl;
+  $('btnNoticeQR').hidden=!(community.qrUrl&&community.qrActive);
   $('noticeDot').hidden=!(hasUpdate||v.notice?.id);
+  const qr=$('noticeQR'),placeholder=$('qrPlaceholder'),valid=community.enabled!==false&&community.qrActive===true;
+  $('qrStatus').textContent=valid?'扫码加入创作交流':'可复制微信号联系进群';
+  $('qrExpiry').textContent=valid
+    ?('当前二维码有效期至 '+(community.qrExpiresAt||'指定日期').slice(0,10)+'；到期自动隐藏')
+    :'二维码已到期或暂不可用，添加微信 '+wechat+' 了解最新进群方式';
+  placeholder.textContent='二维码不可用，请添加微信 '+wechat;
+  qr.onload=()=>{if(valid){qr.hidden=false;placeholder.hidden=true}};
+  qr.onerror=()=>{qr.hidden=true;placeholder.hidden=false;$('qrStatus').textContent='二维码加载失败，请使用微信号进群'};
+  if(valid){
+    // Bundled QR is an unchanged copy of the supplied image's QR area;
+    // only remote administrators may replace it with a fresh HTTPS image.
+    const src=community.qrUrl||BUNDLED_COMMUNITY_QR;
+    if(qr.getAttribute('src')!==src)qr.setAttribute('src',src);
+    if(qr.complete&&qr.naturalWidth>0){qr.hidden=false;placeholder.hidden=true;}
+  }else{qr.hidden=true;placeholder.hidden=false;qr.removeAttribute('src');}
   const id=v.notice?.id;
   if(v.notice?.showHint&&id&&v.notice.body){
     let previouslyDismissed=false;
@@ -474,22 +494,45 @@ function hideNoticeHint(){
 }
 function initPublicFeatures(){
   const nd=$('noticeDialog');
-  const close=d=>{if(d.open)dialogClose(d)};
-  $('btnNotice').onclick=()=>{hideNoticeHint();modal(nd)};
-  $('btnNoticeClose').onclick=$('btnNoticeDone').onclick=()=>close(nd);
+  const close=()=>{if(nd.open)dialogClose(nd)};
+  const open=()=>{if(!nd.open&&!document.querySelector('dialog[open]')){hideNoticeHint();modal(nd)}};
+  $('btnNotice').onclick=open;
+  $('btnNoticeClose').onclick=$('btnNoticeDone').onclick=close;
   $('btnNoticeRefresh').onclick=()=>safe(async()=>updateNoticeDisplay(await B.refreshNotice()));
   $('btnNoticeDownload').onclick=()=>safe(()=>B.openNoticeLink('download'));
   $('btnNoticeQQ').onclick=()=>safe(()=>B.openNoticeLink('qq'));
   $('btnNoticeQR').onclick=()=>safe(()=>B.openNoticeLink('qr'));
-  $('noticeHintOpen').onclick=()=>{hideNoticeHint();modal(nd)};
+  $('btnNoticeCopy').onclick=()=>safe(async()=>{
+    await B.copyText(currentNotice?.community?.wechat||'du4du44');
+    toast('✓ 微信号已复制，可到微信中添加');
+  });
+  $('communityNoStartup').onchange=()=>safe(async()=>{
+    await B.saveNoticePreferences({startupEnabled:!$('communityNoStartup').checked});
+    toast($('communityNoStartup').checked?'以后启动不再自动显示，可从社群·公告进入':'已开启启动社群提醒');
+  });
+  $('noticeHintOpen').onclick=open;
   $('noticeHintClose').onclick=hideNoticeHint;
   $('btnCleanupViews').onclick=()=>safe(async()=>{
     const state=await B.cleanupMemory();
     toast('当前保留 '+state.liveViews+' 个豆包网页');
   });
-  nd.addEventListener('cancel',e=>{e.preventDefault();close(nd)});
+  nd.addEventListener('cancel',e=>{e.preventDefault();close()});
   B.onNoticeUpdated(updateNoticeDisplay);
   B.getNotice().then(updateNoticeDisplay).catch(error);
+  const startupState=Promise.all([B.getNoticePreferences(),B.getNotice()])
+    .then(([prefs,notice])=>{
+      $('communityNoStartup').checked=prefs?.startupEnabled===false;
+      updateNoticeDisplay(notice);
+      return prefs?.startupEnabled!==false&&notice.community?.enabled!==false&&notice.community?.startup!==false;
+    }).catch(e=>{error(e);return false});
+  // Called AFTER main() selects the account's WebContentsView, so the dialog
+  // never gets covered by a late-attached embedded browser.
+  return async()=>{
+    const allowed=await startupState;
+    if(allowed&&!startupPromoOpened&&!document.querySelector('dialog[open]')){
+      startupPromoOpened=true;open();
+    }
+  };
 }
 function initApiSettings(){
   const dlg=$('apiDialog'),close=()=>{if(dlg.open)dialogClose(dlg)};
@@ -539,8 +582,9 @@ async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Elec
   try{
     cfg=await B.getCfg();ws=await B.wsState();expandGroups=new Set(cfg.groups.map(g=>g.id));
     renderGroups();renderWorkspaceShell();applyLayout();await renderImages();refreshHeader();
-    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();initPublicFeatures();initApiSettings();await refreshDownloads();await refreshExtension();
+    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();const showStartupPromo=initPublicFeatures();initApiSettings();await refreshDownloads();await refreshExtension();
     if(cfg.activeAccountId)await switchAccount(cfg.activeAccountId);setTimeout(bounds,250);
+    setTimeout(()=>showStartupPromo().catch(error),350);
     if(ws.warning)toast(ws.warning);
   }catch(e){error(e);$('webStatus').textContent='初始化失败：'+e.message+'。打开数据目录检查 diagnostic.log'}
 }

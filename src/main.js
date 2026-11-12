@@ -279,6 +279,21 @@ function registerHandlers(){
     else protectedAccounts.delete(activeId);
     const result=performanceState();tell('perf:changed',result);return result;
   });
+  ipcMain.handle('notice:preferences',()=>{
+    const file=path.join(app.getPath('userData'),'notice-preferences.json');
+    try{
+      const saved=JSON.parse(fs.readFileSync(file,'utf8'));
+      return {startupEnabled:saved.startupEnabled!==false};
+    }catch{return {startupEnabled:true}}
+  });
+  ipcMain.handle('notice:savePreferences',async(_event,prefs)=>{
+    if(typeof prefs?.startupEnabled!=='boolean')throw Error('社群弹窗设置无效');
+    const file=path.join(app.getPath('userData'),'notice-preferences.json');
+    const tmp=file+'.tmp';
+    await fs.promises.writeFile(tmp,JSON.stringify({startupEnabled:prefs.startupEnabled}),'utf8');
+    await fs.promises.rename(tmp,file);
+    return {startupEnabled:prefs.startupEnabled};
+  });
   ipcMain.handle('notice:get',()=>noticeService.snapshot());
   ipcMain.handle('notice:refresh',async()=>{
     const result=await noticeService.refresh();tell('notice:updated',result);return result;
