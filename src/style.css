@@ -152,3 +152,52 @@
 .browserfoot #btnVideoRetry,.browserfoot #btnVideoManual{white-space:nowrap}
 @media(max-width:1270px){.apiHeadBtn{min-width:56px;padding:7px 8px}.brand small{display:none}}
 @media(max-width:1060px){.apiHeadBtn{font-size:10px}.topactions #btnBackup{display:none}}
+
+
+/* v0.9.9 launch community center — readable, dismissible, native Electron overlay. */
+.communityDialog{width:min(900px,95vw)!important;max-width:95vw!important;max-height:90vh!important;padding:0!important;border:1px solid #456ba6!important;overflow:auto!important;border-radius:20px!important;background:#0b1930!important;box-shadow:0 26px 110px #030916f5!important}
+.communityDialog::backdrop{background:#020712cd;backdrop-filter:blur(5px)}
+.communityShell{color:#edf4ff;font-family:inherit;background:radial-gradient(ellipse at 100% 0%,#244e8d 0%,#142b4d 36%,#0d1b32 77%);width:100%;min-width:0}
+.communityHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding:27px 32px 23px;border-bottom:1px solid #36537499}
+.communityEyebrow{font-size:12px;letter-spacing:.05em;color:#a8c9ff;font-weight:750;margin-bottom:10px}
+.communityHeader h2{font-size:27px;line-height:1.25;margin:0 0 9px;color:#f6f9ff;font-weight:790}
+.communityHeader p{font-size:13px;line-height:1.65;margin:0;color:#b5c8e5}
+.communityHeader .iconBtn{background:#203c5c;border:1px solid #5679ab;flex:none;border-radius:9px}
+.communityMain{display:grid;grid-template-columns:minmax(0,1fr) 292px;align-items:stretch;gap:20px;padding:22px 30px}
+.communityBenefits{display:flex;flex-direction:column;min-width:0;gap:14px}
+.communityPromoTitle{color:#a9cbff;font-size:12px;font-weight:700;display:flex;gap:8px;align-items:center}
+.communityLiveDot{width:7px;height:7px;display:inline-block;background:#73e6ae;border-radius:100%;box-shadow:0 0 0 3px #6ad7ab24}
+.communityLead{font-size:14px;line-height:1.7;color:#e1edff;margin:0!important}
+.communityBenefitList{list-style:none;padding:0;margin:2px 0 5px;display:grid;gap:10px}
+.communityBenefitList li{position:relative;padding:9px 11px 9px 36px;background:#1c3354b9;border:1px solid #3554788c;border-radius:10px;font-size:12.5px;line-height:1.6;color:#dae7fb}
+.communityBenefitList li:before{content:'✓';position:absolute;left:12px;top:9px;width:17px;height:17px;display:grid;place-items:center;border-radius:100%;background:#355a85;color:#adf2d2;font-size:12px;font-weight:800}
+.communityContact{background:#1b3557;border:1px solid #4a76ae;border-radius:12px;padding:13px 14px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.communityContact>div{display:flex;flex-direction:column;gap:5px}
+.contactLabel{color:#a9bedc;font-size:11px}
+.communityContact strong{font-size:23px;letter-spacing:.8px;color:white}
+.communityContact button{font-size:12px;padding:10px 15px;min-width:104px;white-space:nowrap}
+.communityButtons{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.communityEnter{font-size:13px;padding:11px 22px;min-width:148px}
+.communitySkip{display:flex;gap:8px;align-items:center;line-height:1.5;font-size:11.5px;color:#adc0da;cursor:pointer;user-select:none}
+.communitySkip input{accent-color:#7299ff;width:15px;height:15px;margin:0;cursor:pointer}
+.communityQrPanel{background:#edf5ff;border:1px solid #9db8dc;border-radius:16px;padding:16px;display:flex;align-items:center;flex-direction:column;gap:10px;min-width:0;color:#1a3557;box-shadow:0 12px 32px #030c2250}
+.qrTitle{font-weight:750;font-size:14px;color:#152b4e;text-align:center}
+.qrCanvas{width:100%;max-width:244px;aspect-ratio:1;background:#fff;border:1px solid #d7e3f3;border-radius:12px;padding:10px;display:grid;place-items:center;overflow:hidden}
+.communityDialog #noticeQR{width:100%!important;height:100%!important;object-fit:contain;image-rendering:auto;border-radius:0!important;margin:0!important;padding:0!important;background:white!important}
+.qrPlaceholder{font-size:13px;color:#4b6582;line-height:1.9;text-align:center;padding:14px}
+.qrPlaceholder[hidden]{display:none!important}
+.qrStatus{font-size:13px;color:#17375d}
+.qrExpiry{text-align:center;color:#5e7797;font-size:11px;line-height:1.55}
+.communityQrPanel .textBtn{font-size:11px;color:#245bc2}
+.communityFooter{border-top:1px solid #314b70;padding:15px 30px 17px}
+.communityUpdates{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.communityUpdateItem{background:#152b49;border:1px solid #304b74;border-radius:10px;padding:10px 13px;min-width:0}
+.communityUpdateItem strong{display:block;font-size:12px;color:#ebf3ff;margin:4px 0}
+.communityUpdateItem p{font-size:11px;color:#aebfdb;line-height:1.45;margin:0 0 3px!important;max-height:3.2em;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.communityUpdateItem button{margin-top:5px}
+.communityMeta{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:8px 0 3px}
+.communityMeta .noticeSource{font-size:10.5px;color:#a4bbdd}
+.communityMeta button{font-size:11px}
+.communityFooter .noticePrivacy{padding:0!important;background:transparent!important;color:#819cbf!important;font-size:10px!important;margin:0!important;line-height:1.6}
+@media(max-width:700px){.communityHeader{padding:20px 20px 14px}.communityHeader h2{font-size:21px}.communityMain{grid-template-columns:1fr;padding:15px 20px}.communityQrPanel{max-width:370px;width:100%;justify-self:center}.communityFooter{padding:15px 20px}.communityUpdates{grid-template-columns:1fr}.communityContact strong{font-size:20px}}
+@media(max-height:690px){.communityHeader{padding-top:15px;padding-bottom:13px}.communityMain{padding-top:12px;padding-bottom:12px}.communityBenefitList{gap:5px}.communityBenefitList li{padding-top:6px;padding-bottom:6px}}
