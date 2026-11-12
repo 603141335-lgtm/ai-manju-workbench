@@ -15,13 +15,17 @@
     <button class="apiHeadBtn" id="btnApi" title="配置 API 服务商、模型与 Key">API 接口</button>
     <div class="brand"><img class="brandLogo" src="../assets/branding/dudu-icon.svg" alt="独独AI工作台标志"/><div><strong>独独AI工作台</strong><small>AI漫剧创作 · 多账号融合工作台</small></div><span class="vbadge" id="appVersionBadge">v1.0.1</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
-    <div class="topactions"><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
+    <div class="topactions"><button class="ghost compact" id="btnTutorial" title="按步骤查看图文教程">📖 使用教程</button><button class="ghost compact" id="btnTaskCenter" title="查看后台账号任务">后台任务 <span id="taskCounter" class="noticeDot" hidden>0</span></button><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
   <main class="layout" id="layout">
     <aside class="sidebar" id="accountsPanel">
       <div class="panelhead"><div><div class="section-kicker">ACCOUNT MANAGER</div><h2>账号目录</h2></div><button class="smallBtn" id="btnAddGroup">＋ 分组</button></div>
       <div class="infoNote">各豆包账号单独保存登录状态，换号不影响右侧剧集和素材。</div>
       <div id="groupList" class="groupList"></div>
+      <div class="backgroundTasks" id="taskCenter" hidden>
+        <div class="taskCenterTitle"><strong>后台导入任务</strong><button class="textBtn" id="btnTaskHide">收起</button></div>
+        <div id="backgroundTaskList" class="backgroundTaskList">当前没有正在运行的任务。</div>
+      </div>
       <div class="sidefooter"><div class="quotarow"><label for="targetCount">每账号目标视频数</label><input id="targetCount" type="number" min="1" max="99" value="2"/></div>
         <div class="minirow"><button id="btnMarkDone" class="ghost compact">＋ 完成1条</button><button id="btnNext" class="primary">下一个账号 →</button></div>
         <div class="resetRow"><button id="btnUndoDone" class="textBtn">撤销1条</button><button id="btnReset" class="textBtn">重置全部计数</button></div>
@@ -159,7 +163,7 @@
           <button id="btnNoticeCopy" class="primary" title="复制微信号">复制微信号</button>
         </div>
         <div class="communityButtons">
-          <button id="btnNoticeDone" class="primary communityEnter">进入工作台</button>
+          <button id="btnNoticeDone" class="primary communityEnter">进入工作台</button><button id="btnCommunityTutorial" class="ghost communityTutorialBtn">📖 新手图文教程 · 从第一步开始</button>
           <button id="btnNoticeQQ" class="ghost" hidden>QQ群入口</button>
         </div>
         <label class="communitySkip"><input type="checkbox" id="communityNoStartup"/>以后启动不再自动弹出（可随时从右上角打开）</label>
@@ -200,5 +204,15 @@
 <button id="btnHideSegment" class="smallBtn">隐藏本段</button><button id="btnLockSegment" class="smallBtn">锁定本段</button>
 <div class="segmentStatus">当前段状态：<select id="statusSelect"><option value="pending">待制作</option><option value="done">已完成</option><option value="redo">待重做</option></select></div></div></details>
 <pre id="assetStats" class="assetStats"></pre></div></dialog>
+<dialog id="tutorialDialog" class="tutorialDialog" aria-labelledby="tutorialHeading">
+  <div class="tutorialShell">
+    <div class="tutorialTop"><div><span class="tutorialKicker">DUDU AI WORKBENCH · GUIDE</span><h2 id="tutorialHeading">独独AI工作台｜图文使用教程</h2><p id="tutorialSubtitle">按步骤了解账号、剧集、素材和一键导入</p></div><button class="iconBtn" id="btnTutorialClose" aria-label="关闭教程">×</button></div>
+    <div class="tutorialMedia"><img id="tutorialSlideImage" alt="教程步骤示意图" hidden/><div id="tutorialImagePlaceholder" class="tutorialImagePlaceholder">正在加载教程图片…</div></div>
+    <div class="tutorialDetail"><strong id="tutorialStepTitle">第一步</strong><p id="tutorialStepDesc"></p></div>
+    <div class="tutorialFoot"><button class="ghost" id="btnTutorialSkip">跳过教程</button><div id="tutorialProgress" class="tutorialProgress">01 / 12</div><div class="tutorialButtons"><button class="ghost" id="btnTutorialPrev">上一步</button><button class="primary" id="btnTutorialNext">下一步 →</button></div></div>
+    <div class="tutorialWatermark">独独AI，让制作变得简单。 · 更多AI软件跟技巧 请添加：du4du44 · 备用号：du6du66</div>
+  </div>
+</dialog>
+
 </body>
 </html>
