@@ -11,14 +11,14 @@ const fs=require('node:fs'),path=require('node:path');
 const obfuscator=require('javascript-obfuscator');
 const root=path.resolve(__dirname,'..');
 const safeModules=[
- 'src/parser.js','src/workspace.js','src/renderer.js',
+ 'src/main.js','src/parser.js','src/workspace.js','src/renderer.js',
  'src/store.js','src/downloads.js','src/tailframe.js',
  'src/thumbnail-cache.js','src/notice-service.js','src/api-settings.js',
  'src/reference-labels.js','src/voice-bindings.js','src/import-core.js',
  'src/import-engine.js','src/mention-core.js'
 ];
 const neverObfuscate=[
- 'src/main.js','src/preload.js','src/video-mode.js',
+ 'src/preload.js','src/video-mode.js',
  'src/import-page.js','src/inline-mention-page.js',
  'src/mention-page.js','src/voice-page.js'
 ];
