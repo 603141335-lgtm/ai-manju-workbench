@@ -439,7 +439,7 @@ let startupPromoOpened=false;
 function updateNoticeDisplay(v){
   if(!v)return;
   currentNotice=v;
-  $('appVersionBadge').textContent='v'+(v.currentVersion||'0.9.9')+' 公开版';
+  $('appVersionBadge').textContent='v'+(v.currentVersion||'1.0.0')+' · 独独AI';
   const source={online:'● 公告已同步',cache:'○ 正在使用本地缓存',offline:'○ 离线模式 · 微信号仍可复制',unconfigured:'○ 本地公告 · 等待云端配置'}[v.source]||'本地公告';
   $('noticeSource').textContent=source;
   const hasUpdate=!!v.hasUpdate;
