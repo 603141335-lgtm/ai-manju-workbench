@@ -35,7 +35,7 @@ function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null,labels={
  }
  return {codes,items,tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
 }
-function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},isForeground=()=>true,onStart=()=>{},onFinish=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
+function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},isForeground=()=>true,canStart=()=>true,onStart=()=>{},onFinish=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
  let running=null;
  let taskSnapshot=null;
  const emit=(state,message,ctx,extra={})=>{
@@ -233,6 +233,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
       if(pre.tailStatus?.state==='extracting')throw Error('上一段视频尾帧仍在提取中，请等候提取完成后重试，避免遗漏图1');
     }
    if(pre.blocked)throw Error(pre.referenceErrors?.length?'原文参考图定位异常：'+pre.referenceErrors.join('；'):pre.voiceErrors?.length?'声音绑定异常：'+pre.voiceErrors.join('；'):pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对':'存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
+  if(!canStart())throw Error('最多允许两个账号同时执行导入，请等一个账号完成后重试');
   const a=currentActive(),seg=getSegment(episodeId,segmentId),ctx={episodeId,segmentId,accountId:a.accountId,wc:a.webContents,url:a.webContents.getURL(),cancelled:false,rows:pre.items.map(x=>({code:x.code,state:'matched',message:'本地参考图已匹配'}))};
   const before=await probe(ctx.wc);
   if(before.prompt?.trim()&&before.prompt.trim()!==seg.text.trim()&&before.prompt.trim()!==pre.previewText.trim()&&!replaceDraft)throw Error('豆包聊天框有不同草稿，须先确认是否覆盖');
