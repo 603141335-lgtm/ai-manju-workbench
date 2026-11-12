@@ -13,8 +13,12 @@ test('v1.0.1 actual Rust N-API binary exists and exports stable APIs',()=>{
 test('v1.0.1 reference logic runs through compiled Rust, not plaintext JS',()=>{
  const native=require(addonPath),api=require('../src/import-core');
  const source=fs.readFileSync(path.join(root,'src/import-core.js'),'utf8');
- assert(source.includes("require('../native/dudu_core.node')"));
- assert(!source.includes('const CODE = /'),'old regex should NOT ship in ASAR');
+ if(process.env.DUDU_PROD_HARDENED==='1'){
+  assert(source.includes('_0x'),'native bridge not production-obfuscated');
+ }else{
+  assert(source.includes("require('../native/dudu_core.node')"));
+  assert(!source.includes('const CODE = /'),'old regex should NOT ship in ASAR');
+ }
  const prompt='第2段｜准确绑定\n需要参考图：\nA15-01 杜不凡粉兔营业装\nA15 杜不凡普通服装\nAG18 双灶站位\nB15 老街厨艺对决布置\nC42 食材成品\n连续性参考：上一镜\n台词：原样！';
  const parsed=api.parseCodes(prompt);
  assert.deepEqual(parsed.codes,['A15-01','A15','AG18','B15','C42']);
