@@ -1,8 +1,8 @@
 {
   "name": "doubao-creative-hub",
-  "version": "0.9.8",
+  "version": "0.9.9",
   "private": true,
-  "description": "豆包创作舱公开版：保留 v0.9.7 全部能力，仅优化简洁参考图艾特与人物-场景-食材上传顺序",
+  "description": "豆包创作舱 v0.9.9：原文参考图行尾原生@、开屏云端社群与过期二维码；其他功能保留",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
