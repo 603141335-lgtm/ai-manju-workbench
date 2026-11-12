@@ -1,5 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id), B=window.bridge;
+const taskStateByAccount=new Map(),localRunningAccounts=new Set();
 let cfg=null,ws=null,imageRows=[],selected=new Set(),expandGroups=new Set(),focus=false,promptTimer=null,toastTimer=null,renderSeq=0,lastAnchor=-1,lastOriginal='',saveSequence=0,treeOpen=true,draftRenderSeq=0,draftTimer=null,previewMode=false,downloadsState={root:'',history:[]},extensionState={candidate:null,loaded:null};
 const enc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const getAccount=()=>cfg?.accounts?.find(a=>a.id===cfg.activeAccountId)||cfg?.accounts?.[0];
@@ -29,14 +30,14 @@ async function refreshCfg(){cfg=await B.getCfg();renderGroups();refreshHeader()}
 function renderGroups(){if(!cfg)return;
   const list=$('groupList');list.innerHTML=cfg.groups.map(g=>{
     const items=cfg.accounts.filter(a=>a.groupId===g.id);const open=expandGroups.has(g.id);const done=items.filter(a=>a.done>=cfg.target).length;
-    return `<div class="group ${open?'expanded':''}" data-group="${enc(g.id)}"><div class="groupHead" tabindex="0"><span class="groupName">${open?'▾':'▸'} ${enc(g.name)} <span class="tiny">${done}/${items.length}</span></span><span class="groupButtons"><button data-action="edge-config" data-gid="${enc(g.id)}" class="groupBtn" title="选择Edge配置">E</button><button data-action="rename-group" data-gid="${enc(g.id)}" class="groupBtn" title="重命名分组">✎</button><button data-action="add-account" data-gid="${enc(g.id)}" class="groupBtn" title="增加豆包账号">＋</button></span></div><div class="groupAccounts">${items.map(a=>`<button class="account ${a.id===cfg.activeAccountId?'active':''}" data-id="${enc(a.id)}" title="点击切换账号"><span class="accountName"><span class="dot">●</span> ${enc(a.name)}</span><span class="accountCount">${a.done}/${cfg.target}</span><span class="tiny" data-action="rename-account" data-id="${enc(a.id)}" title="修改名称或移除">⋯</span></button>`).join('')}</div></div>`;
+    return `<div class="group ${open?'expanded':''}" data-group="${enc(g.id)}"><div class="groupHead" tabindex="0"><span class="groupName">${open?'▾':'▸'} ${enc(g.name)} <span class="tiny">${done}/${items.length}</span></span><span class="groupButtons"><button data-action="edge-config" data-gid="${enc(g.id)}" class="groupBtn" title="选择Edge配置">E</button><button data-action="rename-group" data-gid="${enc(g.id)}" class="groupBtn" title="重命名分组">✎</button><button data-action="add-account" data-gid="${enc(g.id)}" class="groupBtn" title="增加豆包账号">＋</button></span></div><div class="groupAccounts">${items.map(a=>`<button class="account ${a.id===cfg.activeAccountId?'active':''}" data-id="${enc(a.id)}" title="点击切换账号"><span class="accountName"><span class="dot">${['running','waiting-focus','review'].includes(taskStateByAccount.get(a.id)?.state)?'🟢':'●'}</span> ${enc(a.name)}</span><span class="accountCount">${a.done}/${cfg.target}</span><span class="tiny" data-action="rename-account" data-id="${enc(a.id)}" title="修改名称或移除">⋯</span></button>`).join('')}</div></div>`;
   }).join('');$('targetCount').value=cfg.target;}
 function refreshHeader(){if(!cfg)return;const reached=cfg.accounts.filter(a=>a.done>=cfg.target).length;
   $('topCenter').textContent=`${cfg.groups.length} 个浏览器组 · ${cfg.accounts.length} 个独立账号位 · ${reached} 个达到手动目标`;
   $('addressText').textContent=`doubao.com / ${getAccount()?.name||'当前账号'}`;
   $('bottomSummary').textContent=`${getAccount()?.name||'—'} · 每号目标 ${cfg.target} 条 · ${ws?.workspace?.episodes?.length||0} 集`;
 }
-async function switchAccount(id){await flushPrompt();const x=await safe(()=>B.selectAccount(id));if(!x)return;cfg.activeAccountId=id;const group=getGroup();if(group)expandGroups.add(group.id);renderGroups();refreshHeader();$('webStatus').textContent='正在进入独立的豆包登录会话…';await refreshExtension();bounds();}
+async function switchAccount(id){await flushPrompt();const x=await safe(()=>B.selectAccount(id));if(!x)return;cfg.activeAccountId=id;const group=getGroup();if(group)expandGroups.add(group.id);renderGroups();refreshHeader();$('webStatus').textContent='正在进入独立的豆包登录会话…';await refreshExtension();bounds();refreshSelectedImportStatus();renderBackgroundTasks();}
 async function nextAccount(){const all=cfg.groups.flatMap(g=>cfg.accounts.filter(a=>a.groupId===g.id));if(!all.length)return;const cur=all.findIndex(a=>a.id===cfg.activeAccountId), rotated=[...all.slice(cur+1),...all.slice(0,cur+1)];await switchAccount(rotated.find(a=>a.done<cfg.target)?.id||all[(cur+1)%all.length].id)}
 function bounds(){requestAnimationFrame(()=>{const rect=$('webHost').getBoundingClientRect();if(rect.width>=100&&rect.height>=100)B.bounds({x:rect.left,y:rect.top,width:rect.width,height:rect.height})})}
 function applyLayout(){const v=ws?.workspace?.layout;if(!v)return;const root=document.documentElement;root.style.setProperty('--rightw',v.rightWidth+'px');root.style.setProperty('--bottomh',v.bottomHeight+'px');$('timeline').style.display=v.bottomCollapsed?'none':'';$('bottomResizer').style.display=v.bottomCollapsed?'none':'';$('btnToggleBottom').textContent=v.bottomCollapsed?'展开底栏':'收起底栏';bounds()}
@@ -297,7 +298,44 @@ function initWorkspace(){
 }
 
 // One-click import keeps all pre-existing browser/account/segment data unchanged.
-let importBusy=false;
+function refreshSelectedImportStatus(){
+ const current=taskStateByAccount.get(cfg?.activeAccountId);
+ $('btnOneClickImport').disabled=localRunningAccounts.has(cfg?.activeAccountId);
+ $('btnImportCancel').hidden=!['running','waiting-focus','review'].includes(current?.state);
+ $('btnImportConfirm').hidden=current?.state!=='review';
+ if(current)showImportStatus(current);
+}
+function renderBackgroundTasks(){
+ const area=$('backgroundTaskList'),counter=$('taskCounter');
+ if(!area)return;
+ const all=[...taskStateByAccount.entries()].sort((a,b)=>(b[1].at||0)-(a[1].at||0)).slice(0,12);
+ const active=all.filter(([,x])=>['running','waiting-focus','review'].includes(x.state)).length;
+ counter.hidden=active===0;counter.textContent=String(active);
+ area.replaceChildren();
+ if(!all.length){area.textContent='当前没有后台导入任务。';return;}
+ for(const [id,status] of all){
+  const card=document.createElement('div');card.className='accountTaskCard';
+  const name=document.createElement('strong');name.textContent=(cfg?.accounts||[]).find(a=>a.id===id)?.name||'未知账号';
+  const detail=document.createElement('p');detail.textContent=String(status.message||'').slice(0,240);
+  const row=document.createElement('div');row.className='taskActions';
+  const show=document.createElement('button');show.className='smallBtn';show.textContent='切换查看';show.onclick=()=>safe(()=>switchAccount(id));row.append(show);
+  if(['running','waiting-focus','review'].includes(status.state)){
+    const stop=document.createElement('button');stop.className='ghost';stop.textContent='取消任务';stop.onclick=()=>safe(()=>B.cancelBackgroundTask(id));row.append(stop);
+  }
+  if(status.state==='review'){
+    const confirm=document.createElement('button');confirm.className='primary';confirm.textContent='确认图片';confirm.onclick=()=>safe(()=>B.confirmBackgroundTask(id,true));row.append(confirm);
+  }
+  const state=document.createElement('span');state.className='taskStatus';state.textContent=({'running':'运行中','waiting-focus':'等待原账号','review':'待确认','done':'已结束','cancelled':'已取消','error':'异常'}[status.state]||status.state||'空闲');
+  const top=document.createElement('div');top.className='taskTitle';top.append(name,state);
+  card.append(top,detail,row);area.append(card);
+ }
+}
+function updateBackgroundTask(info){
+ if(!info?.accountId)return;
+ taskStateByAccount.set(info.accountId,{...info,at:Date.now()});
+ if(info.accountId===cfg?.activeAccountId)showImportStatus(info);
+ renderGroups();renderBackgroundTasks();refreshSelectedImportStatus();
+}
 function showImportStatus(v){
  if(!v)return;const detail=$('importDetails'),progress=$('importProgress');
  $('importNote').textContent=v.message||v.error||'预检完成';$('btnImportConfirm').hidden=v.state!=='review';
@@ -311,35 +349,39 @@ function showImportStatus(v){
    return '<div class="mentionItem"><strong>'+enc(x.code)+'</strong><span class="mentionState '+enc(state)+'">'+enc(label)+'</span><small title="'+enc(x.message||'')+'">'+enc(x.message||'')+'</small></div>';
   }).join('');
  }
- if(v.state==='running'||v.state==='review'||v.state==='done'||v.state==='error'||v.state==='cancelled'){
+ if(['running','waiting-focus','review','done','error','cancelled'].includes(v.state)){
   progress.hidden=false;progress.textContent=v.message||'正在执行';
  }
 }
 async function runOneClickImport(checkOnly=false){
- if(importBusy)return;
+ const originAccountId=cfg?.activeAccountId;
+ if(localRunningAccounts.has(originAccountId))return toast('当前账号已经有导入任务，请切换其他账号操作');
  const ep=getEp(),seg=getSeg();if(!ep||!seg){toast('请先选中剧集和段落');return;}
  await flushPrompt();
  $('btnOneClickImport').disabled=true;
  try{
-  const plan=await B.importPreflight(ep.id,seg.id);showImportStatus(plan);
+  const plan=await B.importPreflight(ep.id,seg.id);if(cfg.activeAccountId!==originAccountId){toast('预检时已切换账号，请返回原账号重新开始');return;}showImportStatus(plan);
    if(plan.videoCheck?.ready&&!plan.videoCheck.settingsVerified)toast(plan.videoCheck.message);
   if(!plan.ready){toast(plan.error||'豆包网页当前不可用');return;}
   if(plan.blocked){toast(plan.voiceErrors?.length?plan.voiceErrors.join('；'):plan.overLimit?'加上上一段尾帧超过9张，请先调整':'缺图、重复编号、图片格式或尾帧存在异常，请先处理');return;}
   if(checkOnly){toast('预检：'+plan.items.length+'张图片、'+(plan.voicePlan?.items.length||0)+'段已绑定声音；原文不改变');return;}
   let replaceDraft=false;
   if(plan.differentDraft){replaceDraft=await confirmAction('豆包已有不同草稿','一键导入会用本段完整提示词替换当前豆包聊天输入框文字。若已有未发送内容，请先保存。是否确认？');if(!replaceDraft)return;}
-  importBusy=true;$('btnImportCancel').hidden=false;
+  localRunningAccounts.add(originAccountId);$('btnImportCancel').hidden=false;refreshSelectedImportStatus();
   const out=await B.importExecute(ep.id,seg.id,{replaceDraft,attemptNative:true});
-  showImportStatus(out);toast(out.message||'导入结束');
+  if(cfg?.activeAccountId===originAccountId){showImportStatus(out);toast(out.message||'导入结束');}
  }catch(e){showImportStatus({state:'error',message:e.message});toast('一键导入：'+e.message)}
- finally{importBusy=false;$('btnOneClickImport').disabled=false;$('btnImportCancel').hidden=true;$('btnImportConfirm').hidden=true;}
+ finally{localRunningAccounts.delete(originAccountId);refreshSelectedImportStatus();}
 }
 function initOneClickImport(){
  $('btnOneClickImport').onclick=()=>runOneClickImport(false);
  $('btnImportPreflight').onclick=()=>runOneClickImport(true);
  $('btnImportCancel').onclick=()=>B.importCancel();
  $('btnImportConfirm').onclick=async()=>{await B.importConfirm(true);$('btnImportConfirm').hidden=true};
- B.onImportStatus(showImportStatus);
+ B.onImportStatus(updateBackgroundTask);
+ $('btnTaskCenter').onclick=()=>{$('taskCenter').hidden=!$('taskCenter').hidden;renderBackgroundTasks()};
+ $('btnTaskHide').onclick=()=>{$('taskCenter').hidden=true};
+ B.listBackgroundTasks().then(items=>{for(const item of items)taskStateByAccount.set(item.accountId,item);renderBackgroundTasks();refreshSelectedImportStatus()}).catch(error);
  B.onTailUpdated(()=>{renderTailFrame().catch(error)});
 }
 
