@@ -1,8 +1,8 @@
 {
   "name": "doubao-creative-hub",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
-  "description": "独独AI工作台 v1.0.0：保留豆包创作舱全部功能，统一品牌、优化构建并进行增量安全加固",
+  "description": "独独AI工作台 v1.0.1：Rust 原生参考图匹配核心、科幻安装器、界面入口优化与兼容性测试",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -11,7 +11,10 @@
     "dist:win": "node scripts/prepare-public-notice.js && node scripts/prepare-feed.js && electron-builder --win nsis --x64 --config release-build.json --publish never",
     "brand:generate": "node scripts/generate-brand-icon.js",
     "check:hardened": "node scripts/verify-hardened.js && node --test tests/v100-runtime-smoke.test.js",
-    "verify:brand": "node --test tests/v100-runtime-smoke.test.js"
+    "verify:brand": "node --test tests/v100-runtime-smoke.test.js",
+    "installer:art": "node scripts/generate-installer-art.js",
+    "native:replace": "node scripts/replace-with-native.js",
+    "native:verify": "node --test tests/v101-native-core.test.js"
   },
   "devDependencies": {
     "electron": "44.10.2",
@@ -28,6 +31,7 @@
     "files": [
       "src/**/*",
       "assets/branding/**/*",
+      "native/*.node",
       "package.json",
       "!src/canvas/**",
       "!src/**/workspace.json",
@@ -71,7 +75,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "assets/app.ico",
+      "uninstallerIcon": "assets/app.ico",
+      "installerSidebar": "assets/installer/sidebar.bmp",
+      "installerHeader": "assets/installer/header.bmp",
+      "uninstallerSidebar": "assets/installer/sidebar.bmp"
     },
     "extraResources": [
       {
@@ -85,7 +94,10 @@
         ]
       }
     ],
-    "copyright": "Copyright © 2026 独独AI工作台"
+    "copyright": "Copyright © 2026 独独AI工作台",
+    "asarUnpack": [
+      "native/*.node"
+    ]
   },
   "allowScripts": {
     "electron": true
