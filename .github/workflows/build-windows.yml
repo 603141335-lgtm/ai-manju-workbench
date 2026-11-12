@@ -1,19 +1,19 @@
-name: Build Dudu AI Workbench v1.0.1 Rust Core
+name: Build Dudu AI Workbench v1.1.0 Tutorials + Background Tasks
 concurrency:
-  group: "dudu-v101-${{ github.ref }}"
+  group: "dudu-v110-${{ github.ref }}"
   cancel-in-progress: true
 on:
   push:
-    branches: [feature/dudu-ai-v1.0.1-native-shell]
+    branches: [feature/dudu-ai-v1.1.0-tutorial-background]
   pull_request:
-    branches: [dudu-ai-workbench-STABLE-v1.0.0]
+    branches: [dudu-ai-workbench-STABLE-v1.0.1]
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     defaults:
       run:
         shell: pwsh
@@ -28,6 +28,16 @@ jobs:
         run: npm run brand:generate
       - name: Generate installer graphics (NSIS 164x314 + 150x57)
         run: npm run installer:art
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate 12 actual workbench UI screenshots with red circles and baked watermark
+        run: |
+          python -m pip install --disable-pip-version-check playwright Pillow
+          python -m playwright install chromium
+          python scripts/generate-tutorial-screenshots.py
+      - name: Validate Cloudflare content backend source
+        run: npm run cloud:check
       - name: Verify source, brand, data and 25-account invariants
         run: npm run check
       - name: Legacy v0.9.4 continuity before hardening
@@ -71,8 +81,9 @@ jobs:
           Add-Content $env:GITHUB_PATH "$env:GITHUB_WORKSPACE/vendor/bin"
       - name: Verify actual tail-frame extraction (bundled FFmpeg)
         run: node --test tests/v090.test.js
-      - name: Prepare remote notice endpoint (optional; may be empty)
+      - name: Configure optional public HTTPS tutorial and community content service
         env:
+          DUDU_CONTENT_URL: ${{ vars.DUDU_CONTENT_URL }}
           DOUBAO_NOTICE_URL: ${{ vars.DOUBAO_NOTICE_URL }}
         run: node scripts/prepare-public-notice.js
       - name: Prepare optional public update feed
@@ -88,7 +99,7 @@ jobs:
         run: npm run verify:release
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter '独独AI工作台-Setup-v1.0.1-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter '独独AI工作台-Setup-v1.1.0-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
@@ -100,14 +111,14 @@ jobs:
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dudu-ai-workbench-v1.0.1
-          target_commitish: feature/dudu-ai-v1.0.1-native-shell
-          name: 独独AI工作台 v1.0.1（Rust 原生参考图核心·科幻安装器·界面精简）
+          tag_name: dudu-ai-workbench-v1.1.0
+          target_commitish: feature/dudu-ai-v1.1.0-tutorial-background
+          name: 独独AI工作台 v1.1.0（图文教程·联网创作者中心·多账号后台导入）
           prerelease: true
           body: |
-            独独AI工作台 v1.0.1：精确参考图匹配、文本定位和文件编号实现 Rust N-API 原生化，并在正式包内移除该模块原有 JS 实现；加固主进程及业务 JS、验证 ASAR 成品；保留原账户和项目目录。NSIS 科幻侧边图与所选双豆形图标，数据目录入口已移到项目管理。不使用未经授权的商业壳，签名以 Authenticode 检查为准。真实豆包原生@和覆盖安装需 Windows 实机验收。
+            独独AI工作台 v1.1.0：12张实际工作台界面演示数据截图（红框及内嵌水印），云端教程与社群公告管理源码、备用微信 du6du66、教程弹窗与左右翻页。账号独立后台上传任务，切换账号不再自动取消；原生蓝色@需要原账号前台焦点时等待回到对应账号。保留原Rust核心、ASAR成品逆向检查、科幻NSIS安装器和历史数据目录。Cloudflare后台需本人部署和配置 DUDU_CONTENT_URL，未部署时使用本地教程。真实豆包网页登录流程与覆盖安装需Windows实机验收。没有商业加壳许可证或签名证书时不声称已部署。
           files: |
-            release/独独AI工作台-Setup-v1.0.1-x64.exe
+            release/独独AI工作台-Setup-v1.1.0-x64.exe
             release/SHA256SUMS.txt
             release/*.blockmap
           fail_on_unmatched_files: true
