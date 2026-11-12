@@ -52,7 +52,8 @@ class TutorialMedia{
    }catch(err){ /* Offline or invalid remote content => local bundled guide, never render unsafe bytes. */ }
   }
   // A real screenshot of this app with demo data, generated in CI; no browser credentials.
-  const local=path.join(this.appPath,'assets','tutorial','step-'+id+'.webp');
+  const dir=fs.existsSync(path.join(this.appPath,'tutorial'))?'tutorial':path.join('assets','tutorial');
+  const local=path.join(this.appPath,dir,'step-'+id+'.webp');
   try{
    const buf=await fs.promises.readFile(local);
    if(buf.length>MAX_IMAGE||imageType(buf)!=='image/webp')throw Error('本地教程图片格式无效');
