@@ -5,6 +5,12 @@ const fs=require('node:fs');
 const path=require('node:path');
 const MAX_BYTES=64*1024;
 const txt=(value,max=500)=>typeof value==='string'?value.replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max):'';
+const DEFAULT_WECHAT='du4du44';
+const DEFAULT_QR_EXPIRES='2026-11-19T23:59:59+08:00';
+const DEFAULT_BENEFITS=['和创作者交流分镜、提示词与制作经验','关注 AI 漫剧新工具和行业动态','工作台版本更新与教程消息'];
+function validExpires(v){const x=txt(v,42);return /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:Z|[+-]\d\d:\d\d)$/.test(x)&&Number.isFinite(Date.parse(x))?x:'';}
+function notExpired(value,at=Date.now()){return !!value&&Number.isFinite(Date.parse(value))&&Date.parse(value)>at;}
+
 function safeHttps(value){
   try{
     const url=new URL(value);
@@ -39,11 +45,17 @@ function normalize(raw){
       showHint:notice.showHint===true
     },
     community:{
-      title:txt(community.title,100),
-      description:txt(community.description,400),
-      wechat:txt(community.wechat,80),
+      title:txt(community.title,100)||'AI 漫剧创作交流群',
+      description:txt(community.description,400)||'创作交流、工具更新与制作经验分享',
+      wechat:txt(community.wechat,80)||DEFAULT_WECHAT,
       qqUrl:safeHttps(community.qqUrl),
-      qrUrl:safeHttps(community.qrUrl)
+      qrUrl:safeHttps(community.qrUrl),
+      qrExpiresAt:validExpires(community.qrExpiresAt)||(!community.qrUrl?DEFAULT_QR_EXPIRES:''),
+      enabled:community.enabled!==false,
+      startup:community.startup!==false,
+      headline:txt(community.headline,100)||'加入 AI 漫剧创作交流群',
+      subtitle:txt(community.subtitle,220)||'交流创作经验 · 关注最新工具与漫剧资讯',
+      benefits:Array.isArray(community.benefits)?community.benefits.map(x=>txt(x,90)).filter(Boolean).slice(0,4):DEFAULT_BENEFITS,
     },
     updatedAt:txt(r.updatedAt,50)
   };
@@ -79,7 +91,9 @@ class NoticeService{
   }
   snapshot(){
     return {
-      ...this.data,source:this.source,checkedAt:this.checkedAt,currentVersion:this.version,
+      ...this.data,
+      community:{...this.data.community,qrActive:this.data.community.enabled&&notExpired(this.data.community.qrExpiresAt)},
+      source:this.source,checkedAt:this.checkedAt,currentVersion:this.version,
       hasUpdate:!!(this.data.release.url&&compareVersion(this.data.release.version,this.version)>0),
       configured:!!this.url
     };
@@ -101,4 +115,4 @@ class NoticeService{
     return this.snapshot();
   }
 }
-module.exports={NoticeService,normalize,safeHttps,compareVersion,fetchJSON};
+module.exports={NoticeService,normalize,safeHttps,compareVersion,fetchJSON,notExpired,DEFAULT_QR_EXPIRES,DEFAULT_WECHAT};
