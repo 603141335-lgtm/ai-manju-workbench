@@ -41,7 +41,7 @@ const importStatesByAccount=new Map();
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
 const loadedExtensions=new Map();
 const views=new Map(); // account ID -> {view,lastUsed}
-let mentionRunner=null,importEngine=null,tailframes=null,voiceBindings=null,thumbnailCache=null,apiSettings=null;
+let mentionRunner=null,tailframes=null,voiceBindings=null,thumbnailCache=null,apiSettings=null;
 const now=()=>Date.now();
 const exists=(p)=>{try{return fs.statSync(p).isFile()}catch{return false}};
 function log(err){try{fs.appendFileSync(path.join(app.getPath('userData'),'diagnostic.log'),`\n${new Date().toISOString()} ${String(err?.stack||err)}\n`)}catch{}}
@@ -138,7 +138,7 @@ function setupSession(sess,accountId){
 function configureView(id){
   const sess=session.fromPartition(`persist:doubao_${id}`);
   setupSession(sess,id);
-  const view=new WebContentsView({webPreferences:{session:sess,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,allowRunningInsecureContent:false}});
+  const view=new WebContentsView({webPreferences:{session:sess,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,allowRunningInsecureContent:false,backgroundThrottling:false}});
   const wc=view.webContents;
   wc.setWindowOpenHandler(({url})=>{
     try{if(new URL(url).protocol!=='https:')return {action:'deny'}}catch{return {action:'deny'}}
