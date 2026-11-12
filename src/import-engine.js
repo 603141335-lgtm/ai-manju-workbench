@@ -144,7 +144,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   // refuses ambiguous matches instead of falling back to the editor end.
   const anchor=customAnchor||item.refAnchor;
   if(!anchor)return {state:'mapping',message:'找不到原始参考图编号对应的唯一说明行'};
-  const params={anchor,code:item.code,filename:item.file.name,index:index+1,scope:customAnchor?'all':'reference'};
+  const params={anchor,code:item.code,filename:item.file.name,index:index+1,scope:(customAnchor||item.kind==='tail')?'all':'reference'};
   const before=await evalFn(wc,inlinePage.inspectInlineReference,params);
   if(before.verified)return {state:'native',message:'已存在正确的内联原生 @ 标签'};
   const caret=await evalFn(wc,inlinePage.focusReferenceSlot,params);
