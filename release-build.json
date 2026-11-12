@@ -1,11 +1,12 @@
 {
   "appId": "com.manju.doubao.creativehub.public",
-  "productName": "豆包创作舱（公开版）",
+  "productName": "独独AI工作台",
   "directories": {
     "output": "release"
   },
   "files": [
     "src/**/*",
+    "assets/branding/**/*",
     "package.json",
     "!src/canvas/**",
     "!src/**/workspace.json",
@@ -32,8 +33,9 @@
         ]
       }
     ],
-    "artifactName": "Doubao-Creative-Hub-Public-Setup-v${version}-x64.${ext}",
-    "icon": "assets/app.ico"
+    "artifactName": "独独AI工作台-Setup-v${version}-x64.${ext}",
+    "icon": "assets/app.ico",
+    "executableName": "独独AI工作台"
   },
   "compression": "maximum",
   "electronFuses": {
@@ -61,5 +63,6 @@
         "FFMPEG_NOTICE.txt"
       ]
     }
-  ]
+  ],
+  "copyright": "Copyright © 2026 独独AI工作台"
 }

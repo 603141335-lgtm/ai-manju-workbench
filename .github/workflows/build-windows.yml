@@ -1,12 +1,12 @@
-name: Build Doubao Creative Hub PUBLIC v0.9.9
+name: Build Dudu AI Workbench v1.0.0
 concurrency:
-  group: "public-v099-${{ github.ref }}"
+  group: "dudu-v100-${{ github.ref }}"
   cancel-in-progress: true
 on:
   push:
-    branches: [feature/doubao-v0.9.9-inline-community]
+    branches: [feature/dudu-ai-workbench-v1.0.0]
   pull_request:
-    branches: [feature/doubao-v0.9.8-concise-mentions]
+    branches: [doubao-creative-hub-STABLE-v0.9.9]
   workflow_dispatch:
 permissions:
   contents: write
@@ -24,16 +24,18 @@ jobs:
           node-version: '22'
       - name: Install
         run: npm install --no-audit --no-fund
-      - name: Verify source and browser/25-account invariants
+      - name: Generate original Dudu AI icon (ICO and PNG)
+        run: npm run brand:generate
+      - name: Verify source, brand, data and 25-account invariants
         run: npm run check
+      - name: Legacy v0.9.4 continuity before hardening
+        run: node --test tests/v094.test.js
+      - name: Prior 0.9.5-0.9.9 feature regressions before hardening
+        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js tests/v098-concise-mentions.test.js tests/v099-community-inline.test.js tests/v100-runtime-smoke.test.js
       - name: Hardening on ephemeral checkout only
         run: node scripts/harden.js
-      - name: Verify obfuscated parser/renderer/workspace
-        run: npm run check
-      - name: v0.9.4 compatibility tests
-        run: node --test tests/v094.test.js
-      - name: Public edition and video/API regression tests
-        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js tests/v098-concise-mentions.test.js tests/v099-community-inline.test.js
+      - name: Verify obfuscated business modules and native Doubao DOM compatibility
+        run: npm run check:hardened
       - name: Fetch official-third-party LGPL FFmpeg Windows binaries for tailframes
         run: |
           New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
@@ -66,23 +68,26 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter 'Doubao-Creative-Hub-Public-Setup-v0.9.9-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter '独独AI工作台-Setup-v1.0.0-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt
+          $sig=Get-AuthenticodeSignature $exe[0].FullName
+          Write-Host "Windows Authenticode signature status: $($sig.Status)"
+          if($sig.SignerCertificate){Write-Host "Signer subject: $($sig.SignerCertificate.Subject)"}else{Write-Warning 'Installer is NOT digitally signed; JS obfuscation is not code signing.'}
       - name: Publish private GitHub Release (avoids Actions artifact quota)
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: doubao-public-v0.9.9
-          target_commitish: feature/doubao-v0.9.9-inline-community
-          name: 豆包创作舱 v0.9.9（原文行尾精准艾特·启动社群中心）
+          tag_name: dudu-ai-workbench-v1.0.0
+          target_commitish: feature/dudu-ai-workbench-v1.0.0
+          name: 独独AI工作台 v1.0.0（原有功能保留·品牌升级·安全加固）
           prerelease: true
           body: |
-            v0.9.9 在原参考图编号描述行尾插入原生蓝色@，不新增图1图2、不中断原文顺序；开屏专业社群弹窗，微信号 du4du44、过期二维码自动隐藏、云端文案可更改和用户关闭记忆。保留 v0.9.8 其余功能；原生@仍需真实豆包 Windows 登录实测。
+            独独AI工作台 v1.0.0 延续旧版公开安装身份、账号数据目录和全套漫剧创作功能。升级为原创品牌图标，更多业务模块经过 JS 混淆加固并保留 Electron ASAR/Fuses。未使用需许可证的商业壳；代码签名取决于是否配置证书。豆包网页原生@和覆盖安装仍需 Windows 登录设备验收。
           files: |
-            release/Doubao-Creative-Hub-Public-Setup-v0.9.9-x64.exe
+            release/独独AI工作台-Setup-v1.0.0-x64.exe
             release/SHA256SUMS.txt
             release/*.blockmap
           fail_on_unmatched_files: true
