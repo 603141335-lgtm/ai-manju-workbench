@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data:; script-src 'self'; style-src 'self'; img-src 'self' file: data: https:; connect-src 'none'; object-src 'none'; frame-src 'none'"/>
-  <title>豆包创作舱｜内嵌豆包浏览器工作台</title>
+  <title>独独AI工作台｜内嵌豆包浏览器工作台</title>
   <link rel="stylesheet" href="./style.css"/>
   <script src="./community-qr.js" defer></script>
   <script src="./renderer.js" defer></script>
@@ -13,7 +13,7 @@
 <div class="app" id="app">
   <header class="topbar">
     <button class="apiHeadBtn" id="btnApi" title="配置 API 服务商、模型与 Key">API 接口</button>
-    <div class="brand"><span class="brandmark">◈</span><div><strong>豆包创作舱</strong><small>多账号 × 漫剧创作融合工作台</small></div><span class="vbadge" id="appVersionBadge">v0.9.9 精准艾特版</span></div>
+    <div class="brand"><img class="brandLogo" src="../assets/branding/dudu-icon.svg" alt="独独AI工作台标志"/><div><strong>独独AI工作台</strong><small>AI漫剧创作 · 多账号融合工作台</small></div><span class="vbadge" id="appVersionBadge">v1.0.0</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
     <div class="topactions"><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="ghost" id="btnData">数据目录</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
@@ -139,7 +139,7 @@
 <dialog id="noticeDialog" class="noticeDialog communityDialog" aria-labelledby="communityHeadline">
   <div class="communityShell">
     <header class="communityHeader">
-      <div><div class="communityEyebrow">✦ 豆包创作舱 · 官方创作者社群</div>
+      <div><div class="communityEyebrow">✦ 独独AI工作台 · 官方创作者社群</div>
         <h2 id="communityHeadline">加入 AI 漫剧创作交流群</h2>
         <p id="communitySubtitle">交流创作经验 · 关注最新工具与漫剧资讯</p>
       </div>
@@ -177,7 +177,7 @@
     </div>
     <div class="communityFooter">
       <div class="communityUpdates">
-        <div class="communityUpdateItem"><span class="noticeKicker">版本更新</span><strong id="noticeRelease">当前版本 v0.9.9</strong><p id="noticeReleaseNotes">点击公告可了解新功能。</p><button id="btnNoticeDownload" class="smallBtn" hidden>下载最新版</button></div>
+        <div class="communityUpdateItem"><span class="noticeKicker">版本更新</span><strong id="noticeRelease">当前版本 v1.0.0</strong><p id="noticeReleaseNotes">点击公告可了解新功能。</p><button id="btnNoticeDownload" class="smallBtn" hidden>下载最新版</button></div>
         <div class="communityUpdateItem"><span class="noticeKicker">官方公告</span><strong id="noticeTitle">创作资讯</strong><p id="noticeBody">一起分享工具与创作经验。</p></div>
       </div>
       <div class="communityMeta"><span id="noticeSource" class="noticeSource">正在读取本地公告…</span><button id="btnNoticeRefresh" class="textBtn">刷新公告</button></div>
@@ -185,7 +185,7 @@
     </div>
   </div>
 </dialog>
-<dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>豆包创作舱｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 底部每集单独一整行，点击集名展开分段，点击段落切换；点右上角「已完成」自动缩成小卡。高级隐藏/锁定在「更多」菜单。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
+<dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>独独AI工作台｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 底部每集单独一整行，点击集名展开分段，点击段落切换；点右上角「已完成」自动缩成小卡。高级隐藏/锁定在「更多」菜单。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
 <dialog id="voiceDialog"><div class="dialogbody"><div class="dialoghead"><h2>绑定人物声音到参考图</h2><button id="btnVoiceClose" class="iconBtn">×</button></div>
     <p>先选择人物图号、填写角色名，再选择本机 WAV/MP3 声音样本。每个人物可以有多个样本，默认仅自动使用选定的一个。</p>
     <label for="voiceCodeSelect">对应人物图片</label><select id="voiceCodeSelect" class="voiceSelect"></select>
