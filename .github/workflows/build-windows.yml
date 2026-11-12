@@ -34,6 +34,9 @@ jobs:
         run: node --test tests/v094.test.js
       - name: Prior 0.9.5-0.9.9 feature regressions before hardening
         run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js tests/v098-concise-mentions.test.js tests/v099-community-inline.test.js tests/v100-runtime-smoke.test.js
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve Rust dependency lockfile for this build
+        run: cargo generate-lockfile --manifest-path native-core/Cargo.toml
       - name: Validate Rust native core unit tests
         run: cargo test --manifest-path native-core/Cargo.toml --locked
       - name: Compile optimized Rust reference core into Windows N-API addon
