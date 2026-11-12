@@ -3,9 +3,11 @@
 const https=require('node:https');
 const fs=require('node:fs');
 const path=require('node:path');
+const {DEFAULT_SLIDES,WATERMARK}=require('./tutorial-content');
 const MAX_BYTES=64*1024;
 const txt=(value,max=500)=>typeof value==='string'?value.replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max):'';
 const DEFAULT_WECHAT='du4du44';
+const DEFAULT_BACKUP_WECHAT='du6du66';
 const DEFAULT_QR_EXPIRES='2026-11-19T23:59:59+08:00';
 const DEFAULT_BENEFITS=['和创作者交流分镜、提示词与制作经验','关注 AI 漫剧新工具和行业动态','工作台版本更新与教程消息'];
 function validExpires(v){const x=txt(v,42);return /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:Z|[+-]\d\d:\d\d)$/.test(x)&&Number.isFinite(Date.parse(x))?x:'';}
@@ -30,8 +32,9 @@ function normalize(raw){
   const release=r.release&&typeof r.release==='object'?r.release:{};
   const notice=r.notice&&typeof r.notice==='object'?r.notice:{};
   const community=r.community&&typeof r.community==='object'?r.community:{};
+  const tutorial=r.tutorial&&typeof r.tutorial==='object'&&!Array.isArray(r.tutorial)?r.tutorial:{};
   return {
-    schemaVersion:1,
+    schemaVersion:2,
     release:{
       version:txt(release.version,32),
       title:txt(release.title,100),
@@ -48,6 +51,7 @@ function normalize(raw){
       title:txt(community.title,100)||'AI 漫剧创作交流群',
       description:txt(community.description,400)||'创作交流、工具更新与制作经验分享',
       wechat:txt(community.wechat,80)||DEFAULT_WECHAT,
+      backupWechat:txt(community.backupWechat,80)||DEFAULT_BACKUP_WECHAT,
       qqUrl:safeHttps(community.qqUrl),
       qrUrl:safeHttps(community.qrUrl),
       qrExpiresAt:validExpires(community.qrExpiresAt)||(!community.qrUrl?DEFAULT_QR_EXPIRES:''),
@@ -56,6 +60,16 @@ function normalize(raw){
       headline:txt(community.headline,100)||'加入 AI 漫剧创作交流群',
       subtitle:txt(community.subtitle,220)||'交流创作经验 · 关注最新工具与漫剧资讯',
       benefits:Array.isArray(community.benefits)?community.benefits.map(x=>txt(x,90)).filter(Boolean).slice(0,4):DEFAULT_BENEFITS,
+    },
+    tutorial:{
+      version:txt(tutorial.version,40)||'1',
+      title:txt(tutorial.title,90)||'独独AI工作台｜12步新手教程',
+      slides:Array.isArray(tutorial.slides)&&tutorial.slides.length?tutorial.slides.slice(0,24).map(slide=>({
+        id:txt(slide?.id,30),title:txt(slide?.title,90),description:txt(slide?.description,400),
+        imageUrl:safeHttps(slide?.imageUrl),sha256:/^[a-f0-9]{64}$/i.test(slide?.sha256||'')?String(slide.sha256).toLowerCase():'',
+        target:txt(slide?.target,70)
+      })).filter(slide=>/^[a-z0-9-]{1,30}$/i.test(slide.id)&&slide.title):DEFAULT_SLIDES.map(s=>({...s})),
+      watermark:{...WATERMARK}
     },
     updatedAt:txt(r.updatedAt,50)
   };
@@ -115,4 +129,4 @@ class NoticeService{
     return this.snapshot();
   }
 }
-module.exports={NoticeService,normalize,safeHttps,compareVersion,fetchJSON,notExpired,DEFAULT_QR_EXPIRES,DEFAULT_WECHAT};
+module.exports={NoticeService,normalize,safeHttps,compareVersion,fetchJSON,notExpired,DEFAULT_QR_EXPIRES,DEFAULT_WECHAT,DEFAULT_BACKUP_WECHAT};
