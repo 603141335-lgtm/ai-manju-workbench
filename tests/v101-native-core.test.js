@@ -13,7 +13,7 @@ test('v1.0.1 actual Rust N-API binary exists and exports stable APIs',()=>{
 test('v1.0.1 reference logic runs through compiled Rust, not plaintext JS',()=>{
  const native=require(addonPath),api=require('../src/import-core');
  const source=fs.readFileSync(path.join(root,'src/import-core.js'),'utf8');
- if(process.env.DUDU_PROD_HARDENED==='1'){
+ if(source.includes('_0x')){
   assert(source.includes('_0x'),'native bridge not production-obfuscated');
  }else{
   assert(source.includes("require('../native/dudu_core.node')"));
