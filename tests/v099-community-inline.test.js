@@ -29,7 +29,7 @@ test('v0.9.9: inline @ placement uses original line, not a generated 图N label'
  const source=read('src/import-engine.js');
  const browser=read('src/inline-mention-page.js');
  assert(source.includes('customAnchor||item.refAnchor'));
- assert(source.includes("scope:customAnchor?'all':'reference'"));
+ assert(source.includes("scope:(customAnchor||item.kind==='tail')?'all':'reference'"));
  assert(browser.includes("payload?.scope==='reference'"));
  assert(!source.includes('makeMapping([item],index)'));
  assert.match(source,/if\(!anchor\)return/);
