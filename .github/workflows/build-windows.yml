@@ -1,12 +1,12 @@
-name: Build Dudu AI Workbench v1.0.0
+name: Build Dudu AI Workbench v1.0.1 Rust Core
 concurrency:
-  group: "dudu-v100-${{ github.ref }}"
+  group: "dudu-v101-${{ github.ref }}"
   cancel-in-progress: true
 on:
   push:
-    branches: [feature/dudu-ai-workbench-v1.0.0]
+    branches: [feature/dudu-ai-v1.0.1-native-shell]
   pull_request:
-    branches: [doubao-creative-hub-STABLE-v0.9.9]
+    branches: [dudu-ai-workbench-STABLE-v1.0.0]
   workflow_dispatch:
 permissions:
   contents: write
@@ -24,15 +24,33 @@ jobs:
           node-version: '22'
       - name: Install
         run: npm install --no-audit --no-fund
-      - name: Generate original Dudu AI icon (ICO and PNG)
+      - name: Generate chosen bean-style vector icon
         run: npm run brand:generate
+      - name: Generate installer graphics (NSIS 164x314 + 150x57)
+        run: npm run installer:art
       - name: Verify source, brand, data and 25-account invariants
         run: npm run check
       - name: Legacy v0.9.4 continuity before hardening
         run: node --test tests/v094.test.js
       - name: Prior 0.9.5-0.9.9 feature regressions before hardening
         run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js tests/v098-concise-mentions.test.js tests/v099-community-inline.test.js tests/v100-runtime-smoke.test.js
-      - name: Hardening on ephemeral checkout only
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve Rust dependency lockfile for this build
+        run: cargo generate-lockfile --manifest-path native-core/Cargo.toml
+      - name: Validate Rust native core unit tests
+        run: cargo test --manifest-path native-core/Cargo.toml --locked
+      - name: Compile optimized Rust reference core into Windows N-API addon
+        run: |
+          cargo build --manifest-path native-core/Cargo.toml --release --locked
+          New-Item -ItemType Directory -Force -Path native | Out-Null
+          if(-not (Test-Path native-core/target/release/dudu_core.dll)){throw 'Rust library not compiled'}
+          Copy-Item native-core/target/release/dudu_core.dll native/dudu_core.node -Force
+          if((Get-Item native/dudu_core.node).Length -lt 10000){throw 'Rust .node output suspiciously small'}
+      - name: Strip readable reference parser from release JS
+        run: npm run native:replace
+      - name: Validate N-API parity, exact IDs, UI and installer art
+        run: npm run native:verify
+      - name: Obfuscate remaining production code in temporary CI checkout
         run: node scripts/harden.js
       - name: Verify obfuscated business modules and native Doubao DOM compatibility
         run: npm run check:hardened
@@ -66,9 +84,11 @@ jobs:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
+      - name: Verify actual released ASAR and native addon confidentiality boundary
+        run: npm run verify:release
       - name: Verify installer and SHA256
         run: |
-          $exe = @(Get-ChildItem release -Filter '独独AI工作台-Setup-v1.0.0-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter '独独AI工作台-Setup-v1.0.1-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
@@ -80,14 +100,14 @@ jobs:
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dudu-ai-workbench-v1.0.0
-          target_commitish: feature/dudu-ai-workbench-v1.0.0
-          name: 独独AI工作台 v1.0.0（原有功能保留·品牌升级·安全加固）
+          tag_name: dudu-ai-workbench-v1.0.1
+          target_commitish: feature/dudu-ai-v1.0.1-native-shell
+          name: 独独AI工作台 v1.0.1（Rust 原生参考图核心·科幻安装器·界面精简）
           prerelease: true
           body: |
-            独独AI工作台 v1.0.0 延续旧版公开安装身份、账号数据目录和全套漫剧创作功能。升级为原创品牌图标，更多业务模块经过 JS 混淆加固并保留 Electron ASAR/Fuses。未使用需许可证的商业壳；代码签名取决于是否配置证书。豆包网页原生@和覆盖安装仍需 Windows 登录设备验收。
+            独独AI工作台 v1.0.1：精确参考图匹配、文本定位和文件编号实现 Rust N-API 原生化，并在正式包内移除该模块原有 JS 实现；加固主进程及业务 JS、验证 ASAR 成品；保留原账户和项目目录。NSIS 科幻侧边图与所选双豆形图标，数据目录入口已移到项目管理。不使用未经授权的商业壳，签名以 Authenticode 检查为准。真实豆包原生@和覆盖安装需 Windows 实机验收。
           files: |
-            release/独独AI工作台-Setup-v1.0.0-x64.exe
+            release/独独AI工作台-Setup-v1.0.1-x64.exe
             release/SHA256SUMS.txt
             release/*.blockmap
           fail_on_unmatched_files: true

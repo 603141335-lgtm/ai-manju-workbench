@@ -17,7 +17,7 @@ test('public: stable future endpoint is baked in without making startup request'
 test('public: public installer and public userData are separate from private v0.9.4',()=>{
  const build=JSON.parse(source('release-build.json'));
  const pkg=JSON.parse(source('package.json'));
- assert.equal(pkg.version,'1.0.0');
+ assert.equal(pkg.version,'1.0.1');
  assert.equal(build.appId,'com.manju.doubao.creativehub.public');
  assert.equal(build.productName,'独独AI工作台');
  assert.equal(pkg.build.appId,build.appId);

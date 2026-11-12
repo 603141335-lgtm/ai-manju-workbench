@@ -7,6 +7,7 @@
   "files": [
     "src/**/*",
     "assets/branding/**/*",
+    "native/*.node",
     "package.json",
     "!src/canvas/**",
     "!src/**/workspace.json",
@@ -50,7 +51,12 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "deleteAppDataOnUninstall": false
+    "deleteAppDataOnUninstall": false,
+    "installerIcon": "assets/app.ico",
+    "uninstallerIcon": "assets/app.ico",
+    "installerSidebar": "assets/installer/sidebar.bmp",
+    "installerHeader": "assets/installer/header.bmp",
+    "uninstallerSidebar": "assets/installer/sidebar.bmp"
   },
   "extraResources": [
     {
@@ -64,5 +70,8 @@
       ]
     }
   ],
-  "copyright": "Copyright © 2026 独独AI工作台"
+  "copyright": "Copyright © 2026 独独AI工作台",
+  "asarUnpack": [
+    "native/*.node"
+  ]
 }

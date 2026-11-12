@@ -13,9 +13,9 @@
 <div class="app" id="app">
   <header class="topbar">
     <button class="apiHeadBtn" id="btnApi" title="配置 API 服务商、模型与 Key">API 接口</button>
-    <div class="brand"><img class="brandLogo" src="../assets/branding/dudu-icon.svg" alt="独独AI工作台标志"/><div><strong>独独AI工作台</strong><small>AI漫剧创作 · 多账号融合工作台</small></div><span class="vbadge" id="appVersionBadge">v1.0.0</span></div>
+    <div class="brand"><img class="brandLogo" src="../assets/branding/dudu-icon.svg" alt="独独AI工作台标志"/><div><strong>独独AI工作台</strong><small>AI漫剧创作 · 多账号融合工作台</small></div><span class="vbadge" id="appVersionBadge">v1.0.1</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
-    <div class="topactions"><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="ghost" id="btnData">数据目录</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
+    <div class="topactions"><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
   <main class="layout" id="layout">
     <aside class="sidebar" id="accountsPanel">
@@ -177,7 +177,7 @@
     </div>
     <div class="communityFooter">
       <div class="communityUpdates">
-        <div class="communityUpdateItem"><span class="noticeKicker">版本更新</span><strong id="noticeRelease">当前版本 v1.0.0</strong><p id="noticeReleaseNotes">点击公告可了解新功能。</p><button id="btnNoticeDownload" class="smallBtn" hidden>下载最新版</button></div>
+        <div class="communityUpdateItem"><span class="noticeKicker">版本更新</span><strong id="noticeRelease">当前版本 v1.0.1</strong><p id="noticeReleaseNotes">点击公告可了解新功能。</p><button id="btnNoticeDownload" class="smallBtn" hidden>下载最新版</button></div>
         <div class="communityUpdateItem"><span class="noticeKicker">官方公告</span><strong id="noticeTitle">创作资讯</strong><p id="noticeBody">一起分享工具与创作经验。</p></div>
       </div>
       <div class="communityMeta"><span id="noticeSource" class="noticeSource">正在读取本地公告…</span><button id="btnNoticeRefresh" class="textBtn">刷新公告</button></div>
@@ -193,7 +193,7 @@
     <p class="tiny">Seedance 2.0 参考音频：每段2—15秒、同一任务最多3段、总长最多15秒；模型限制不等于豆包聊天框已经支持音频上传。</p>
     <div class="dialogActions"><button class="ghost" id="btnVoiceCancel">取消</button><button class="primary" id="btnVoiceChoose">选择音频并绑定</button></div></div></dialog>
 <dialog id="pasteDialog"><div class="dialogbody"><div class="dialoghead"><h2>粘贴完整多集提示词</h2><button id="closePaste" class="iconBtn">×</button></div><p>按“第X集｜标题”“第X段｜标题”识别，每段原文存储；导入不影响旧项目。</p><textarea id="pasteText" placeholder="将一集或多集完整提示词粘贴到这里" spellcheck="false"></textarea><div class="dialogActions"><button id="submitPaste" class="primary">解析并加入项目</button></div></div></dialog>
-<dialog id="toolsDialog"><div class="dialogbody"><div class="dialoghead"><h2>项目管理</h2><button id="closeTools" class="iconBtn">×</button></div><div class="toolGrid"><button id="btnCleanupViews" class="ghost" title="会先确认再关闭无任务的后台页面，不删除账号 Cookie">清理闲置后台网页</button><button id="btnRescan" class="ghost">重扫参考图目录</button><button id="btnProjectBackup" class="ghost">备份漫剧项目</button><button id="btnProjectRestore" class="ghost">恢复漫剧项目</button><button id="btnExportSegment" class="ghost">导出当前段</button><button id="btnProjectName" class="ghost">重命名当前项目</button><button id="btnShowPaths" class="ghost">查看素材统计</button></div><details class="advancedLegacy"><summary>高级项目管理：隐藏、锁定及旧数据兼容</summary>
+<dialog id="toolsDialog"><div class="dialogbody"><div class="dialoghead"><h2>项目管理</h2><button id="closeTools" class="iconBtn">×</button></div><div class="toolGrid"><button id="btnCleanupViews" class="ghost" title="会先确认再关闭无任务的后台页面，不删除账号 Cookie">清理闲置后台网页</button><button id="btnRescan" class="ghost">重扫参考图目录</button><button id="btnProjectBackup" class="ghost">备份漫剧项目</button><button id="btnProjectRestore" class="ghost">恢复漫剧项目</button><button id="btnExportSegment" class="ghost">导出当前段</button><button id="btnProjectName" class="ghost">重命名当前项目</button><button id="btnShowPaths" class="ghost">查看素材统计</button><button id="btnData" class="ghost" title="仅打开本机用户数据目录，不上传任何文件">打开本地数据目录</button></div><details class="advancedLegacy"><summary>高级项目管理：隐藏、锁定及旧数据兼容</summary>
 <div class="legacyActions"><button id="btnEpisodeTree" class="smallBtn" hidden>剧集目录</button><span id="episodeMiniStat" class="tiny"></span>
 <button id="btnHideDone" class="smallBtn">批量隐藏已完成（旧版）</button><button id="btnShowHidden" class="smallBtn">显示已隐藏</button>
 <button id="btnHideEpisode" class="smallBtn">隐藏本集</button><button id="btnLockEpisode" class="smallBtn">锁定本集</button>

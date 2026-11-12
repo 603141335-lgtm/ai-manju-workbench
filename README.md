@@ -1,4 +1,4 @@
-# 独独AI工作台 v1.0.0
+# 独独AI工作台 v1.0.1
 
 **AI 漫剧创作 · 多账号管理 · 提示词与素材一站式工作台**
 
@@ -43,3 +43,20 @@ npm start
 相关：[安全说明](docs/V100_SECURITY.md) · [重构审计](docs/V100_REFACTOR_AUDIT.md) · [历史版说明](docs/archive/README_v0.9.9_prebrand.md)
 
 第三方 FFmpeg LGPL 许可与来源说明见 `docs/FFMPEG_NOTICE.txt`。
+
+
+## v1.0.1 原生保护边界（新增）
+
+- `native-core/src/lib.rs`：Rust N-API 原生模块，负责参考图编号识别、原文定位、文件编号匹配。Windows 构建会生成 `native/dudu_core.node`。
+- `scripts/replace-with-native.js`：只在正式构建工作目录中，将旧 `import-core.js` 的原始参考图算法替换成调用原生模块的桥接代码。源码仓库保留可维护的原实现，正式安装包不携带原实现。
+- `scripts/harden.js`：同时混淆主进程和剩余业务模块；避免破坏豆包网页原生 `@` 组件的注入辅助函数。
+- `scripts/verify-package-boundary.js`：从真正的 `release/win-unpacked/resources/app.asar` 提取代码并验证已迁移算法不再以明文 JS 形式随安装包发布。
+- **提醒：Rust 编译、JS 混淆、ASAR/Fuses 不能保证绝对防逆向**。Windows 数字签名需另外配置证书，当前没有购买/部署 VMProtect 等商业壳。
+- 安装器使用官方 NSIS 的 164×314、150×57 24 位 BMP 视觉资源，保留完整安装/卸载逻辑。主界面右上角不再显示数据目录，入口仍保留在「更多 → 项目管理」。
+
+## Windows 构建与回退
+
+1. GitHub Actions 依次执行 JS 完整回归、Cargo 原生测试、N-API 编译、替换核心、混淆、FFmpeg 实测、NSIS 构建和成品 ASAR 反向检查。
+2. **保留安装身份** `com.manju.doubao.creativehub.public`、历史数据文件夹 `%APPDATA%\DoubaoCreativeHubPublic`，旧账号登录分区不更名。
+3. 升级前建议备份用户数据。若遇到网页原生 `@` 不兼容，请先回退 `dudu-ai-workbench-STABLE-v1.0.0` 所对应安装包，不删除本地账号与项目。
+4. Rust 原生模块只负责本地字符串规则，不接触 Cookie、账号、API Key 或参考图原文件内容。
