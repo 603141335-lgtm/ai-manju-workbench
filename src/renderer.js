@@ -481,7 +481,7 @@ let startupPromoOpened=false;
 function updateNoticeDisplay(v){
   if(!v)return;
   currentNotice=v;
-  $('appVersionBadge').textContent='v'+(v.currentVersion||'1.0.0')+' · 独独AI';
+  $('appVersionBadge').textContent='v'+(v.currentVersion||'1.1.0')+' · 独独AI';
   const source={online:'● 公告已同步',cache:'○ 正在使用本地缓存',offline:'○ 离线模式 · 微信号仍可复制',unconfigured:'○ 本地公告 · 等待云端配置'}[v.source]||'本地公告';
   $('noticeSource').textContent=source;
   const hasUpdate=!!v.hasUpdate;
@@ -500,6 +500,7 @@ function updateNoticeDisplay(v){
   for(const benefit of benefits){const li=document.createElement('li');li.textContent=String(benefit);list.appendChild(li);}
   const wechat=community.wechat||'du4du44';
   $('noticeWechat').textContent=wechat;
+  $('noticeBackupWechat').textContent=community.backupWechat||'du6du66';
   $('btnNoticeQQ').hidden=!community.qqUrl;
   $('btnNoticeQR').hidden=!(community.qrUrl&&community.qrActive);
   $('noticeDot').hidden=!(hasUpdate||v.notice?.id);
@@ -547,6 +548,10 @@ function initPublicFeatures(){
   $('btnNoticeCopy').onclick=()=>safe(async()=>{
     await B.copyText(currentNotice?.community?.wechat||'du4du44');
     toast('✓ 微信号已复制，可到微信中添加');
+  });
+  $('btnNoticeCopyBackup').onclick=()=>safe(async()=>{
+    await B.copyText(currentNotice?.community?.backupWechat||'du6du66');
+    toast('✓ 备用微信号已复制');
   });
   $('communityNoStartup').onchange=()=>safe(async()=>{
     await B.saveNoticePreferences({startupEnabled:!$('communityNoStartup').checked});
