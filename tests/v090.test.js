@@ -8,13 +8,14 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'doubao-v090-'));
 const ep='e1',a='s1',b='s2',c='s3';
 const data={episodes:[{id:ep,segments:[{id:a,n:1},{id:b,n:2},{id:c,n:3}]}]};
 const file=code=>{const f=path.join(dir,code+'.png');fs.writeFileSync(f,'pixels');return {path:f,name:code+'.png'}};
-test('映射前置：原参考图栏目、完整台词和限制逐字不变，无尾部映射',()=>{
+test('v0.9.9: tailframe has a single meaningful prefix; original reference text is not rewritten',()=>{
  const original='第3段｜第3场｜15秒\n需要参考图：A15、A32\n连续性参考：上一镜结束动作\n0—3秒｜台词：不要改变！\n限制：禁止字幕\n';
  const out=core.composeText(original,[{code:'尾帧',kind:'tail',file:{name:'尾帧.png'}},{code:'A15',file:{name:'A15.png'}},{code:'A32',file:{name:'A32.png'}}]);
- assert(out.includes('图1承接上一段尾帧：'));assert(out.includes('图2锁定人物：'));assert(out.includes('图3锁定人物：'));
- assert(out.indexOf('图3 = A32')<out.indexOf('连续性参考'));assert(out.endsWith('限制：禁止字幕\n'));
- assert.equal(out.split('需要参考图：A15、A32').length,2);
+ assert.equal(out,'上一段尾帧参考：\n'+original);
+ assert(!out.includes('图1锁定人物'));
+ assert(!out.includes('图2锁定人物'));
 });
+
 test('尾帧只对同集下一段生效，第一段和跨集不继承',()=>{
  assert.equal(findPredecessor(data,ep,a),null);
  assert.equal(findPredecessor(data,ep,b).seg.id,a);
