@@ -66,8 +66,9 @@ test('v0.9.9: startup promo UI and durable opt-out IPC are wired, source QR deco
  }
  assert(pre.includes('getNoticePreferences')&&pre.includes('saveNoticePreferences'));
  assert(main.includes("'notice:savePreferences'")&&main.includes('notice-preferences.json'));
- assert(renderer.includes('BUNDLED_COMMUNITY_QR'));
- const m=renderer.match(/BUNDLED_COMMUNITY_QR='data:image\/png;base64,([A-Za-z0-9+/=]+)'/);
+ assert(ui.includes('src="./community-qr.js"'));
+ const qrSource=read('src/community-qr.js');
+ const m=qrSource.match(/BUNDLED_COMMUNITY_QR='data:image\/png;base64,([A-Za-z0-9+/=]+)'/);
  assert(m,'local QR PNG must be embedded and available offline');
  const png=Buffer.from(m[1],'base64');
  assert.equal(png.subarray(1,4).toString('ascii'),'PNG');
