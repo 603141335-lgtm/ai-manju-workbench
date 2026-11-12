@@ -64,6 +64,19 @@ export default {async fetch(req,env){
   await env.DUDU_MEDIA.put(id,bytes,{httpMetadata:{contentType:kind}});
   return json({url:u.origin+'/media/'+id,sha256:id,size:bytes.byteLength});
  }
+ if(req.method==='POST'&&p==='/api/admin/rollback'){
+   try{
+     const value=await req.json(),key=String(value?.key||'');
+     if(!/^history-[0-9]{10,20}$/.test(key))throw Error('版本编号无效');
+     const historic=await env.DUDU_KV.get(key);
+     if(!historic)throw Error('未找到历史版本');
+     const restored=validate(JSON.parse(historic),u.origin);
+     const body=JSON.stringify(restored);
+     await env.DUDU_KV.put('history-'+Date.now(),await env.DUDU_KV.get('current')||body,{expirationTtl:90*24*3600});
+     await env.DUDU_KV.put('current',body);
+     return json({ok:true,updatedAt:restored.updatedAt});
+   }catch(err){return json({error:err.message},400)}
+ }
  if(req.method==='POST'&&p==='/api/admin/publish'){
   if(Number(req.headers.get('content-length')||0)>MAX_JSON)return json({error:'配置超过64KB'},413);
   try{const output=validate(await req.json(),u.origin),body=JSON.stringify(output);
