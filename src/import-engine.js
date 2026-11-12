@@ -35,9 +35,25 @@ function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null,labels={
  }
  return {codes,items,tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
 }
-function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
+function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},isForeground=()=>true,onStart=()=>{},onFinish=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
  let running=null;
- const emit=(state,message,ctx,extra={})=>notify({state,message,rows:ctx?.rows?.map(x=>({...x}))||[],...extra});
+ let taskSnapshot=null;
+ const emit=(state,message,ctx,extra={})=>{
+   const update={state,message,accountId:ctx?.accountId||null,episodeId:ctx?.episodeId||null,segmentId:ctx?.segmentId||null,taskId:ctx?.taskId||null,rows:ctx?.rows?.map(x=>({...x}))||[],...extra};
+   taskSnapshot=update;notify(update);return update;
+ };
+ async function awaitForeground(ctx){
+   if(isForeground(ctx.accountId))return;
+   emit('waiting-focus','图片及音频操作已保留；账号在后台，等待切回本账号执行豆包原生蓝色@',ctx,{requiresAttention:true});
+   while(!isForeground(ctx.accountId)){
+     ensure(ctx);
+     await pause(750);
+   }
+   ensure(ctx);
+   emit('running','已切回账号，继续验证原生蓝色@',ctx,{requiresAttention:false});
+ }
+ function getStatus(){return taskSnapshot||{state:'idle',message:'当前账号没有导入任务'};}
+ function busy(){return !!running;}
  function currentActive(){const a=getActive();if(!a||!a.webContents||a.webContents.isDestroyed?.()||!isAllowedDoubaoUrl(a.webContents.getURL()))throw Error('请先在工作台内打开并登录豆包聊天网页');return a;}
  function ensure(ctx){if(ctx.cancelled||running!==ctx)throw Error('任务已取消');const a=currentActive();if(a.accountId!==ctx.accountId||a.webContents!==ctx.wc||a.webContents.getURL()!==ctx.url)throw Error('账号或聊天已切换，任务安全停止');const selection=getCurrentSelection();if(selection&&(selection.episodeId!==ctx.episodeId||selection.segmentId!==ctx.segmentId))throw Error('当前制作段落已切换，任务安全停止');}
  async function evalFn(wc,fn,arg){return wc.executeJavaScript(page.call(fn,arg),true)}
@@ -139,7 +155,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   return verified;
  }
  async function tryNative(ctx,item,index,customAnchor=null){
-  ensure(ctx);const wc=ctx.wc;
+  ensure(ctx);await awaitForeground(ctx);const wc=ctx.wc;
   // The anchor must be the exact text emitted by composeText. The page
   // refuses ambiguous matches instead of falling back to the editor end.
   const anchor=customAnchor||item.refAnchor;
@@ -151,6 +167,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   if(!caret.ok)return {state:'mapping',message:caret.message};
   // A leading space is needed for TipTap's mention suggestion trigger.
   // Both edits go through Electron's real text input channel.
+  if(!isForeground(ctx.accountId)){await awaitForeground(ctx);return {state:'mapping',message:'切换账号时 @ 菜单焦点已改变，已保留图片，请重新检查本编号'}}
   await wc.insertText(' ');await wc.insertText('@');
   await pause(500);ensure(ctx);
   const opts=await wc.executeJavaScript(oldPage.js(oldPage.inspectMentionOptions),true);
@@ -164,6 +181,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
    await evalFn(wc,inlinePage.clearPendingInlineAt,params);
    return {state:'mapping',message:matching.length?'同名图片出现多个 @ 候选，已暂停':'豆包没有提供可识别的 @ 图片候选，原参考图说明保留纯文字'};
   }
+  if(!isForeground(ctx.accountId)){await awaitForeground(ctx);return {state:'mapping',message:'@ 菜单在切换账号时可能失效，未错误点击其他账号'}}
   const opt=matching[0],evt={x:opt.x,y:opt.y,button:'left',clickCount:1};
   wc.sendInputEvent({type:'mouseDown',...evt});wc.sendInputEvent({type:'mouseUp',...evt});
   await pause(650);ensure(ctx);
@@ -224,7 +242,9 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   for(const filename of before.names){if(!pre.items.some(x=>sameFilename(x.file.name,filename)))throw Error('聊天框已有其他附件，无法保证图号顺序，请先清空附件');}
   if(before.thumbs.length>before.names.length&&before.thumbs.length)throw Error('当前聊天框有无法识别名称的图片，请先清空附件，防止图号错位');
   if(before.names.some((name,i)=>!pre.items[i]||!sameFilename(name,pre.items[i].file.name)))throw Error('当前聊天附件顺序和本段参考图顺序不同，请先清空或另开聊天，避免图1、图2错位');
-  running=ctx;const finished=[];let manualConfirmed=0,autoConfirmed=0,textFilled=false;
+  ctx.taskId='import-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+  running=ctx;onStart(ctx);emit('running','已绑定当前豆包账号与原始段落，切换其他账号不会取消本任务',ctx);
+  const finished=[];let manualConfirmed=0,autoConfirmed=0,textFilled=false;
   try{
    // One bulk editor transaction FIRST. This keeps text synced even when
    // media upload or inline @ later encounters a site-specific failure.
@@ -308,10 +328,10 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
    const end={state:'done',message:`图片 ${autoConfirmed} 张自动确认、${manualConfirmed} 张人工确认｜音频 ${voiceRows.length} 段已核验上传｜图片原生@ ${natives}/${pre.items.length}｜音频原生@ ${nativeAudio}/${voiceRows.length}；未验证项只保留明确对应说明`,rows:ctx.rows,uploaded:finished.length,autoConfirmed,manualConfirmed,textFilled:true,nativeVerified:natives,nativeAudioVerified:nativeAudio,audioConfirmed:voiceRows.length,total:pre.items.length};
    emit('done',end.message,ctx,end);return end;
   }catch(e){const end={state:'error',message:e.message,rows:ctx.rows,uploaded:finished.length,textFilled,total:pre.items.length};emit('error',e.message,ctx,end);return end;}
-  finally{running=null;}
+  finally{running=null;onFinish(ctx);}
  }
  function cancel(){if(!running)return false;running.cancelled=true;if(running.approve){running.approve(false);running.approve=null;}emit('cancelled','已请求停止；已提交到豆包的图片不会自动删除',running);return true;}
  function confirm(approved){if(!running?.approve)return false;const answer=running.approve;running.approve=null;answer(approved===true);return true;}
- return {getPlan,getDraft,syncText,execute,cancel,confirm};
+ return {getPlan,getDraft,syncText,execute,cancel,confirm,getStatus,busy};
 }
 module.exports={createPlan,createImportEngine,EXTS};
