@@ -73,6 +73,9 @@ jobs:
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt
+          $sig=Get-AuthenticodeSignature $exe[0].FullName
+          Write-Host "Windows Authenticode signature status: $($sig.Status)"
+          if($sig.SignerCertificate){Write-Host "Signer subject: $($sig.SignerCertificate.Subject)"}else{Write-Warning 'Installer is NOT digitally signed; JS obfuscation is not code signing.'}
       - name: Publish private GitHub Release (avoids Actions artifact quota)
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
@@ -84,7 +87,7 @@ jobs:
           body: |
             独独AI工作台 v1.0.0 延续旧版公开安装身份、账号数据目录和全套漫剧创作功能。升级为原创品牌图标，更多业务模块经过 JS 混淆加固并保留 Electron ASAR/Fuses。未使用需许可证的商业壳；代码签名取决于是否配置证书。豆包网页原生@和覆盖安装仍需 Windows 登录设备验收。
           files: |
-            release/Doubao-Creative-Hub-Public-Setup-v0.9.9-x64.exe
+            release/独独AI工作台-Setup-v1.0.0-x64.exe
             release/SHA256SUMS.txt
             release/*.blockmap
           fail_on_unmatched_files: true
