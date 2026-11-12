@@ -70,11 +70,11 @@ function clearPendingInlineAt(payload){
  const anchor=String(payload?.anchor||'');if(!editor||!anchor)return false;
  const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT);let texts=[],text='',node;
  while((node=walker.nextNode())){const s=node.nodeValue||'';texts.push({node,start:text.length,end:text.length+s.length});text+=s;}
- const scoped=payload?.scope==='reference',from=scoped?text.search(/(?:需要参考图|所需参考图|引用参考图|参考图(?:编号|列表)?)/):0;
- if(from<0)return false;
- const endSection=scoped?text.slice(from).search(/(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\s*[:：]/):-1;
- const end=endSection>=0?from+endSection:text.length;
- const start=text.indexOf(anchor,from);
+ const scoped=payload?.scope==='reference',scopeFrom=scoped?text.search(/(?:需要参考图|所需参考图|引用参考图|参考图(?:编号|列表)?)/):0;
+ if(scopeFrom<0)return false;
+ const endSection=scoped?text.slice(scopeFrom).search(/(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\s*[:：]/):-1;
+ const end=endSection>=0?scopeFrom+endSection:text.length;
+ const start=text.indexOf(anchor,scopeFrom);
  if(start<0||start+anchor.length>end)return false;
  const duplicate=text.indexOf(anchor,start+anchor.length);if(duplicate>=0&&duplicate<end)return false;
  const from=start+anchor.length;
