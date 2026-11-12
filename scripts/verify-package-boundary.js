@@ -28,7 +28,7 @@ if(!html.includes('id="btnData"'))throw Error('Data directory feature removed ra
 // Verify all 12 tutorial screenshots are really bundled, compressed and image-only.
 for(let i=1;i<=12;i++){
  const id=String(i).padStart(2,'0');
- const img=asar.extractFile(archive,'assets/tutorial/step-'+id+'.webp');
+ const img=fs.readFileSync(path.join(resources,'tutorial','step-'+id+'.webp'));
  if(img.length<1000||img.length>2*1024*1024||img.toString('ascii',0,4)!=='RIFF'||img.toString('ascii',8,12)!=='WEBP')
   throw Error('Guide screenshot is not a valid compact WebP: '+id);
 }
