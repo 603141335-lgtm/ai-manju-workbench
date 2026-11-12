@@ -8,7 +8,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 
 fn normalized(value: &str) -> String {
-    value.trim().replace(['＿', '－', '–', '—'], "-").to_ascii_uppercase()
+    value.trim().replace(&['＿', '－', '–', '—'][..], "-").to_ascii_uppercase()
 }
 fn re(pattern: &str) -> Regex { Regex::new(pattern).expect("constant regex") }
 fn is_ascii_code(c: char) -> bool { c.is_ascii_alphanumeric() }
@@ -52,7 +52,7 @@ fn parse_codes_raw(text: &str) -> CodesResponse {
             let item=lines[j].trim();
             if item.is_empty() || stop.is_match(item) {break}
             let content=re(r"(?i)^[A-Z]{1,3}\s*[:：]").replace(item,"").trim().to_string();
-            if unique_codes(&content).is_empty() || content.contains(['。','！','？']){break}
+            if unique_codes(&content).is_empty() || content.chars().any(|c|matches!(c,'。'|'！'|'？')){break}
             parts.push(content);
         }
         selected.push(parts.join(" "));
