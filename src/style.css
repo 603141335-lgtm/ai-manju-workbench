@@ -241,3 +241,5 @@
 .tutorialWatermark{font-size:10px;color:#8da6c6;text-align:right}
 .communityTutorialBtn{border-color:#89aedb!important;color:#d9e9fc!important}
 @media(max-width:750px){.tutorialShell{padding:15px}.tutorialTop h2{font-size:17px}.tutorialMedia img{max-height:50vh}.tutorialFoot{gap:5px}}
+
+.communityBackupContact{display:flex;justify-content:space-between;align-items:center;gap:9px;font-size:12px;color:#cadbf3;padding:2px 5px}.communityBackupContact strong{font-size:14px;color:#fff}.communityBackupContact .textBtn{font-size:11px}
