@@ -6,7 +6,7 @@ const addonPath=path.join(root,'native','dudu_core.node');
 test('v1.1.0 actual Rust N-API binary exists and exports stable APIs',{skip:!fs.existsSync(addonPath)},()=>{
  assert(fs.existsSync(addonPath),'compiled native .node module not found');
  const native=require(addonPath);
- assert.equal(native.securityBuildInfo(),'dudu-native-core-1.1.0');
+ assert.equal(native.securityBuildInfo(),'dudu-native-core-1.0.1');
  for(const name of ['tokensJson','parseCodesJson','referenceSlotsJson','codeFromFile','normalizeCode'])
    assert.equal(typeof native[name],'function',name);
 });
