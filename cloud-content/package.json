@@ -1,0 +1,12 @@
+{
+  "name": "dudu-ai-public-content",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/worker.js && node --check src/admin-page.js",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.30.0"
+  }
+}
