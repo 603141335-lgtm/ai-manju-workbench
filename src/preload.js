@@ -109,6 +109,7 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   getNoticePreferences:()=>ipcRenderer.invoke('notice:preferences'),
   saveNoticePreferences:prefs=>ipcRenderer.invoke('notice:savePreferences',prefs),
   getNotice:()=>ipcRenderer.invoke('notice:get'),
+  getTutorialImage:id=>ipcRenderer.invoke('tutorial:image',id),
   refreshNotice:()=>ipcRenderer.invoke('notice:refresh'),
   openNoticeLink:target=>ipcRenderer.invoke('notice:open',target),
   onNoticeUpdated:fn=>ipcRenderer.on('notice:updated',(_e,v)=>fn(v)),
