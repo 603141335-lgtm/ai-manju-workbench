@@ -4,11 +4,10 @@
  */
 const fs=require('node:fs');
 const path=require('node:path');
-const {parseCodes,composeText,sortReferenceItems}=require('./import-core');
+const {parseCodes,composeText,referenceSlots}=require('./import-core');
 const {isAllowedDoubaoUrl,codeInName}=require('./mention-core');
 const oldPage=require('./mention-page');
 const inlinePage=require('./inline-mention-page');
-const {makeMapping}=require('./import-core');
 const page=require('./import-page');
 const voicePage=require('./voice-page');
 const {audioLine}=require('./voice-bindings');
@@ -34,7 +33,7 @@ function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null,labels={
   if(items.some(x=>x.file?.path===tail.file.path))items.splice(items.findIndex(x=>x.file.path===tail.file.path),1);
   items.unshift({code:'尾帧',kind:'tail',status:'ready',message:tail.message,file:{path:tail.file.path,name:tail.file.name},versions:1});
  }
- return {codes,items:sortReferenceItems(items),tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
+ return {codes,items,tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
 }
 function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
  let running=null;
@@ -55,6 +54,18 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   const rows=resolveRows(episodeId,segmentId),tail=getTailForSegment(episodeId,segmentId);
   const plan=createPlan({prompt:original,rows,chosenPaths:getChosenPaths(),tail,labels:parsedLabels.labels});
   plan.labels=parsedLabels.labels;plan.labelConflicts=parsedLabels.conflicts;
+  // Only bind inside the author's own reference-number descriptions.
+  const located=referenceSlots(original);
+  const slotByCode=new Map(located.slots.map(x=>[x.code,x]));
+  plan.referenceErrors=[];
+  for(const item of plan.items){
+    if(item.kind==='tail'){item.refAnchor='上一段尾帧参考：';continue;}
+    const entry=slotByCode.get(item.code);
+    if(!entry||located.ambiguous.includes(item.code)){
+      plan.referenceErrors.push(item.code+' 原参考图说明无法唯一定位，已停止以防止艾特错位');
+    }else item.refAnchor=entry.anchor;
+  }
+  if(plan.referenceErrors.length)plan.blocked=true;
   if(parsedLabels.conflicts.length){plan.blocked=true;plan.labelErrors=parsedLabels.conflicts.map(x=>x.code+' 人物名称冲突：'+x.first+'/'+x.second);}
   const voices=getVoiceForImages(plan.items);
   plan.voicePlan={...voices,items:voices.items.map(v=>({...v,characterName:labelFor(v.code,parsedLabels.labels,v.label)}))};
@@ -131,8 +142,9 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   ensure(ctx);const wc=ctx.wc;
   // The anchor must be the exact text emitted by composeText. The page
   // refuses ambiguous matches instead of falling back to the editor end.
-  const anchor=customAnchor||makeMapping([item],index);
-  const params={anchor,code:item.code,filename:item.file.name,index:index+1};
+  const anchor=customAnchor||item.refAnchor;
+  if(!anchor)return {state:'mapping',message:'找不到原始参考图编号对应的唯一说明行'};
+  const params={anchor,code:item.code,filename:item.file.name,index:index+1,scope:customAnchor?'all':'reference'};
   const before=await evalFn(wc,inlinePage.inspectInlineReference,params);
   if(before.verified)return {state:'native',message:'已存在正确的内联原生 @ 标签'};
   const caret=await evalFn(wc,inlinePage.focusReferenceSlot,params);
@@ -150,13 +162,13 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   });
   if(matching.length!==1){
    await evalFn(wc,inlinePage.clearPendingInlineAt,params);
-   return {state:'mapping',message:matching.length?'同名图片出现多个 @ 候选，已暂停':'豆包没有提供可识别的 @ 图片候选，图号行保留纯文字'};
+   return {state:'mapping',message:matching.length?'同名图片出现多个 @ 候选，已暂停':'豆包没有提供可识别的 @ 图片候选，原参考图说明保留纯文字'};
   }
   const opt=matching[0],evt={x:opt.x,y:opt.y,button:'left',clickCount:1};
   wc.sendInputEvent({type:'mouseDown',...evt});wc.sendInputEvent({type:'mouseUp',...evt});
   await pause(650);ensure(ctx);
   const after=await evalFn(wc,inlinePage.inspectInlineReference,params);
-  if(after.verified)return {state:'native',message:'已验证图'+(index+1)+'的蓝色原生 @ 标签就在对应图号行'};
+  if(after.verified)return {state:'native',message:'已验证 '+item.code+' 的蓝色原生 @ 标签位于原参考图说明行'};
   await evalFn(wc,inlinePage.clearPendingInlineAt,params);
   return {state:'mapping',message:after.message+'；不会把末尾其他 @ 误判为成功'};
  }
@@ -202,7 +214,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
       pre=await getPlan({episodeId,segmentId});
       if(pre.tailStatus?.state==='extracting')throw Error('上一段视频尾帧仍在提取中，请等候提取完成后重试，避免遗漏图1');
     }
-   if(pre.blocked)throw Error(pre.voiceErrors?.length?'声音绑定异常：'+pre.voiceErrors.join('；'):pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对':'存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
+   if(pre.blocked)throw Error(pre.referenceErrors?.length?'原文参考图定位异常：'+pre.referenceErrors.join('；'):pre.voiceErrors?.length?'声音绑定异常：'+pre.voiceErrors.join('；'):pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对':'存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
   const a=currentActive(),seg=getSegment(episodeId,segmentId),ctx={episodeId,segmentId,accountId:a.accountId,wc:a.webContents,url:a.webContents.getURL(),cancelled:false,rows:pre.items.map(x=>({code:x.code,state:'matched',message:'本地参考图已匹配'}))};
   const before=await probe(ctx.wc);
   if(before.prompt?.trim()&&before.prompt.trim()!==seg.text.trim()&&before.prompt.trim()!==pre.previewText.trim()&&!replaceDraft)throw Error('豆包聊天框有不同草稿，须先确认是否覆盖');
