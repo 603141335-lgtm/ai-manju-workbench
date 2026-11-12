@@ -24,13 +24,17 @@ test('3段/总15秒限制，单段无效与缺文件都阻止',()=>{
  const broken=selectVoices({A15:[{path:file('gone.wav'),duration:3}]},[{code:'A15'}]);assert(broken.blocked);
  assert.equal(LIMIT.maxClips,3);
 });
-test('参考图与音频绑定文字位于提示词最上面，原台词与限制完整保留',()=>{
+test('v0.9.9: voice instructions remain without extra numbered image lines',()=>{
  const original='第1段｜测试｜15秒\n需要参考图：A15、A32\n连续性参考：测试镜头\n0—3秒｜台词：不改动！\n限制：无背景音乐、无字幕\n';
- const text=core.composeText(original,[{code:'A15',file:{name:'A15.png'}},{code:'A32',file:{name:'A32.png'}}],0,[{code:'A15',label:'杜不凡声音',filename:path.basename(f1),imageIndex:1},{code:'A32',label:'老关声音',filename:path.basename(f3),imageIndex:2}]);
- assert(text.indexOf('图1锁定人物：')<text.indexOf('音频1 = A15'));assert(text.indexOf('音频2 = A32')<text.indexOf('连续性参考'));
- assert(text.includes('图1（A15）中的人物使用音频1'));assert(text.includes('台词：不改动！'));assert(text.endsWith('限制：无背景音乐、无字幕\n'));
- assert.equal(audioLine({code:'A15',label:'杜不凡声音',path:f1},0),`音频1 = A15（杜不凡声音：${path.basename(f1)}）`);
+ const out=core.composeText(original,[{code:'A15',file:{name:'A15.png'}},{code:'A32',file:{name:'A32.png'}}],0,[{code:'A15',label:'杜不凡声音',filename:path.basename(f1),imageIndex:1},{code:'A32',label:'老关声音',filename:path.basename(f3),imageIndex:2}]);
+ assert(out.startsWith(original));
+ assert(out.includes('音频1 = A15')&&out.includes('音频2 = A32'));
+ assert(out.includes('A15中的人物使用音频1'));
+ assert(out.includes('台词：不改动！'));
+ assert(!out.includes('图1锁定人物'));
+ assert.equal(audioLine({code:'A15',label:'杜不凡声音',path:f1},0),'音频1 = A15（杜不凡声音：'+path.basename(f1)+'）');
 });
+
 test('音频上传桥接具有明确格式检查；不存在可用输入时不可伪报成功',()=>{
  assert.equal(typeof web.probeAudio,'function');assert.equal(typeof web.selectAudioBatch,'function');
  assert.match(web.selectAudioBatch.toString(),/input\.files=transfer\.files/);
