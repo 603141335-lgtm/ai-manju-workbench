@@ -36,6 +36,7 @@ let noticeService=null,noticeTimer=null,tutorialMedia=null,taskJournal=null,prun
 const protectedAccounts=new Set();
 const activeDownloads=new Map();
 const activeImportAccounts=new Set();
+const reservedImportSlots=new Set(); // synchronously reserve before asynchronous mode/upload checks
 const importEnginesByAccount=new Map();
 const importStatesByAccount=new Map();
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
@@ -171,7 +172,7 @@ async function prune(){
   pruneInProgress=true;
   try{
     const candidates=[...views.entries()]
-      .filter(([id])=>id!==activeId&&!protectedAccounts.has(id)&&!activeDownloads.has(id)&&!activeImportAccounts.has(id))
+      .filter(([id])=>id!==activeId&&!protectedAccounts.has(id)&&!activeDownloads.has(id)&&!activeImportAccounts.has(id)&&!reservedImportSlots.has(id))
       .sort((a,b)=>a[1].lastUsed-b[1].lastUsed);
     const needed=views.size-max;
     const pick=candidates.slice(0,needed);
@@ -532,11 +533,17 @@ function registerHandlers(){
   });
   ipcMain.handle('import:execute',async(_e,eid,sid,options)=>{
     const accountId=activeId;
-    const mode=await ensureVideoMode(accountId);
-    if(!mode.ready)throw Error(mode.message||'视频生成模式未就绪');
-    const result=await getAccountImportEngine(accountId).execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false});
-    if(result?.state==='done')lastPreparedByAccount.set(accountId,{episodeId:eid,segmentId:sid,at:Date.now()});
-    return result;
+    if(!accountId)throw Error('尚未选择账号');
+    if(reservedImportSlots.has(accountId))throw Error('当前账号已有一个导入任务；请等待或取消，防止同一聊天输入框被同时改写');
+    if(reservedImportSlots.size>=2)throw Error('默认最多两个账号并行导入，请等一个账号结束后再开始');
+    reservedImportSlots.add(accountId);
+    try{
+      const mode=await ensureVideoMode(accountId);
+      if(!mode.ready)throw Error(mode.message||'视频生成模式未就绪');
+      const result=await getAccountImportEngine(accountId).execute({episodeId:eid,segmentId:sid,replaceDraft:!!options?.replaceDraft,attemptNative:options?.attemptNative!==false});
+      if(result?.state==='done')lastPreparedByAccount.set(accountId,{episodeId:eid,segmentId:sid,at:Date.now()});
+      return result;
+    }finally{reservedImportSlots.delete(accountId)}
   });
   ipcMain.handle('import:cancel',()=>importEnginesByAccount.get(activeId)?.cancel()||false);
   ipcMain.handle('import:confirm',(_e,approved)=>importEnginesByAccount.get(activeId)?.confirm(approved===true)||false);
@@ -640,7 +647,7 @@ function getAccountImportEngine(id){
     getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),
     getVoiceForImages:items=>voiceBindings.plan(items),
     isForeground:accountId=>activeId===accountId&&!overlayShown,
-    canStart:()=>activeImportAccounts.size<2,
+    canStart:()=>reservedImportSlots.has(id)&&reservedImportSlots.size<=2,
     onStart:ctx=>{activeImportAccounts.add(ctx.accountId);tell('perf:changed',performanceState())},
     onFinish:ctx=>{activeImportAccounts.delete(ctx.accountId);tell('perf:changed',performanceState())},
     notify:info=>{
