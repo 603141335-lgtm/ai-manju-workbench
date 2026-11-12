@@ -25,6 +25,15 @@ if(!html.includes('独独AI工作台'))throw Error('New brand missing from packa
 const actions=html.match(/<div class="topactions">([\s\S]*?)<\/div>/);
 if(!actions||actions[1].includes('btnData'))throw Error('Deprecated top-right data directory button still packaged');
 if(!html.includes('id="btnData"'))throw Error('Data directory feature removed rather than relocated');
+// Verify all 12 tutorial screenshots are really bundled, compressed and image-only.
+for(let i=1;i<=12;i++){
+ const id=String(i).padStart(2,'0');
+ const img=asar.extractFile(archive,'assets/tutorial/step-'+id+'.webp');
+ if(img.length<1000||img.length>2*1024*1024||img.toString('ascii',0,4)!=='RIFF'||img.toString('ascii',8,12)!=='WEBP')
+  throw Error('Guide screenshot is not a valid compact WebP: '+id);
+}
+for(const script of ['src/tutorial-content.js','src/tutorial-media.js','src/tutorial-ui.js','src/task-journal.js'])
+ if(!read(script).includes('_0x'))throw Error('Production tutorial/background business module is not protected: '+script);
 const size=fs.statSync(binary).size;
 console.log('PASS: actual released ASAR extracted; native Rust core present:',size,'bytes');
 console.log('PASS: production algorithm missing, main obfuscated, preload and data features retained.');
