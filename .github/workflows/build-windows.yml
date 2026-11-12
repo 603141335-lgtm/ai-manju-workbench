@@ -99,6 +99,11 @@ jobs:
         run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
       - name: Verify actual released ASAR and native addon confidentiality boundary
         run: npm run verify:release
+      - name: Package separate 12-step tutorial images for the owner's cloud admin
+        run: |
+          $images=@(Get-ChildItem assets/tutorial -Filter 'step-*.webp' -File)
+          if($images.Count -ne 12){throw 'Exactly 12 tutorial images are required'}
+          Compress-Archive -Path assets/tutorial/step-*.webp -DestinationPath release/DuduAI-Tutorial-12-v1.1.0.zip -Force
       - name: Verify installer and SHA256
         run: |
           $exe = @(Get-ChildItem release -Filter '独独AI工作台-Setup-v1.1.0-x64.exe' -File)
@@ -122,5 +127,6 @@ jobs:
           files: |
             release/独独AI工作台-Setup-v1.1.0-x64.exe
             release/SHA256SUMS.txt
+            release/DuduAI-Tutorial-12-v1.1.0.zip
             release/*.blockmap
           fail_on_unmatched_files: true
