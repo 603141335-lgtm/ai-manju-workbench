@@ -517,9 +517,10 @@ function registerHandlers(){
   ipcMain.handle('import:draft',(_e,eid,sid,prompt)=>getAccountImportEngine(activeId).getDraft({episodeId:eid,segmentId:sid,previewText:prompt}));
   ipcMain.handle('import:sync-text',(_e,eid,sid,replaceDraft)=>getAccountImportEngine(activeId).syncText({episodeId:eid,segmentId:sid,replaceDraft:!!replaceDraft}));
   ipcMain.handle('import:preflight',async(_e,eid,sid)=>{
-    const mode=await ensureVideoMode();
+    const id=activeId;
+    const mode=await ensureVideoMode(id);
     if(!mode.ready)return {ready:false,blocked:true,error:mode.message||'视频生成模式未就绪',videoCheck:mode};
-    const plan=await getAccountImportEngine(activeId).getPlan({episodeId:eid,segmentId:sid});
+    const plan=await getAccountImportEngine(id).getPlan({episodeId:eid,segmentId:sid});
     return {...plan,videoCheck:{ready:mode.ready,settingsVerified:mode.settingsVerified,message:mode.message}};
   });
   ipcMain.handle('import:execute',async(_e,eid,sid,options)=>{
@@ -628,6 +629,7 @@ function getAccountImportEngine(id){
     getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),
     getVoiceForImages:items=>voiceBindings.plan(items),
     isForeground:accountId=>activeId===accountId&&!overlayShown,
+    canStart:()=>activeImportAccounts.size<2,
     onStart:ctx=>{activeImportAccounts.add(ctx.accountId);tell('perf:changed',performanceState())},
     onFinish:ctx=>{activeImportAccounts.delete(ctx.accountId);tell('perf:changed',performanceState())},
     notify:info=>{
