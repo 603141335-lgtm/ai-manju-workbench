@@ -14,7 +14,7 @@
 <div class="app" id="app">
   <header class="topbar">
     <button class="apiHeadBtn" id="btnApi" title="配置 API 服务商、模型与 Key">API 接口</button>
-    <div class="brand"><img class="brandLogo" src="../assets/branding/dudu-icon.svg" alt="独独AI工作台标志"/><div><strong>独独AI工作台</strong><small>AI漫剧创作 · 多账号融合工作台</small></div><span class="vbadge" id="appVersionBadge">v1.0.1</span></div>
+    <div class="brand"><img class="brandLogo" src="../assets/branding/dudu-icon.svg" alt="独独AI工作台标志"/><div><strong>独独AI工作台</strong><small>AI漫剧创作 · 多账号融合工作台</small></div><span class="vbadge" id="appVersionBadge">v1.1.0</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
     <div class="topactions"><button class="ghost compact" id="btnTutorial" title="按步骤查看图文教程">📖 使用教程</button><button class="ghost compact" id="btnTaskCenter" title="查看后台账号任务">后台任务 <span id="taskCounter" class="noticeDot" hidden>0</span></button><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
@@ -163,6 +163,7 @@
           <div><span class="contactLabel">添加微信交流 / 二维码过期可联系</span><strong id="noticeWechat">du4du44</strong></div>
           <button id="btnNoticeCopy" class="primary" title="复制微信号">复制微信号</button>
         </div>
+        <div class="communityBackupContact"><span>备用微信：<strong id="noticeBackupWechat">du6du66</strong></span><button class="textBtn" id="btnNoticeCopyBackup">复制备用号</button></div>
         <div class="communityButtons">
           <button id="btnNoticeDone" class="primary communityEnter">进入工作台</button><button id="btnCommunityTutorial" class="ghost communityTutorialBtn">📖 新手图文教程 · 从第一步开始</button>
           <button id="btnNoticeQQ" class="ghost" hidden>QQ群入口</button>
@@ -182,7 +183,7 @@
     </div>
     <div class="communityFooter">
       <div class="communityUpdates">
-        <div class="communityUpdateItem"><span class="noticeKicker">版本更新</span><strong id="noticeRelease">当前版本 v1.0.1</strong><p id="noticeReleaseNotes">点击公告可了解新功能。</p><button id="btnNoticeDownload" class="smallBtn" hidden>下载最新版</button></div>
+        <div class="communityUpdateItem"><span class="noticeKicker">版本更新</span><strong id="noticeRelease">当前版本 v1.1.0</strong><p id="noticeReleaseNotes">点击公告可了解新功能。</p><button id="btnNoticeDownload" class="smallBtn" hidden>下载最新版</button></div>
         <div class="communityUpdateItem"><span class="noticeKicker">官方公告</span><strong id="noticeTitle">创作资讯</strong><p id="noticeBody">一起分享工具与创作经验。</p></div>
       </div>
       <div class="communityMeta"><span id="noticeSource" class="noticeSource">正在读取本地公告…</span><button id="btnNoticeRefresh" class="textBtn">刷新公告</button></div>
