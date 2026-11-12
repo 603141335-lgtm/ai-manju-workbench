@@ -10,17 +10,19 @@
     "check": "node --check src/api-settings.js && node --check src/thumbnail-cache.js && node --check src/notice-service.js && node --check src/video-mode.js && node --check src/main.js && node --check src/preload.js && node --check src/community-qr.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/mention-core.js && node --check src/mention-page.js && node --check src/mention-runner.js && node --check src/inline-mention-page.js && node --check src/import-page.js && node --check src/import-engine.js && node --check src/import-core.js && node --check src/voice-page.js && node --check src/voice-bindings.js && node --check src/tailframe.js && node --check src/reference-labels.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
     "dist:win": "node scripts/prepare-public-notice.js && node scripts/prepare-feed.js && electron-builder --win nsis --x64 --config release-build.json --publish never",
     "brand:generate": "node scripts/generate-brand-icon.js",
-    "check:hardened": "node scripts/verify-hardened.js && node --test tests/v100-runtime-smoke.test.js",
+    "check:hardened": "node scripts/verify-hardened.js && npm run native:verify",
     "verify:brand": "node --test tests/v100-runtime-smoke.test.js",
     "installer:art": "node scripts/generate-installer-art.js",
     "native:replace": "node scripts/replace-with-native.js",
-    "native:verify": "node --test tests/v101-native-core.test.js"
+    "native:verify": "node --test tests/v101-native-core.test.js",
+    "verify:release": "node scripts/verify-package-boundary.js"
   },
   "devDependencies": {
     "electron": "44.10.2",
     "electron-builder": "26.0.12",
     "javascript-obfuscator": "4.1.1",
-    "@resvg/resvg-js": "2.6.2"
+    "@resvg/resvg-js": "2.6.2",
+    "@electron/asar": "3.4.1"
   },
   "build": {
     "appId": "com.manju.doubao.creativehub.public",
