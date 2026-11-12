@@ -7,6 +7,7 @@
   "files": [
     "src/**/*",
     "assets/branding/**/*",
+    "assets/tutorial/**/*",
     "native/*.node",
     "package.json",
     "!src/canvas/**",
