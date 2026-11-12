@@ -325,7 +325,7 @@ function renderBackgroundTasks(){
   if(status.state==='review'){
     const confirm=document.createElement('button');confirm.className='primary';confirm.textContent='确认图片';confirm.onclick=()=>safe(()=>B.confirmBackgroundTask(id,true));row.append(confirm);
   }
-  const state=document.createElement('span');state.className='taskStatus';state.textContent=({'running':'运行中','waiting-focus':'等待原账号','review':'待确认','done':'已结束','cancelled':'已取消','error':'异常'}[status.state]||status.state||'空闲');
+  const state=document.createElement('span');state.className='taskStatus';state.textContent=({'running':'运行中','waiting-focus':'等待原账号','review':'待确认','done':'已结束','cancelled':'已取消','error':'异常','interrupted':'上次中断'}[status.state]||status.state||'空闲');
   const top=document.createElement('div');top.className='taskTitle';top.append(name,state);
   card.append(top,detail,row);area.append(card);
  }
