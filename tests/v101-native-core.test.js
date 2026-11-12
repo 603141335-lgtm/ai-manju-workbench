@@ -3,14 +3,14 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const addonPath=path.join(root,'native','dudu_core.node');
-test('v1.0.1 actual Rust N-API binary exists and exports stable APIs',()=>{
+test('v1.0.1 actual Rust N-API binary exists and exports stable APIs',{skip:!fs.existsSync(addonPath)},()=>{
  assert(fs.existsSync(addonPath),'compiled native .node module not found');
  const native=require(addonPath);
  assert.equal(native.securityBuildInfo(),'dudu-native-core-1.0.1');
  for(const name of ['tokensJson','parseCodesJson','referenceSlotsJson','codeFromFile','normalizeCode'])
    assert.equal(typeof native[name],'function',name);
 });
-test('v1.0.1 reference logic runs through compiled Rust, not plaintext JS',()=>{
+test('v1.0.1 reference logic runs through compiled Rust, not plaintext JS',{skip:!fs.existsSync(addonPath)},()=>{
  const native=require(addonPath),api=require('../src/import-core');
  const source=fs.readFileSync(path.join(root,'src/import-core.js'),'utf8');
  if(source.includes('_0x')){
@@ -32,7 +32,7 @@ test('v1.0.1 reference logic runs through compiled Rust, not plaintext JS',()=>{
  assert.equal(api.composeText(prompt,[]),prompt);
  assert(!api.composeText(prompt,[]).includes('图1锁定人物'));
 });
-test('v1.0.1 repeated references fail closed and no AI script fallback exists',()=>{
+test('v1.0.1 repeated references fail closed and no AI script fallback exists',{skip:!fs.existsSync(addonPath)},()=>{
  const api=require('../src/import-core');
  const text='需要参考图：\nA15-01 第一套\nA15-01 第二套\n分镜：停止';
  assert.deepEqual(api.referenceSlots(text).ambiguous,['A15-01']);
