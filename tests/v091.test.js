@@ -7,19 +7,16 @@ const root=path.join(__dirname,'..');
 const core=require('../src/import-core');
 const inline=require('../src/inline-mention-page');
 
-test('v0.9.1 图号锚点属于开头参考图栏目，不是正文末尾',()=>{
-  const original='第3段｜标题｜15秒\n需要参考图：A01、A01-01、A15\n连续性参考：保持不变\n0—3秒｜台词：不要改！\n';
-  const items=['A01','A01-01','A15'].map(code=>({code,file:{name:code+'.png'}}));
-  const composed=core.composeText(original,items);
-  const first=composed.indexOf('需要参考图：'),last=composed.indexOf('连续性参考：');
-  assert(first<last);
-  items.forEach((x,i)=>{
-    const anchor=core.makeMapping([x],i);
-    assert.equal(composed.split(anchor).length,2,'唯一的图号锚点：'+anchor);
-    assert(composed.indexOf(anchor)<first&&first<last,'图号需位于原文之前：'+anchor);
-  });
-  assert(composed.endsWith('0—3秒｜台词：不要改！\n'));
+test('v0.9.9: keep only original numbered references, never fabricate 图N lines',()=>{
+ const original='第3段｜标题｜15秒\n需要参考图：A01、A01-01、A15\n连续性参考：保持不变\n0—3秒｜台词：不要改！\n';
+ const items=['A01','A01-01','A15'].map(code=>({code,file:{name:code+'.png'}}));
+ assert.equal(core.composeText(original,items),original);
+ const slots=core.referenceSlots(original);
+ assert.deepEqual(slots.slots.map(x=>x.code),['A01','A01-01','A15']);
+ assert.equal(slots.ambiguous.length,0);
+ assert(!core.composeText(original,items).includes('图1锁定人物'));
 });
+
 test('内联定位不会回退到编辑器末尾，且每个函数可序列化到真实网页',()=>{
   const src=fs.readFileSync(path.join(root,'src/import-engine.js'),'utf8');
   assert.match(src,/inlinePage\.focusReferenceSlot/);
