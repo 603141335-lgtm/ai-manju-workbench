@@ -7,7 +7,6 @@
   "files": [
     "src/**/*",
     "assets/branding/**/*",
-    "assets/tutorial/**/*",
     "native/*.node",
     "package.json",
     "!src/canvas/**",
@@ -68,6 +67,13 @@
         "ffprobe.exe",
         "COPYING.LGPLv2.1",
         "FFMPEG_NOTICE.txt"
+      ]
+    },
+    {
+      "from": "assets/tutorial",
+      "to": "tutorial",
+      "filter": [
+        "step-*.webp"
       ]
     }
   ],
