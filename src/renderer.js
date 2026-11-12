@@ -519,14 +519,20 @@ function initPublicFeatures(){
   nd.addEventListener('cancel',e=>{e.preventDefault();close()});
   B.onNoticeUpdated(updateNoticeDisplay);
   B.getNotice().then(updateNoticeDisplay).catch(error);
-  Promise.all([B.getNoticePreferences(),B.getNotice()]).then(([prefs,notice])=>{
-    $('communityNoStartup').checked=prefs?.startupEnabled===false;
-    updateNoticeDisplay(notice);
-    if(prefs?.startupEnabled!==false&&notice.community?.enabled!==false&&notice.community?.startup!==false&&!startupPromoOpened){
-      startupPromoOpened=true;
-      setTimeout(open,950);
+  const startupState=Promise.all([B.getNoticePreferences(),B.getNotice()])
+    .then(([prefs,notice])=>{
+      $('communityNoStartup').checked=prefs?.startupEnabled===false;
+      updateNoticeDisplay(notice);
+      return prefs?.startupEnabled!==false&&notice.community?.enabled!==false&&notice.community?.startup!==false;
+    }).catch(e=>{error(e);return false});
+  // Called AFTER main() selects the account's WebContentsView, so the dialog
+  // never gets covered by a late-attached embedded browser.
+  return async()=>{
+    const allowed=await startupState;
+    if(allowed&&!startupPromoOpened&&!document.querySelector('dialog[open]')){
+      startupPromoOpened=true;open();
     }
-  }).catch(error);
+  };
 }
 function initApiSettings(){
   const dlg=$('apiDialog'),close=()=>{if(dlg.open)dialogClose(dlg)};
@@ -576,8 +582,9 @@ async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Elec
   try{
     cfg=await B.getCfg();ws=await B.wsState();expandGroups=new Set(cfg.groups.map(g=>g.id));
     renderGroups();renderWorkspaceShell();applyLayout();await renderImages();refreshHeader();
-    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();initPublicFeatures();initApiSettings();await refreshDownloads();await refreshExtension();
+    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();const showStartupPromo=initPublicFeatures();initApiSettings();await refreshDownloads();await refreshExtension();
     if(cfg.activeAccountId)await switchAccount(cfg.activeAccountId);setTimeout(bounds,250);
+    setTimeout(()=>showStartupPromo().catch(error),350);
     if(ws.warning)toast(ws.warning);
   }catch(e){error(e);$('webStatus').textContent='初始化失败：'+e.message+'。打开数据目录检查 diagnostic.log'}
 }
