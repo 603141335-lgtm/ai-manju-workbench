@@ -21,8 +21,8 @@ const html = value => String(value||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<"
 const yuan = cents => (Number(cents)/100).toFixed(2);
 const orderNo = () => "DU"+Date.now().toString(36).toUpperCase()+randomHex(7).toUpperCase();
 
-async function consumeNonce(env, body) {
-  const hash=await env.__opsHmac(env.DUDU_DEVICE_HMAC_KEY,body.deviceId);
+async function consumeNonce(env, body, helpers) {
+  const hash=await helpers.hmac(env.DUDU_DEVICE_HMAC_KEY,body.deviceId);
   const result=await env.DB.prepare("INSERT OR IGNORE INTO request_nonces(device_hash,nonce,created_ms) VALUES(?,?,?)")
     .bind(hash,String(body.nonce).toLowerCase(),Date.now()).run();
   if(!result.meta?.changes) throw Error("请求已处理，请重新操作");
@@ -127,7 +127,7 @@ async function createAlipayOrder(env, order, origin) {
   for(const [k,v] of Object.entries(params)) u.searchParams.set(k,v);
   return {pay_url:u.toString()};
 }
-async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash) {
+async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, helpers) {
   const orderRow=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(order.order_no).first();
   if(!orderRow) throw Error("订单不存在");
   if(orderRow.status==="refunded"||orderRow.status==="closed") throw Error("订单已关闭或退款");
@@ -139,7 +139,7 @@ async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash) 
   if(!paid||paid.status!=="paid") throw Error("订单状态未能更新为已支付");
   let delivery=await env.DB.prepare("SELECT * FROM delivery_outbox WHERE order_id=?").bind(paid.order_id).first();
   if(!delivery){
-    const code=env.__opsNewCode(), cardId=crypto.randomUUID(), codeHash=await env.__opsHmac(env.DUDU_CARD_HMAC_KEY,code);
+    const code=helpers.newCode(), cardId=crypto.randomUUID(), codeHash=await helpers.hmac(env.DUDU_CARD_HMAC_KEY,code);
     await env.DB.prepare("INSERT OR IGNORE INTO delivery_outbox(delivery_id,order_id,card_id,code_hash,last_four,status,created_ms) VALUES(?,?,?,?,?,'pending',?)")
       .bind(crypto.randomUUID(),paid.order_id,cardId,codeHash,code.slice(-4),Date.now()).run();
     delivery=await env.DB.prepare("SELECT * FROM delivery_outbox WHERE order_id=?").bind(paid.order_id).first();
@@ -178,7 +178,7 @@ async function decryptWechatResource(resource, env) {
   },key,unb64(resource.ciphertext));
   return JSON.parse(dec.decode(plain));
 }
-async function handleWechatNotify(request, env) {
+async function handleWechatNotify(request, env, helpers) {
   const raw=await request.text();
   if(!await verifyWechatCallback(request,env,raw)) return json({code:"FAIL",message:"签名验证失败"},401);
   try {
@@ -188,11 +188,11 @@ async function handleWechatNotify(request, env) {
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(trade.out_trade_no).first();
     if(!order||order.payment_method!=="wechat"||Number(trade.amount?.total)!==Number(order.amount_cents)) throw Error("微信订单号或金额不匹配");
     const hash=hex(await crypto.subtle.digest("SHA-256",enc.encode(raw)));
-    await markOrderPaid(env,order,trade.transaction_id,notice.id,hash);
+    await markOrderPaid(env,order,trade.transaction_id,notice.id,hash,helpers);
     return json({code:"SUCCESS",message:"成功"});
   } catch(e) { return json({code:"FAIL",message:clean(e.message,120)||"处理失败"},400); }
 }
-async function handleAlipayNotify(request, env) {
+async function handleAlipayNotify(request, env, helpers) {
   const raw=await request.text(), params=Object.fromEntries(new URLSearchParams(raw).entries());
   try {
     if(!params.sign||!await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,alipaySignContent(params),params.sign)) return new Response("failure",{status:401});
@@ -202,14 +202,14 @@ async function handleAlipayNotify(request, env) {
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(params.out_trade_no).first();
     if(!order||order.payment_method!=="alipay"||Math.round(Number(params.total_amount)*100)!==Number(order.amount_cents)) throw Error("支付宝订单号或金额不匹配");
     const hash=hex(await crypto.subtle.digest("SHA-256",enc.encode(raw)));
-    await markOrderPaid(env,order,params.trade_no,params.notify_id||("alipay-"+params.trade_no),hash);
+    await markOrderPaid(env,order,params.trade_no,params.notify_id||("alipay-"+params.trade_no),hash,helpers);
     return new Response("success",{headers:{"content-type":"text/plain; charset=utf-8"}});
   } catch { return new Response("failure",{status:400,headers:{"content-type":"text/plain; charset=utf-8"}}); }
 }
 
 async function createOrder(request, env, body, helpers) {
   await helpers.verifyDevice("order-create",body);
-  const deviceHash=await consumeNonce(env,body);
+  const deviceHash=await consumeNonce(env,body,helpers);
   await helpers.registerDevice(deviceHash,body.publicKey);
   const productId=clean(body.productId,80), method=body.paymentMethod;
   if(!/^[a-z0-9_-]{2,80}$/i.test(productId)||!["wechat","alipay"].includes(method)) throw Error("商品或支付方式无效");
@@ -349,7 +349,7 @@ async function adminOps(req, env, path, helpers) {
     const id=clean(body.orderId,80);
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(id).first();
     if(!order||order.status!=="paid") return json({error:"仅已支付订单可以补发"},400);
-    await markOrderPaid(env,order,order.provider_trade_no,"admin-resend-"+randomHex(8),"manual");
+    await markOrderPaid(env,order,order.provider_trade_no,"admin-resend-"+randomHex(8),"manual",helpers);
     return json({ok:true,delivered:true});
   }
   if(path==="/v1/admin/payments/status") {
@@ -378,7 +378,7 @@ async function adminOps(req, env, path, helpers) {
     if(!old) return json({error:"历史版本不存在"},404);
     const manifest=normalizeManifest(JSON.parse(old.manifest_json));
     const now=Date.now();
-    await env.DB.prepare("INSERT INTO public_content_history(history_id,manifest_json,created_ms) VALUES(?,?,?)").bind(crypto.randomUUID(),manifest,now).run();
+    await env.DB.prepare("INSERT INTO public_content_history(history_id,manifest_json,created_ms) VALUES(?,?,?)").bind(crypto.randomUUID(),JSON.stringify(manifest),now).run();
     await env.DB.prepare("INSERT INTO public_content(content_id,manifest_json,updated_ms) VALUES(1,?,?) ON CONFLICT(content_id) DO UPDATE SET manifest_json=excluded.manifest_json,updated_ms=excluded.updated_ms")
       .bind(JSON.stringify(manifest),now).run();
     return json({ok:true,updatedAt:manifest.updatedAt});
@@ -387,7 +387,7 @@ async function adminOps(req, env, path, helpers) {
 }
 
 export async function handleOpsRequest(request, env, path, helpers) {
-  env.__opsHmac=helpers.hmac; env.__opsNewCode=helpers.newCode;
+
   if(path==="/manifest.json"&&request.method==="GET") {
     const row=await env.DB.prepare("SELECT manifest_json FROM public_content WHERE content_id=1").first();
     return json(row?JSON.parse(row.manifest_json):defaultManifest(),200,{"cache-control":"public,max-age=60"});
@@ -402,8 +402,8 @@ export async function handleOpsRequest(request, env, path, helpers) {
     if(!/^[0-9a-f-]{36}$/i.test(id)) return new Response("订单不存在",{status:404});
     return checkoutPage(request,env,id);
   }
-  if(path==="/v1/payments/wechat/notify"&&request.method==="POST") return handleWechatNotify(request,env);
-  if(path==="/v1/payments/alipay/notify"&&request.method==="POST") return handleAlipayNotify(request,env);
+  if(path==="/v1/payments/wechat/notify"&&request.method==="POST") return handleWechatNotify(request,env,helpers);
+  if(path==="/v1/payments/alipay/notify"&&request.method==="POST") return handleAlipayNotify(request,env,helpers);
   if(path==="/v1/application/create"&&request.method==="POST") {
     try { return await applicationCreate(request,env,await request.json(),helpers); }
     catch(e) { return json({error:clean(e.message,180)||"申请提交失败"},400); }
