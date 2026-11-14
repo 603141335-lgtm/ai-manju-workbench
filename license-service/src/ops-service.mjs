@@ -89,7 +89,7 @@ export { alipaySignContent, normalizeManifest };
 
 function paymentReady(env, method) {
   if(method==="wechat") return !!(env.WECHATPAY_MCHID&&env.WECHATPAY_APPID&&env.WECHATPAY_SERIAL_NO&&env.WECHATPAY_PRIVATE_KEY_PEM&&env.WECHATPAY_API_V3_KEY&&env.WECHATPAY_PLATFORM_PUBLIC_KEY_PEM&&env.WECHATPAY_PLATFORM_SERIAL);
-  if(method==="alipay") return !!(env.ALIPAY_APP_ID&&env.ALIPAY_PRIVATE_KEY_PEM&&env.ALIPAY_PUBLIC_KEY_PEM);
+  if(method==="alipay") return !!(env.ALIPAY_APP_ID&&env.ALIPAY_PRIVATE_KEY_PEM&&env.ALIPAY_PUBLIC_KEY_PEM&&env.ALIPAY_SELLER_ID);
   return false;
 }
 async function createWechatOrder(env, order, origin) {
@@ -105,7 +105,9 @@ async function createWechatOrder(env, order, origin) {
   const signature=await rsaSign(env.WECHATPAY_PRIVATE_KEY_PEM,message);
   const authorization='WECHATPAY2-SHA256-RSA2048 mchid="'+env.WECHATPAY_MCHID+'",nonce_str="'+nonce+'",timestamp="'+timestamp+'",serial_no="'+env.WECHATPAY_SERIAL_NO+'",signature="'+signature+'"';
   const res=await fetch("https://api.mch.weixin.qq.com"+path,{method:"POST",headers:{"Authorization":authorization,"Accept":"application/json","Content-Type":"application/json"},body});
-  const data=await res.json().catch(()=>({}));
+  const raw=await res.text();
+  if(!await verifyWechatHeaders(res.headers,env,raw)) throw Error("微信支付下单响应验签失败");
+  let data={};try{data=JSON.parse(raw)}catch{}
   if(!res.ok||!data.code_url) throw Error("微信支付下单失败："+clean(data.message||data.code||"接口未返回支付链接",120));
   return {code_url:data.code_url};
 }
@@ -155,15 +157,18 @@ async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, 
     .bind(delivery.card_id,Date.now()).run();
   return {ok:true,orderId:paid.order_id,delivered:true};
 }
-async function verifyWechatCallback(request, env, raw) {
-  const serial=request.headers.get("Wechatpay-Serial")||"";
-  const timestamp=request.headers.get("Wechatpay-Timestamp")||"";
-  const nonce=request.headers.get("Wechatpay-Nonce")||"";
-  const signature=request.headers.get("Wechatpay-Signature")||"";
+async function verifyWechatHeaders(headers, env, raw) {
+  const serial=headers.get("Wechatpay-Serial")||"";
+  const timestamp=headers.get("Wechatpay-Timestamp")||"";
+  const nonce=headers.get("Wechatpay-Nonce")||"";
+  const signature=headers.get("Wechatpay-Signature")||"";
   if(!serial||serial!==env.WECHATPAY_PLATFORM_SERIAL||!timestamp||!nonce||!signature) return false;
   const ts=Number(timestamp);
   if(!Number.isFinite(ts)||Math.abs(Date.now()/1000-ts)>300) return false;
   return rsaVerify(env.WECHATPAY_PLATFORM_PUBLIC_KEY_PEM,timestamp+"\n"+nonce+"\n"+raw+"\n",signature);
+}
+async function verifyWechatCallback(request, env, raw) {
+  return verifyWechatHeaders(request.headers,env,raw);
 }
 async function decryptWechatResource(resource, env) {
   if(resource?.algorithm!=="AEAD_AES_256_GCM") throw Error("微信支付回调加密算法不支持");
@@ -182,7 +187,7 @@ async function handleWechatNotify(request, env, helpers) {
   try {
     const notice=JSON.parse(raw), trade=await decryptWechatResource(notice.resource,env);
     if(trade.trade_state!=="SUCCESS") return json({code:"SUCCESS",message:"已接收非成功状态"});
-    if(trade.mchid!==env.WECHATPAY_MCHID||trade.appid!==env.WECHATPAY_APPID) throw Error("微信商户或应用不匹配");
+    if(trade.mchid!==env.WECHATPAY_MCHID||trade.appid!==env.WECHATPAY_APPID||trade.amount?.currency!=="CNY") throw Error("微信商户、应用或币种不匹配");
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(trade.out_trade_no).first();
     if(!order||order.payment_method!=="wechat"||Number(trade.amount?.total)!==Number(order.amount_cents)) throw Error("微信订单号或金额不匹配");
     const hash=hex(await crypto.subtle.digest("SHA-256",enc.encode(raw)));
@@ -195,7 +200,7 @@ async function handleAlipayNotify(request, env, helpers) {
   try {
     if(!params.sign||!await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,alipaySignContent(params),params.sign)) return new Response("failure",{status:401});
     if(params.app_id!==env.ALIPAY_APP_ID) throw Error("支付宝应用ID不匹配");
-    if(env.ALIPAY_SELLER_ID&&params.seller_id!==env.ALIPAY_SELLER_ID) throw Error("支付宝收款方不匹配");
+    if(params.seller_id!==env.ALIPAY_SELLER_ID) throw Error("支付宝收款方不匹配");
     if(!["TRADE_SUCCESS","TRADE_FINISHED"].includes(params.trade_status)) return new Response("success",{headers:{"content-type":"text/plain"}});
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(params.out_trade_no).first();
     if(!order||order.payment_method!=="alipay"||Math.round(Number(params.total_amount)*100)!==Number(order.amount_cents)) throw Error("支付宝订单号或金额不匹配");
