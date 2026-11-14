@@ -113,8 +113,10 @@ function wrapRsaPrivatePkcs1(pkcs1) {
 }
 function pemKind(pem) { return String(pem||"").match(/-----BEGIN ([^-]+)-----/)?.[1]||""; }
 async function importRsaPrivate(pem) {
-  const kind=pemKind(pem),raw=pemBytes(pem),derKey=kind==="RSA PRIVATE KEY"?wrapRsaPrivatePkcs1(raw):raw;
-  return crypto.subtle.importKey("pkcs8",derKey,{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["sign"]);
+  const kind=pemKind(pem),raw=pemBytes(pem);
+  if(kind==="RSA PRIVATE KEY")return crypto.subtle.importKey("pkcs8",wrapRsaPrivatePkcs1(raw),{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["sign"]);
+  try{return await crypto.subtle.importKey("pkcs8",raw,{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["sign"])}
+  catch{return crypto.subtle.importKey("pkcs8",wrapRsaPrivatePkcs1(raw),{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["sign"])}
 }
 async function importRsaPublic(pem) {
   const kind=pemKind(pem),raw=pemBytes(pem);
