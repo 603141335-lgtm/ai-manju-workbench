@@ -243,3 +243,22 @@
 @media(max-width:750px){.tutorialShell{padding:15px}.tutorialTop h2{font-size:17px}.tutorialMedia img{max-height:50vh}.tutorialFoot{gap:5px}}
 
 .communityBackupContact{display:flex;justify-content:space-between;align-items:center;gap:9px;font-size:12px;color:#cadbf3;padding:2px 5px}.communityBackupContact strong{font-size:14px;color:#fff}.communityBackupContact .textBtn{font-size:11px}
+
+/* v1.2.0 license center: does not change legacy workbench layout. */
+.licenseDialog{width:min(680px,94vw);max-height:92vh;overflow:auto;background:#0c1b2e;color:#eaf3ff;border:1px solid #4f83a7;border-radius:20px;padding:0;box-shadow:0 20px 70px #000b}
+.licenseDialog::backdrop{background:#010610dc;backdrop-filter:blur(5px)}
+.licenseShell{padding:24px;display:flex;flex-direction:column;gap:13px}
+.licenseHeader{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #365473;padding-bottom:14px}
+.licenseHeader span{color:#88b9d5;font-size:11px;letter-spacing:.12em}
+.licenseHeader h2{font-size:22px;margin:6px 0}.licenseHeader p{font-size:12px;color:#b2c6df;margin:0}
+.licenseHeader strong{font-size:36px}
+.licenseStatusBox{border:1px solid #2f6274;border-radius:13px;background:#102f3b;padding:14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.licenseStatusBox strong{display:block;font-size:16px}.licenseStatusBox small{display:block;font-size:12px;color:#96d7d2;margin-top:5px}.licenseStatusBox>span{font-size:11px;color:#aabed8}
+.licensePane{border:1px solid #354e6b;border-radius:12px;background:#13263d;padding:13px 15px}
+.licensePane h3{margin:0 0 8px;font-size:15px}.licensePane p{font-size:12px;line-height:1.5;color:#bbcee2;margin:0 0 12px}
+.licensePane input{min-width:170px;flex:1;border:1px solid #54728e;border-radius:8px;background:#081c31;color:#fff;padding:11px}
+.licenseForm{display:flex;gap:8px;flex-wrap:wrap}.licenseContacts{display:flex;flex-wrap:wrap;gap:16px;font-size:12px}.licenseContacts b{color:#a1f2e9}
+.licenseFooter{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap}
+#licenseMessage{font-size:12px;color:#b7d7ee;line-height:1.6;margin:0}#licenseMessage[data-kind="error"]{color:#ffb4aa}
+.licenseNote{font-size:11px;color:#839fbe}
+#licenseStatusMini{font-size:10px;color:#a7dfde}

@@ -2,6 +2,11 @@
 const {contextBridge, ipcRenderer, webUtils}=require('electron');
 contextBridge.exposeInMainWorld('bridge',Object.freeze({
   getCfg:()=>ipcRenderer.invoke('cfg:get'),
+  licenseStatus:()=>ipcRenderer.invoke('license:status'),
+  licenseTrial:()=>ipcRenderer.invoke('license:trial'),
+  licenseActivate:code=>ipcRenderer.invoke('license:activate',code),
+  licenseRefresh:()=>ipcRenderer.invoke('license:refresh'),
+  onLicenseUpdated:fn=>ipcRenderer.on('license:updated',(_e,v)=>fn(v)),
   apiGet:()=>ipcRenderer.invoke('api:get'),
   apiSave:settings=>ipcRenderer.invoke('api:save',settings),
   apiCheck:()=>ipcRenderer.invoke('api:check'),

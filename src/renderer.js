@@ -631,7 +631,7 @@ async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Elec
     renderGroups();renderWorkspaceShell();applyLayout();await renderImages();refreshHeader();
     initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();const showStartupPromo=initPublicFeatures();initApiSettings();await refreshDownloads();await refreshExtension();
     if(cfg.activeAccountId)await switchAccount(cfg.activeAccountId);setTimeout(bounds,250);
-    setTimeout(()=>showStartupPromo().catch(error),350);
+    await window.DuduLicenseUI?.init();setTimeout(()=>showStartupPromo().catch(error),350);
     if(ws.warning)toast(ws.warning);
   }catch(e){error(e);$('webStatus').textContent='初始化失败：'+e.message+'。打开数据目录检查 diagnostic.log'}
 }

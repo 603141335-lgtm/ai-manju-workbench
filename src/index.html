@@ -9,14 +9,15 @@
   <script src="./community-qr.js" defer></script>
   <script src="./renderer.js" defer></script>
   <script src="./tutorial-ui.js" defer></script>
+  <script src="./license-ui.js" defer></script>
 </head>
 <body>
 <div class="app" id="app">
   <header class="topbar">
     <button class="apiHeadBtn" id="btnApi" title="配置 API 服务商、模型与 Key">API 接口</button>
-    <div class="brand"><img class="brandLogo" src="../assets/branding/dudu-icon.svg" alt="独独AI工作台标志"/><div><strong>独独AI工作台</strong><small>AI漫剧创作 · 多账号融合工作台</small></div><span class="vbadge" id="appVersionBadge">v1.1.0</span></div>
+    <div class="brand"><img class="brandLogo" src="../assets/branding/dudu-icon.svg" alt="独独AI工作台标志"/><div><strong>独独AI工作台</strong><small>AI漫剧创作 · 多账号融合工作台</small></div><span class="vbadge" id="appVersionBadge">v1.2.0</span></div>
     <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
-    <div class="topactions"><button class="ghost compact" id="btnTutorial" title="按步骤查看图文教程">📖 使用教程</button><button class="ghost compact" id="btnTaskCenter" title="查看后台账号任务">后台任务 <span id="taskCounter" class="noticeDot" hidden>0</span></button><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
+    <div class="topactions"><button class="ghost compact" id="btnLicense" title="查看24小时试用和永久卡密">🎫 授权中心 <span id="licenseStatusMini">验证中</span></button><button class="ghost compact" id="btnTutorial" title="按步骤查看图文教程">📖 使用教程</button><button class="ghost compact" id="btnTaskCenter" title="查看后台账号任务">后台任务 <span id="taskCounter" class="noticeDot" hidden>0</span></button><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
   </header>
   <main class="layout" id="layout">
     <aside class="sidebar" id="accountsPanel">
@@ -216,5 +217,17 @@
   </div>
 </dialog>
 
+<dialog id="licenseDialog" class="licenseDialog" aria-labelledby="licenseTitle">
+ <div class="licenseShell">
+  <div class="licenseHeader"><div><span>✦ DUDU AI · LICENSE CENTER</span><h2 id="licenseTitle">独独AI工作台 · 创作者授权中心</h2><p>首次使用免费体验24小时，添加微信免费领取永久卡密</p></div><strong>🔒</strong></div>
+  <div class="licenseStatusBox"><div><strong id="licenseState">正在检查本机授权…</strong><small id="licenseCountdown"></small></div><span>设备编号：<span id="licenseDevice">—</span></span></div>
+  <section class="licensePane"><h3>🎁 首次免费试用24小时</h3><p>从首次联网成功激活起计时。重装软件不会重新赠送，试用期内正常使用制作功能。</p><button class="primary" id="btnLicenseTrial">开始免费体验</button></section>
+  <section class="licensePane"><h3>🎫 永久卡密激活</h3><div class="licenseForm"><input id="licenseCode" placeholder="DUDU-XXXXX-XXXXX-XXXXX-XXXXX" spellcheck="false" autocomplete="off" maxlength="45"/><button class="primary" id="btnLicenseActivate">激活永久使用权</button></div></section>
+  <section class="licensePane"><h3>💬 添加微信免费领取永久卡密</h3><div class="licenseContacts"><span>主微信：<b>du4du44</b> <button class="smallBtn" id="btnLicenseWechat">复制</button></span><span>备用：<b>du6du66</b> <button class="smallBtn" id="btnLicenseBackupWechat">复制</button></span></div></section>
+  <p id="licenseMessage" aria-live="polite">正在检查授权…</p>
+  <div class="licenseFooter"><button class="ghost" id="btnLicenseRefresh">联网验证 / 更新授权</button><button class="ghost" id="btnLicenseReadonly">只读进入 · 查看与备份项目</button></div>
+  <small class="licenseNote">试用到期不会删除你的本地账号、剧本、参考图或成片。授权按设备绑定，换机请联系管理员。</small>
+ </div>
+</dialog>
 </body>
 </html>

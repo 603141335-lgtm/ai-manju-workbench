@@ -2,6 +2,7 @@
 //! Only the stable reference parsing/matching algorithms are compiled here.
 //! Login/session data, cookies, passwords and user images are never handled.
 use napi::bindgen_prelude::*;
+mod license;
 use napi_derive::napi;
 use regex::Regex;
 use serde::Serialize;
@@ -125,6 +126,10 @@ pub fn reference_slots_json(input:String)->Result<String>{
 pub fn code_from_file(name:String,relative_path:String)-> Option<String> {code_from_file_raw(&name,&relative_path)}
 #[napi(js_name="normalizeCode")]
 pub fn normalize_code(code:String)->String{normalized(&code)}
+#[napi(js_name="verifyLicenseToken")]
+pub fn verify_license_token(token:String,public_key:String,device_id:String,now_ms:f64)->String{
+    license::verify_token(&token,&public_key,&device_id,now_ms as i64)
+}
 #[napi(js_name="securityBuildInfo")]
 pub fn security_build_info()->String{"dudu-native-core-1.0.1".into()}
 #[cfg(test)]

@@ -21,6 +21,7 @@ const {NoticeService,safeHttps}=require('./notice-service');
 const {TutorialMedia}=require('./tutorial-media');
 const {TaskJournal}=require('./task-journal');
 const {ThumbnailCache}=require('./thumbnail-cache');
+const {LicenseClient}=require('./license-client');
 const publicConfig=require('./public-config.json');
 
 // Public distribution never reads the author's legacy workspace or sessions.
@@ -32,7 +33,8 @@ app.setPath('userData',publicUserDataDir);
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
 const LIVE_LIMITS=Object.freeze({light:1,balanced:2,performance:3});
-let noticeService=null,noticeTimer=null,tutorialMedia=null,taskJournal=null,pruneInProgress=false;
+let noticeService=null,noticeTimer=null,tutorialMedia=null,taskJournal=null,licenseClient=null,pruneInProgress=false;
+function guardedHandle(channel,handler){ipcMain.handle(channel,(...args)=>{licenseClient.requireValid();return handler(...args)})}
 const protectedAccounts=new Set();
 const activeDownloads=new Map();
 const activeImportAccounts=new Set();
@@ -267,11 +269,15 @@ function initializeUpdater(){
 }
 
 function registerHandlers(){
+  ipcMain.handle('license:status',()=>licenseClient.status());
+  ipcMain.handle('license:trial',()=>licenseClient.startTrial());
+  ipcMain.handle('license:activate',(_event,code)=>licenseClient.activate(code));
+  ipcMain.handle('license:refresh',()=>licenseClient.refresh());
   ipcMain.handle('cfg:get',()=>cfg);
   ipcMain.handle('api:get',()=>apiSettings.snapshot());
   ipcMain.handle('api:save',(_event,settings)=>apiSettings.save(settings));
   ipcMain.handle('api:check',()=>apiSettings.check());
-  ipcMain.handle('api:chat',(_event,prompt)=>apiSettings.chat(prompt));
+  guardedHandle('api:chat',(_event,prompt)=>apiSettings.chat(prompt));
   ipcMain.handle('perf:get',()=>performanceState());
   ipcMain.handle('perf:set',async(_e,mode)=>{
     if(!Object.prototype.hasOwnProperty.call(LIVE_LIMITS,mode))throw Error('无效的性能模式');
@@ -339,10 +345,10 @@ function registerHandlers(){
     try{if(shown)win.contentView.removeChildView(slot.view);else{win.contentView.addChildView(slot.view);if(lastBounds)slot.view.setBounds(lastBounds)}overlayShown=!!shown}catch(e){log(e)}
   });
   ipcMain.handle('nav:action',(_e,a)=>{if(!['reload','back','forward','home','zoomIn','zoomOut'].includes(a))throw Error('不支持此操作');navigate(a)});
-  ipcMain.handle('group:add',(_e,name)=>update(()=>{cfg.groups.push({id:randomUUID(),name:normalizeName(name),edgeProfile:'Default'})}));
+  guardedHandle('group:add',(_e,name)=>update(()=>{cfg.groups.push({id:randomUUID(),name:normalizeName(name),edgeProfile:'Default'})}));
   ipcMain.handle('group:rename',(_e,id,name)=>update(()=>{const g=cfg.groups.find(g=>g.id===id);if(!g)throw Error('分组不存在');g.name=normalizeName(name)}));
   ipcMain.handle('group:edge',(_e,id,p)=>update(()=>{const g=cfg.groups.find(g=>g.id===id);if(!g||!allowedEdgeProfile(p))throw Error('Edge 配置无效');g.edgeProfile=p}));
-  ipcMain.handle('account:add',(_e,groupId,name)=>update(()=>{if(!cfg.groups.some(g=>g.id===groupId))throw Error('分组不存在');cfg.accounts.push({id:randomUUID(),groupId,name:normalizeName(name),done:0})}));
+  guardedHandle('account:add',(_e,groupId,name)=>update(()=>{if(!cfg.groups.some(g=>g.id===groupId))throw Error('分组不存在');cfg.accounts.push({id:randomUUID(),groupId,name:normalizeName(name),done:0})}));
   ipcMain.handle('account:rename',(_e,id,name)=>update(()=>{account(id).name=normalizeName(name)}));
   ipcMain.handle('account:remove',(_e,id)=>{
     if(cfg.accounts.length<=1)throw Error('至少保留一个账号');
@@ -365,13 +371,13 @@ function registerHandlers(){
   ipcMain.on('segment:prompt',(_e,id,prompt)=>{
     try{if(typeof prompt==='string'&&prompt.length<1000000)update(()=>{segment(id).prompt=prompt})}catch(e){log(e)}
   });
-  ipcMain.handle('images:choose',async (_e,id)=>{
+  guardedHandle('images:choose',async (_e,id)=>{
     segment(id);
     const res=await dialog.showOpenDialog(win,{title:'添加漫剧参考图',properties:['openFile','multiSelections'],filters:[{name:'图片',extensions:['png','jpg','jpeg','webp','bmp','gif']}]});
     if(res.canceled)return cfg;
     return update(()=>{const s=segment(id);s.images=[...new Set([...s.images,...res.filePaths.filter(f=>exists(f)&&allowedImage(f))])].slice(0,200)});
   });
-  ipcMain.handle('images:drop',(_e,id,paths)=>update(()=>{const s=segment(id);if(!Array.isArray(paths))throw Error('文件路径格式错误');s.images=[...new Set([...s.images,...paths.slice(0,100).filter(f=>typeof f==='string'&&exists(f)&&allowedImage(f))])].slice(0,200)}));
+  guardedHandle('images:drop',(_e,id,paths)=>update(()=>{const s=segment(id);if(!Array.isArray(paths))throw Error('文件路径格式错误');s.images=[...new Set([...s.images,...paths.slice(0,100).filter(f=>typeof f==='string'&&exists(f)&&allowedImage(f))])].slice(0,200)}));
   ipcMain.handle('images:remove',(_e,id,file)=>update(()=>{const s=segment(id);s.images=s.images.filter(p=>p!==file)}));
   ipcMain.handle('images:view',(_e,paths)=>{
     if(!Array.isArray(paths))return [];
@@ -456,8 +462,8 @@ function registerHandlers(){
   });
   ipcMain.handle('ws:restoreItem',(_e,id)=>workspace.restoreItem(id));
   ipcMain.handle('ws:state',()=>workspace.snapshot());
-  ipcMain.handle('ws:importText',async(_e,text,filename)=>workspace.addText(text,filename));
-  ipcMain.handle('ws:importFiles',async()=>{
+  guardedHandle('ws:importText',async(_e,text,filename)=>workspace.addText(text,filename));
+  guardedHandle('ws:importFiles',async()=>{
     const pick=await dialog.showOpenDialog(win,{title:'导入一份或多份 TXT/MD 完整提示词',properties:['openFile','multiSelections'],filters:[{name:'提示词文件',extensions:['txt','md']}]});
     if(pick.canceled)return {cancelled:true};
     let addedEpisodes=0,addedSegments=0;const errors=[];
@@ -469,37 +475,37 @@ function registerHandlers(){
     }catch(err){errors.push(path.basename(filename)+': '+err.message)}}
     return {addedEpisodes,addedSegments,errors};
   });
-  ipcMain.handle('ws:importOld',async()=>{
+  guardedHandle('ws:importOld',async()=>{
     const pick=await dialog.showOpenDialog(win,{title:'只读导入旧素材工作台 project/workbench.json',properties:['openFile'],filters:[{name:'旧版项目 JSON',extensions:['json']}]});
     if(pick.canceled)return {cancelled:true};
     const file=pick.filePaths[0];if((await fs.promises.stat(file)).size>50_000_000)throw Error('旧项目文件超过50MB');
     return workspace.mergeLegacy(JSON.parse(await fs.promises.readFile(file,'utf8')));
   });
-  ipcMain.handle('ws:folder',async()=>{
+  guardedHandle('ws:folder',async()=>{
     const pick=await dialog.showOpenDialog(win,{title:'选择参考图总目录（会递归扫描子目录）',properties:['openDirectory']});
     if(pick.canceled)return {cancelled:true};
     return workspace.setFolder(pick.filePaths[0]);
   });
-  ipcMain.handle('ws:rescan',()=>workspace.assetIndex.scan(workspace.data.assetFolder));
+  guardedHandle('ws:rescan',()=>workspace.assetIndex.scan(workspace.data.assetFolder));
   ipcMain.handle('ws:select',async(_e,eid,sid)=>{await workspace.select(eid,sid);return workspace.snapshot()});
-  ipcMain.handle('ws:editText',async(_e,eid,sid,text)=>{await workspace.editText(eid,sid,text);return workspace.snapshot()});
-  ipcMain.handle('ws:editCodes',async(_e,eid,sid,codes)=>{await workspace.editCodes(eid,sid,codes);return workspace.snapshot()});
-  ipcMain.handle('ws:status',async(_e,eid,sid,status,aid)=>{await workspace.setStatus(eid,sid,status,aid);return workspace.snapshot()});
+  guardedHandle('ws:editText',async(_e,eid,sid,text)=>{await workspace.editText(eid,sid,text);return workspace.snapshot()});
+  guardedHandle('ws:editCodes',async(_e,eid,sid,codes)=>{await workspace.editCodes(eid,sid,codes);return workspace.snapshot()});
+  guardedHandle('ws:status',async(_e,eid,sid,status,aid)=>{await workspace.setStatus(eid,sid,status,aid);return workspace.snapshot()});
   ipcMain.handle('ws:hidden',(_e,eid,sid,hidden)=>workspace.setHidden(eid,sid,hidden));
   ipcMain.handle('ws:locked',(_e,eid,sid,locked)=>workspace.setLocked(eid,sid,locked));
   ipcMain.handle('ws:showHidden',(_e,show)=>workspace.setShowHidden(show));
   ipcMain.handle('ws:hideDone',()=>workspace.hideDone());
   ipcMain.handle('ws:treeEpisode',(_e,eid)=>workspace.setTreeEpisode(eid));
-  ipcMain.handle('ws:selection',async(_e,eid,sid,paths)=>{await workspace.setSelection(eid,sid,paths);return workspace.snapshot()});
+  guardedHandle('ws:selection',async(_e,eid,sid,paths)=>{await workspace.setSelection(eid,sid,paths);return workspace.snapshot()});
   ipcMain.handle('ws:version',async(_e,code,p)=>{await workspace.chooseVersion(code,p);return workspace.snapshot()});
   ipcMain.handle('ws:layout',async(_e,patch)=>{await workspace.setLayout(patch);return true});
-  ipcMain.handle('ws:rename',async(_e,name)=>{if(typeof name!=='string'||!name.trim())throw Error('项目名称不能为空');workspace.data.title=name.trim().slice(0,150);await workspace.save();return workspace.snapshot()});
+  guardedHandle('ws:rename',async(_e,name)=>{if(typeof name!=='string'||!name.trim())throw Error('项目名称不能为空');workspace.data.title=name.trim().slice(0,150);await workspace.save();return workspace.snapshot()});
   ipcMain.handle('tail:status',(_e,eid,sid)=>{
     workspace.findSegment(eid,sid);
     const r=tailframes.status(workspace.data,eid,sid);
     return {...r,file:r.file?{...r.file,url:pathToFileURL(r.file.path).toString()}:null};
   });
-  ipcMain.handle('tail:choose',async(_e,eid,sid)=>{
+  guardedHandle('tail:choose',async(_e,eid,sid)=>{
     workspace.findSegment(eid,sid);
     const previous=findPredecessor(workspace.data,eid,sid);
     if(!previous)return {state:'first',message:'本集第一段没有前一段成片'};
@@ -510,12 +516,12 @@ function registerHandlers(){
     return result;
   });
   ipcMain.handle('voice:list',()=>voiceBindings.snapshot());
-  ipcMain.handle('voice:add',async(_e,code,label)=>{
+  guardedHandle('voice:add',async(_e,code,label)=>{
     const pick=await dialog.showOpenDialog(win,{title:'为参考图 '+code+' 绑定人物音频（WAV/MP3，单段2-15秒）',properties:['openFile','multiSelections'],filters:[{name:'人物声音',extensions:['wav','mp3']}]});
     if(pick.canceled||!pick.filePaths.length)return {cancelled:true,...voiceBindings.snapshot()};
     return voiceBindings.add(code,pick.filePaths,label||'人物声音');
   });
-  ipcMain.handle('voice:default',(_e,code,id)=>voiceBindings.setDefault(code,id));
+  guardedHandle('voice:default',(_e,code,id)=>voiceBindings.setDefault(code,id));
   ipcMain.handle('voice:remove',(_e,code,id)=>voiceBindings.remove(code,id));
   ipcMain.handle('voice:play',async(_e,code,id)=>{
     const file=(voiceBindings.data.bindings[code]||[]).find(x=>x.id===id)?.path;
@@ -523,7 +529,7 @@ function registerHandlers(){
     const result=await shell.openPath(file);if(result)throw Error(result);return true;
   });
   ipcMain.handle('import:draft',(_e,eid,sid,prompt)=>getAccountImportEngine(activeId).getDraft({episodeId:eid,segmentId:sid,previewText:prompt}));
-  ipcMain.handle('import:sync-text',(_e,eid,sid,replaceDraft)=>getAccountImportEngine(activeId).syncText({episodeId:eid,segmentId:sid,replaceDraft:!!replaceDraft}));
+  guardedHandle('import:sync-text',(_e,eid,sid,replaceDraft)=>getAccountImportEngine(activeId).syncText({episodeId:eid,segmentId:sid,replaceDraft:!!replaceDraft}));
   ipcMain.handle('import:preflight',async(_e,eid,sid)=>{
     const id=activeId;
     const mode=await ensureVideoMode(id);
@@ -531,7 +537,7 @@ function registerHandlers(){
     const plan=await getAccountImportEngine(id).getPlan({episodeId:eid,segmentId:sid});
     return {...plan,videoCheck:{ready:mode.ready,settingsVerified:mode.settingsVerified,message:mode.message}};
   });
-  ipcMain.handle('import:execute',async(_e,eid,sid,options)=>{
+  guardedHandle('import:execute',async(_e,eid,sid,options)=>{
     const accountId=activeId;
     if(!accountId)throw Error('尚未选择账号');
     if(reservedImportSlots.has(accountId))throw Error('当前账号已有一个导入任务；请等待或取消，防止同一聊天输入框被同时改写');
@@ -559,7 +565,7 @@ function registerHandlers(){
     account(id);return importEnginesByAccount.get(id)?.confirm(approved===true)||false;
   });
   ipcMain.handle('mention:preflight',(_e,eid,sid)=>mentionRunner.preflight({episodeId:eid,segmentId:sid}));
-  ipcMain.handle('mention:execute',(_e,eid,sid)=>mentionRunner.execute({episodeId:eid,segmentId:sid}));
+  guardedHandle('mention:execute',(_e,eid,sid)=>mentionRunner.execute({episodeId:eid,segmentId:sid}));
   ipcMain.handle('mention:cancel',()=>mentionRunner.cancel());
   ipcMain.handle('ws:images',async(_e,eid,sid)=>{
     const records=workspace.resolveSegment(eid,sid);
@@ -611,7 +617,7 @@ function registerHandlers(){
     if(pick.canceled||!pick.filePath)return {cancelled:true};
     await fs.promises.writeFile(pick.filePath,JSON.stringify(workspace.data,null,2),'utf8');return {path:pick.filePath};
   });
-  ipcMain.handle('ws:restore',async()=>{
+  guardedHandle('ws:restore',async()=>{
     const pick=await dialog.showOpenDialog(win,{title:'恢复 v0.3 漫剧项目（将替换当前漫剧项目，请先备份）',properties:['openFile'],filters:[{name:'项目 JSON',extensions:['json']}]});
     if(pick.canceled)return {cancelled:true};
     if((await fs.promises.stat(pick.filePaths[0])).size>50_000_000)throw Error('备份文件过大');
@@ -677,6 +683,6 @@ if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus()}});
   process.on('uncaughtException',log);process.on('unhandledRejection',log);
-  app.whenReady().then(async()=>{cfg=readCfg();noticeService=new NoticeService({url:publicConfig.noticeUrl,cachePath:path.join(app.getPath('userData'),'notice-cache.json'),version:app.getVersion()});tutorialMedia=new TutorialMedia({dir:path.join(app.getPath('userData'),'tutorial-cache'),appPath:app.isPackaged?process.resourcesPath:app.getAppPath(),manifestUrl:publicConfig.noticeUrl});apiSettings=new ApiSettings({file:path.join(app.getPath('userData'),'api-settings.json'),safeStorage});thumbnailCache=new ThumbnailCache({root:path.join(app.getPath('userData'),'preview-cache'),createThumbnail:async(source,size)=>{const img=await nativeImage.createThumbnailFromPath(source,size);return img.isEmpty()?null:img.toPNG()}});workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);taskJournal=new TaskJournal(path.join(app.getPath('userData'),'import-task-history.json'));downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱-公开版','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();voiceBindings=await new VoiceBindingsStore(path.join(app.getPath('userData'),'voice-bindings.json'),{ffprobe:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath}).ffprobe}).load();mentionRunner=createMentionRunner({getActive:activeDoubaoContext,resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});/* One import engine per account, created lazily by getAccountImportEngine; no shared global running flag. */registerHandlers();initializeUpdater();createWindow();setTimeout(()=>thumbnailCache.prune().catch(log),18000);setTimeout(()=>tutorialMedia.prune().catch(log),19000);noticeTimer=setInterval(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),5*60*1000);noticeTimer.unref?.();setTimeout(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),1300)}).catch(err=>{log(err);dialog.showErrorBox('独独AI工作台启动失败',String(err.stack||err));app.quit()});
+  app.whenReady().then(async()=>{cfg=readCfg();licenseClient=new LicenseClient({root:app.getPath('userData'),safeStorage,packaged:app.isPackaged,native:(()=>{try{return require('../native/dudu_core.node')}catch{return null}})()});noticeService=new NoticeService({url:publicConfig.noticeUrl,cachePath:path.join(app.getPath('userData'),'notice-cache.json'),version:app.getVersion()});tutorialMedia=new TutorialMedia({dir:path.join(app.getPath('userData'),'tutorial-cache'),appPath:app.isPackaged?process.resourcesPath:app.getAppPath(),manifestUrl:publicConfig.noticeUrl});apiSettings=new ApiSettings({file:path.join(app.getPath('userData'),'api-settings.json'),safeStorage});thumbnailCache=new ThumbnailCache({root:path.join(app.getPath('userData'),'preview-cache'),createThumbnail:async(source,size)=>{const img=await nativeImage.createThumbnailFromPath(source,size);return img.isEmpty()?null:img.toPNG()}});workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);taskJournal=new TaskJournal(path.join(app.getPath('userData'),'import-task-history.json'));downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱-公开版','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();voiceBindings=await new VoiceBindingsStore(path.join(app.getPath('userData'),'voice-bindings.json'),{ffprobe:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath}).ffprobe}).load();mentionRunner=createMentionRunner({getActive:activeDoubaoContext,resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});/* One import engine per account, created lazily by getAccountImportEngine; no shared global running flag. */registerHandlers();initializeUpdater();createWindow();setTimeout(()=>licenseClient.refresh().then(v=>tell('license:updated',v)).catch(log),1700);setTimeout(()=>thumbnailCache.prune().catch(log),18000);setTimeout(()=>tutorialMedia.prune().catch(log),19000);noticeTimer=setInterval(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),5*60*1000);noticeTimer.unref?.();setTimeout(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),1300)}).catch(err=>{log(err);dialog.showErrorBox('独独AI工作台启动失败',String(err.stack||err));app.quit()});
   app.on('window-all-closed',()=>app.quit());
 }
