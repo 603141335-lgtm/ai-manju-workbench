@@ -3,12 +3,17 @@ import adminPage from './admin-page.js';
 const MAX_JSON=65536,MAX_IMAGE=2097152;
 const json=(x,status=200,headers={})=>new Response(JSON.stringify(x),{status,headers:{...headers,'content-type':'application/json; charset=utf-8','x-content-type-options':'nosniff'}});
 async function sha(bytes){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('')}
-async function auth(request,env){
- const bearer=String(request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
- if(bearer.length<32||bearer.length>200||!/^[0-9a-f]{64}$/i.test(env.ADMIN_TOKEN_HASH||''))return false;
- const got=await sha(new TextEncoder().encode(bearer)),want=env.ADMIN_TOKEN_HASH.toLowerCase();
- let mismatch=0;for(let i=0;i<64;i++)mismatch|=got.charCodeAt(i)^want.charCodeAt(i);
+async function matchesHash(value,want){
+ if(typeof value!=='string'||value.length<32||value.length>200||!/^[0-9a-f]{64}$/i.test(want||''))return false;
+ const got=await sha(new TextEncoder().encode(value)),expected=want.toLowerCase();
+ let mismatch=0;for(let i=0;i<64;i++)mismatch|=got.charCodeAt(i)^expected.charCodeAt(i);
  return mismatch===0;
+}
+async function auth(request,env){
+ const internal=request.headers.get('X-Dudu-Internal-Token')||'';
+ if(internal&&await matchesHash(internal,env.INTERNAL_ADMIN_TOKEN_HASH))return true;
+ const bearer=String(request.headers.get('Authorization')||'').replace(/^Bearer\\s+/i,'');
+ return matchesHash(bearer,env.ADMIN_TOKEN_HASH);
 }
 const clean=(x,max=300)=>typeof x==='string'?x.replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max):'';
 const validMedia=(v,origin)=>{try{const u=new URL(v);return u.protocol==='https:'&&u.origin===origin&&/^\/media\/[0-9a-f]{64}$/.test(u.pathname)}catch{return false}};
