@@ -69,3 +69,4 @@ npm start
 - **公开发行前必须部署并配置** DUDU_LICENSE_URL、DUDU_LICENSE_PUBLIC_KEY_B64；未提供时GitHub Actions只跑测试，不生成无法激活的安装包。
 - v1.1.0稳定分支和%APPDATA%\DoubaoCreativeHubPublic不变。免费试用从服务器首次成功请求计时，不会清空本地历史项目。
 - 本版采用DPAPI软件密钥方案，尚未使用TPM硬件不可导出密钥、商业加壳和Windows数字签名，不承诺绝对防破解。
+Trigger v1.2.0 Windows release build
