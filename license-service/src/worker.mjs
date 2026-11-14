@@ -119,7 +119,7 @@ async function adminRequest(req,env,path){
   return response({cards:results});
  }
  if(path.endsWith('/applications/list')){
-  const {results}=await env.DB.prepare('SELECT a.id,a.contact,a.reason,a.status,a.created_ms,a.reviewed_ms,a.reviewer_note,a.card_id,a.device_hash,d.created_ms AS device_created_ms FROM license_applications a LEFT JOIN devices d ON d.device_hash=a.device_hash ORDER BY CASE a.status WHEN "pending" THEN 0 ELSE 1 END,a.created_ms DESC LIMIT 300').all();
+  const {results}=await env.DB.prepare('SELECT a.id,a.contact,a.reason,a.status,a.created_ms,a.reviewed_ms,a.reviewer_note,a.card_id,a.device_hash,d.created_ms AS device_created_ms FROM license_applications a LEFT JOIN devices d ON d.device_hash=a.device_hash ORDER BY a.created_ms DESC LIMIT 300').all();
   return response({applications:results});
  }
  if(path.endsWith('/applications/approve')){
