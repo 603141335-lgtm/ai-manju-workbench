@@ -44,7 +44,7 @@
  $('btnLicenseRefresh').onclick=()=>action(()=>B.licenseRefresh());
  const applyBtn=$('btnLicenseApply'),statusBtn=$('btnLicenseApplicationStatus');
  if(applyBtn)applyBtn.onclick=async()=>{try{applyBtn.disabled=true;const r=await B.licenseApplicationCreate($('licenseApplyContact').value,$('licenseApplyReason').value);feedback('申请已提交：'+r.applicationId+'，请等待人工审批。');$('licenseApplicationId').value=r.applicationId}catch(e){feedback('申请失败：'+e.message,'error')}finally{applyBtn.disabled=false}};
- if(statusBtn)statusBtn.onclick=async()=>{try{const r=await B.licenseApplicationStatus($('licenseApplicationId').value);feedback('申请状态：'+({pending:'待审批',approved:'已通过',rejected:'未通过'}[r.application.status]||r.application.status)+(r.application.reviewer_note?'；备注：'+r.application.reviewer_note:''))}catch(e){feedback('查询失败：'+e.message,'error')}};
+ if(statusBtn)statusBtn.onclick=async()=>{try{const r=await B.licenseApplicationStatus($('licenseApplicationId').value);if(r.license?.valid){render(r.license);feedback('✓ 申请已通过，永久授权已自动激活。');close();return}feedback('申请状态：'+({pending:'待审批',approved:'已通过（请联系管理员获取未绑定卡密）',rejected:'未通过'}[r.application.status]||r.application.status)+(r.application.reviewer_note?'；备注：'+r.application.reviewer_note:''))}catch(e){feedback('查询失败：'+e.message,'error')}};
  $('btnLicenseReadonly').onclick=close;
  $('btnLicenseWechat').onclick=()=>B.copyText('du4du44').then(()=>feedback('已复制 du4du44'));
  $('btnLicenseBackupWechat').onclick=()=>B.copyText('du6du66').then(()=>feedback('已复制 du6du66'));
