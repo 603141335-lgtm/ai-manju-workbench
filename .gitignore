@@ -30,3 +30,6 @@ User Data/
 *.sqlite
 *.sqlite3
 *.db
+
+# Temporary private Cloudflare service-binding configuration
+cloud-content/.private/
