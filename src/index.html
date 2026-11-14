@@ -9,7 +9,7 @@
   <script src="./community-qr.js" defer></script>
   <script src="./renderer.js" defer></script>
   <script src="./tutorial-ui.js" defer></script>
-  <script src="./license-ui.js" defer></script>
+  <script src="./vendor/qrcode.min.js" defer></script>\n  <script src="./license-ui.js" defer></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -223,7 +223,9 @@
   <div class="licenseStatusBox"><div><strong id="licenseState">正在检查本机授权…</strong><small id="licenseCountdown"></small></div><span>设备编号：<span id="licenseDevice">—</span></span></div>
   <section class="licensePane"><h3>🎁 首次免费试用24小时</h3><p>从首次联网成功激活起计时。重装软件不会重新赠送，试用期内正常使用制作功能。</p><button class="primary" id="btnLicenseTrial">开始免费体验</button></section>
   <section class="licensePane"><h3>🎫 永久卡密激活</h3><div class="licenseForm"><input id="licenseCode" placeholder="DUDU-XXXXX-XXXXX-XXXXX-XXXXX" spellcheck="false" autocomplete="off" maxlength="45"/><button class="primary" id="btnLicenseActivate">激活永久使用权</button></div></section>
-  <section class="licensePane"><h3>💬 添加微信免费领取永久卡密</h3><div class="licenseContacts"><span>主微信：<b>du4du44</b> <button class="smallBtn" id="btnLicenseWechat">复制</button></span><span>备用：<b>du6du66</b> <button class="smallBtn" id="btnLicenseBackupWechat">复制</button></span></div></section>
+  <section class="licensePane" id="licenseApplicationPane"><h3>📝 免费永久卡密申请</h3><p>提交申请后进入人工审核，通过后可直接绑定当前电脑；也可以由管理员发放卡密。</p><input id="licenseApplyContact" placeholder="微信号或其他联系方式（选填）" maxlength="80"/><textarea id="licenseApplyReason" rows="2" maxlength="500" placeholder="简单介绍你的创作需求或申请原因（至少8个字）"></textarea><div class="licenseForm"><button class="primary" id="btnLicenseApply">提交免费申请</button><button class="ghost" id="btnLicenseApplyStatus">查询申请进度</button></div><div id="licenseApplyResult" class="licenseInlineResult">尚未提交申请</div></section>
+  <section class="licensePane" id="licensePurchasePane"><h3>💳 购买永久授权</h3><p>选择支付方式并创建订单，付款成功后自动绑定当前电脑，无需手动输入卡密。</p><div class="licenseForm"><select id="licenseProductSelect" aria-label="选择商品"><option value="">正在读取商品…</option></select><select id="licensePayProvider" aria-label="选择支付方式"><option value="wechat">微信支付</option><option value="alipay">支付宝</option></select><button class="ghost" id="btnLicenseProducts">刷新商品</button><button class="primary" id="btnLicenseBuy">创建订单</button></div><div id="licensePayArea" hidden><div class="licensePayBox"><div id="licensePayQr"></div><div><strong id="licensePayTitle">等待付款</strong><p id="licensePayInfo">请使用对应支付App扫描二维码。</p><button class="ghost" id="btnLicenseCopyPay">复制支付内容</button><button class="ghost" id="btnLicenseCheckOrder">我已付款 / 查询订单</button></div></div></div><div id="licensePayResult" class="licenseInlineResult">支付渠道以商户接口实际配置状态为准。</div></section>
+  <section class="licensePane"><h3>💬 社群联系</h3><div class="licenseContacts"><span>主微信：<b>du4du44</b> <button class="smallBtn" id="btnLicenseWechat">复制</button></span><span>备用：<b>du6du66</b> <button class="smallBtn" id="btnLicenseBackupWechat">复制</button></span></div></section>
   <p id="licenseMessage" aria-live="polite">正在检查授权…</p>
   <div class="licenseFooter"><button class="ghost" id="btnLicenseRefresh">联网验证 / 更新授权</button><button class="ghost" id="btnLicenseReadonly">只读进入 · 查看与备份项目</button></div>
   <small class="licenseNote">试用到期不会删除你的本地账号、剧本、参考图或成片。授权按设备绑定，换机请联系管理员。</small>
