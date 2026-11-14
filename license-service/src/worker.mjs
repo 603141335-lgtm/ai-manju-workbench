@@ -106,7 +106,7 @@ async function adminRequest(req,env,path){
   }
   return response({codes});
  }
- if(path.endsWith('/list')){
+ if(path.endsWith('/cards/list')){
   const {results}=await env.DB.prepare('SELECT id,last_four,issued_ms,activated_ms,bound_device_hash IS NOT NULL AS bound,revoked_ms FROM license_cards ORDER BY issued_ms DESC LIMIT 200').all();
   return response({cards:results});
  }
