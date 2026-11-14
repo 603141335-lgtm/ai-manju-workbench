@@ -197,6 +197,8 @@ export default {async fetch(request,env){
  if(path==='/v1/license/attest'&&request.method==='GET'){
   try{return await attestSigningKey(env)}catch{return response({error:'服务器签名服务尚未正确配置'},503)}
  }
+ if(path==='/content-admin'&&request.method==='GET'){if(!env.CONTENT)return response({error:'内容服务绑定尚未部署'},503);return env.CONTENT.fetch(new Request('https://content.internal/admin',{method:'GET'}));}
+ if(path.startsWith('/api/admin/')){if(!env.CONTENT)return response({error:'内容服务绑定尚未部署'},503);const target=new URL(request.url);target.hostname='content.internal';return env.CONTENT.fetch(new Request(target.toString(),request));}
  if(path==='/admin'&&request.method==='GET')return new Response(adminHtml,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','content-security-policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'}});
  if(request.method!=='POST'||!path.startsWith('/v1/'))return response({error:'Not found'},404);
  if(Number(request.headers.get('content-length')||0)>8192)return response({error:'请求过大'},413);
