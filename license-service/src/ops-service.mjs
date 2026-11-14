@@ -233,7 +233,7 @@ async function createOrder(request, env, body, helpers) {
 }
 async function orderStatus(request, env, body, helpers) {
   await helpers.verifyDevice("order-status",body);
-  const deviceHash=await consumeNonce(env,body);
+  const deviceHash=await consumeNonce(env,body,helpers);
   const order=await env.DB.prepare("SELECT order_id,order_no,product_name,amount_cents,payment_method,status,created_ms,paid_ms,delivered_ms FROM orders WHERE order_id=? AND device_hash=?")
     .bind(clean(body.orderId,80),deviceHash).first();
   if(!order) throw Error("订单不存在");
@@ -241,7 +241,7 @@ async function orderStatus(request, env, body, helpers) {
 }
 async function applicationCreate(request, env, body, helpers) {
   await helpers.verifyDevice("apply",body);
-  const deviceHash=await consumeNonce(env,body);
+  const deviceHash=await consumeNonce(env,body,helpers);
   await helpers.registerDevice(deviceHash,body.publicKey);
   const contact=clean(body.contact,80),reason=clean(body.reason,400);
   if(contact.length<2) throw Error("请填写微信号或联系方式");
@@ -254,7 +254,7 @@ async function applicationCreate(request, env, body, helpers) {
 }
 async function applicationStatus(request, env, body, helpers) {
   await helpers.verifyDevice("application-status",body);
-  const deviceHash=await consumeNonce(env,body);
+  const deviceHash=await consumeNonce(env,body,helpers);
   const app=await env.DB.prepare("SELECT application_id,status,created_ms,reviewed_ms,review_note FROM license_applications WHERE device_hash=? ORDER BY created_ms DESC LIMIT 1")
     .bind(deviceHash).first();
   return json({application:app||null});
