@@ -14,3 +14,15 @@ test('static administrative page does not store admin token in localStorage',asy
  const {adminHtml}=await import('../src/admin-ui.mjs');
  assert.match(adminHtml,/du4du44/);assert.doesNotMatch(adminHtml,/localStorage|document.cookie/);
 });
+test('device proof binds free application and purchase metadata',()=>{
+ const {privateKey,publicKey}=generateKeyPairSync('ed25519');
+ const r={deviceId:'a'.repeat(64),publicKey:publicKey.export({type:'spki',format:'der'}).toString('base64'),ts:Date.now(),nonce:randomBytes(16).toString('hex'),code:'',contact:'du4du44',reason:'创作者申请'};
+ const message=Buffer.from(deviceMessage('apply',r)),sig=sign(null,message,privateKey);
+ assert.equal(verify(null,message,publicKey,sig),true);
+ assert.equal(verify(null,Buffer.from(deviceMessage('apply',{...r,reason:'被篡改'})),publicKey,sig),false);
+ const order={...r,productId:'permanent',paymentMethod:'wechat'};
+ const orderMessage=Buffer.from(deviceMessage('order-create',order)),orderSig=sign(null,orderMessage,privateKey);
+ assert.equal(verify(null,orderMessage,publicKey,orderSig),true);
+ assert.equal(verify(null,Buffer.from(deviceMessage('order-create',{...order,paymentMethod:'alipay'})),publicKey,orderSig),false);
+});
+
