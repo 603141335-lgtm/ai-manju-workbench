@@ -17,7 +17,10 @@ jobs:
           node-version: '22'
       - name: Install license service dependencies
         working-directory: license-service
-        run: npm install --no-audit --no-fund
+        run: |
+          pwd
+          node -p "require('./package.json').name + '@' + require('./package.json').version"
+          npm ci --no-audit --no-fund
       - name: Run license, commerce and content tests
         working-directory: license-service
         run: npm test
