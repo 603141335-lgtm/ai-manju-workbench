@@ -8,10 +8,13 @@ function pemBytes(value){
  return b64(s);
 }
 function ready(values){return values.every(v=>typeof v==='string'&&v.trim().length>0)}
+function validNotifyUrl(value){
+ try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.search&&!u.hash&&u.port==='' }catch{return false}
+}
 export function paymentReadiness(env){
  return {
-  wechat:ready([env.WECHAT_PAY_APP_ID,env.WECHAT_PAY_MCH_ID,env.WECHAT_PAY_CERT_SERIAL,env.WECHAT_PAY_PRIVATE_KEY_PEM,env.WECHAT_PAY_API_V3_KEY,env.WECHAT_PAY_PLATFORM_PUBLIC_KEY_PEM,env.WECHAT_PAY_NOTIFY_URL])&&String(env.WECHAT_PAY_API_V3_KEY).length===32,
-  alipay:ready([env.ALIPAY_APP_ID,env.ALIPAY_PRIVATE_KEY_PEM,env.ALIPAY_PUBLIC_KEY_PEM,env.ALIPAY_NOTIFY_URL])
+  wechat:ready([env.WECHAT_PAY_APP_ID,env.WECHAT_PAY_MCH_ID,env.WECHAT_PAY_CERT_SERIAL,env.WECHAT_PAY_PRIVATE_KEY_PEM,env.WECHAT_PAY_API_V3_KEY,env.WECHAT_PAY_PLATFORM_PUBLIC_KEY_PEM])&&String(env.WECHAT_PAY_API_V3_KEY).length===32&&validNotifyUrl(env.WECHAT_PAY_NOTIFY_URL),
+  alipay:ready([env.ALIPAY_APP_ID,env.ALIPAY_PRIVATE_KEY_PEM,env.ALIPAY_PUBLIC_KEY_PEM])&&validNotifyUrl(env.ALIPAY_NOTIFY_URL)
  };
 }
 async function rsaSign(pem,message){
@@ -36,7 +39,7 @@ async function wechatRequest(env,path,body){
 }
 export async function createWechatPayment(env,order){
  if(!paymentReadiness(env).wechat)throw Error('微信支付商户参数尚未配置');
- const body={appid:env.WECHAT_PAY_APP_ID,mchid:env.WECHAT_PAY_MCH_ID,description:String(order.productName||'独独AI数字商品').slice(0,120),out_trade_no:order.orderNo,notify_url:env.WECHAT_PAY_NOTIFY_URL,amount:{total:order.amountFen,currency:'CNY'}};
+ const body={appid:env.WECHAT_PAY_APP_ID,mchid:env.WECHAT_PAY_MCH_ID,description:String(order.productName||'独独AI数字商品').slice(0,120),out_trade_no:order.orderNo,notify_url:env.WECHAT_PAY_NOTIFY_URL,time_expire:new Date(Date.now()+15*60*1000).toISOString(),amount:{total:order.amountFen,currency:'CNY'}};
  const result=await wechatRequest(env,'/v3/pay/transactions/native',body);
  if(typeof result.code_url!=='string'||!result.code_url.startsWith('weixin://'))throw Error('微信支付未返回有效二维码内容');
  return {provider:'wechat',qrText:result.code_url};
