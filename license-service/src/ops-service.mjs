@@ -184,7 +184,7 @@ async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, 
   if(orderRow.status==="refunded") throw Error("订单已退款");
   await env.DB.prepare("INSERT OR IGNORE INTO payment_events(event_id,provider,order_no,payload_sha256,created_ms) VALUES(?,?,?,?,?)")
     .bind(String(eventId||("evt-"+orderRow.order_no)),orderRow.payment_method,orderRow.order_no,payloadHash,Date.now()).run();
-  await env.DB.prepare("UPDATE orders SET status='paid',provider_trade_no=COALESCE(provider_trade_no,?),paid_ms=COALESCE(paid_ms,?),updated_ms=? WHERE order_id=? AND status='pending'")
+  await env.DB.prepare("UPDATE orders SET status='paid',provider_trade_no=COALESCE(provider_trade_no,?),paid_ms=COALESCE(paid_ms,?),updated_ms=? WHERE order_id=? AND status IN ('pending','closed')")
     .bind(String(providerTradeNo||""),Date.now(),Date.now(),orderRow.order_id).run();
   const paid=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(orderRow.order_id).first();
   if(!paid||paid.status!=="paid") throw Error("订单状态未能更新为已支付");
