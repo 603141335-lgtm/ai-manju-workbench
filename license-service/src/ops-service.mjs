@@ -123,9 +123,7 @@ async function createAlipayOrder(env, order, origin) {
   };
   params.sign=await rsaSign(env.ALIPAY_PRIVATE_KEY_PEM,alipaySignContent(params));
   const gateway=safeHttps(env.ALIPAY_GATEWAY_URL)||"https://openapi.alipay.com/gateway.do";
-  const u=new URL(gateway);
-  for(const [k,v] of Object.entries(params)) u.searchParams.set(k,v);
-  return {pay_url:u.toString()};
+  return {gateway,pay_params:params};
 }
 async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, helpers) {
   const orderRow=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(order.order_no).first();
@@ -265,10 +263,13 @@ async function checkoutPage(request, env, orderId) {
   if(order.status==="paid") return new Response("<!doctype html><meta charset=utf-8><title>支付完成</title><h2>支付已完成</h2><p>请返回独独AI工作台，点击“联网验证 / 更新授权”。</p>",{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
   if(order.status!=="pending") return new Response("订单已关闭或退款",{status:410});
   let checkout={};try{checkout=JSON.parse(order.checkout_data||"{}")}catch{}
-  if(order.payment_method==="alipay"&&safeHttps(checkout.pay_url)) {
-    const target=new URL(checkout.pay_url);
+  if(order.payment_method==="alipay"&&checkout.pay_params&&typeof checkout.pay_params==="object") {
+    const gateway=safeHttps(checkout.gateway)||"https://openapi.alipay.com/gateway.do";
+    const target=new URL(gateway);
     if(target.hostname!=="openapi.alipay.com"&&target.hostname!=="openapi-sandbox.dl.alipaydev.com") return new Response("支付宝收银台地址无效",{status:502});
-    return Response.redirect(target.toString(),303);
+    const fields=Object.entries(checkout.pay_params).map(([k,v])=>'<input type="hidden" name="'+html(k)+'" value="'+html(v)+'">').join("");
+    const page='<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>正在前往支付宝</title><body style="font:16px Microsoft Yahei;background:#0b1525;color:#edf4ff;display:grid;place-items:center;min-height:100vh"><main style="background:#172943;padding:28px;border-radius:16px;text-align:center"><h2>正在打开支付宝收银台</h2><p>订单：'+html(order.order_no)+'</p><p>金额：¥'+yuan(order.amount_cents)+'</p><form id="pay" method="post" action="'+html(target.toString())+'">'+fields+'<button>继续支付</button></form></main><script>document.getElementById("pay").submit()</script></body></html>';
+    return new Response(page,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","content-security-policy":"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action https://openapi.alipay.com https://openapi-sandbox.dl.alipaydev.com; base-uri 'none'; frame-ancestors 'none'"}});
   }
   if(order.payment_method==="wechat"&&typeof checkout.code_url==="string"&&checkout.code_url.startsWith("weixin://")) {
     const code=JSON.stringify(checkout.code_url);
