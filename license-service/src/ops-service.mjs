@@ -67,11 +67,34 @@ function normalizeManifest(raw) {
   return result;
 }
 
+function concatBytes(...parts) {
+  const size=parts.reduce((n,p)=>n+p.length,0),out=new Uint8Array(size);let offset=0;
+  for(const part of parts){out.set(part,offset);offset+=part.length}return out;
+}
+function derLength(size) {
+  if(size<128)return Uint8Array.of(size);
+  const bytes=[];while(size>0){bytes.unshift(size&255);size>>=8}
+  return Uint8Array.of(0x80|bytes.length,...bytes);
+}
+function der(tag,bytes) { return concatBytes(Uint8Array.of(tag),derLength(bytes.length),bytes); }
+const RSA_ALGORITHM_ID=Uint8Array.of(0x30,0x0d,0x06,0x09,0x2a,0x86,0x48,0x86,0xf7,0x0d,0x01,0x01,0x01,0x05,0x00);
+function wrapRsaPublicPkcs1(pkcs1) {
+  const bitString=der(0x03,concatBytes(Uint8Array.of(0),pkcs1));
+  return der(0x30,concatBytes(RSA_ALGORITHM_ID,bitString));
+}
+function wrapRsaPrivatePkcs1(pkcs1) {
+  return der(0x30,concatBytes(Uint8Array.of(0x02,0x01,0x00),RSA_ALGORITHM_ID,der(0x04,pkcs1)));
+}
+function pemKind(pem) { return String(pem||"").match(/-----BEGIN ([^-]+)-----/)?.[1]||""; }
 async function importRsaPrivate(pem) {
-  return crypto.subtle.importKey("pkcs8",pemBytes(pem),{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["sign"]);
+  const kind=pemKind(pem),raw=pemBytes(pem),derKey=kind==="RSA PRIVATE KEY"?wrapRsaPrivatePkcs1(raw):raw;
+  return crypto.subtle.importKey("pkcs8",derKey,{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["sign"]);
 }
 async function importRsaPublic(pem) {
-  return crypto.subtle.importKey("spki",pemBytes(pem),{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["verify"]);
+  const kind=pemKind(pem),raw=pemBytes(pem);
+  if(kind==="RSA PUBLIC KEY")return crypto.subtle.importKey("spki",wrapRsaPublicPkcs1(raw),{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["verify"]);
+  try{return await crypto.subtle.importKey("spki",raw,{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["verify"])}
+  catch{return crypto.subtle.importKey("spki",wrapRsaPublicPkcs1(raw),{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["verify"])}
 }
 async function rsaSign(pem, text) {
   const key=await importRsaPrivate(pem);
