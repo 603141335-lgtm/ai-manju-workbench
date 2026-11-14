@@ -15,6 +15,7 @@ export const adminHtml = String.raw`<!doctype html><html lang="zh-CN"><head><met
 <section class="page" id="page-content"><h1>公告与教程</h1><div class="pane"><p>打开现有内容管理后台，编辑公告、二维码、教程图片并发布。内容服务保持独立，桌面端原有刷新接口不变。</p><a id="contentLink" href="#" target="_blank" rel="noopener" style="color:#9bd7ff">打开内容管理后台</a><p class="hint">部署统一管理代理后，此入口将通过同一管理员身份验证调用内容服务。</p></div></section>
 <section class="page" id="page-security"><h1>安全与日志</h1><div class="pane"><p>管理员操作使用现有授权服务令牌校验；所有新增申请审批操作写入原有 admin_audit。</p><p class="hint">支付私钥只配置在 Worker Secrets。上线前必须启用 Cloudflare Access 和双因素验证。</p></div></section>
 </div></main></div>
+<footer style="padding:20px 28px;color:#91a9c6;text-align:center">微信：du4du44　备用：du6du66　｜　独独AI，让制作变得简单。</footer>
 <script>
 const $=id=>document.getElementById(id);let token='',latestCodes=[];
 async function api(path,data={}){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json','authorization':'Bearer '+token},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||('HTTP '+r.status));return v}
