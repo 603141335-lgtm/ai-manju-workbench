@@ -149,7 +149,7 @@ async function createWechatOrder(env, order, origin) {
   const payload={
     appid:env.WECHATPAY_APPID,mchid:env.WECHATPAY_MCHID,
     description:order.product_name.slice(0,127),out_trade_no:order.order_no,notify_url:notify,
-    amount:{total:order.amount_cents,currency:"CNY"}
+    time_expire:new Date(Date.now()+7200000).toISOString(),amount:{total:order.amount_cents,currency:"CNY"}
   };
   const body=JSON.stringify(payload), timestamp=String(Math.floor(Date.now()/1000)), nonce=randomHex(16);
   const message="POST\n"+path+"\n"+timestamp+"\n"+nonce+"\n"+body+"\n";
@@ -170,7 +170,7 @@ async function createAlipayOrder(env, order, origin) {
     notify_url:safeHttps(env.ALIPAY_NOTIFY_URL)||origin+"/v1/payments/alipay/notify",
     return_url:safeHttps(env.ALIPAY_RETURN_URL)||origin+"/payment/return?order="+encodeURIComponent(order.order_id),
     biz_content:JSON.stringify({
-      out_trade_no:order.order_no,product_code:"FAST_INSTANT_TRADE_PAY",
+      out_trade_no:order.order_no,product_code:"FAST_INSTANT_TRADE_PAY",timeout_express:"2h",
       total_amount:yuan(order.amount_cents),subject:order.product_name.slice(0,128)
     })
   };
@@ -181,7 +181,7 @@ async function createAlipayOrder(env, order, origin) {
 async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, helpers) {
   const orderRow=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(order.order_no).first();
   if(!orderRow) throw Error("订单不存在");
-  if(orderRow.status==="refunded"||orderRow.status==="closed") throw Error("订单已关闭或退款");
+  if(orderRow.status==="refunded") throw Error("订单已退款");
   await env.DB.prepare("INSERT OR IGNORE INTO payment_events(event_id,provider,order_no,payload_sha256,created_ms) VALUES(?,?,?,?,?)")
     .bind(String(eventId||("evt-"+orderRow.order_no)),orderRow.payment_method,orderRow.order_no,payloadHash,Date.now()).run();
   await env.DB.prepare("UPDATE orders SET status='paid',provider_trade_no=COALESCE(provider_trade_no,?),paid_ms=COALESCE(paid_ms,?),updated_ms=? WHERE order_id=? AND status='pending'")
@@ -261,10 +261,16 @@ async function handleAlipayNotify(request, env, helpers) {
   } catch { return new Response("failure",{status:400,headers:{"content-type":"text/plain; charset=utf-8"}}); }
 }
 
+async function closeStaleOrders(env) {
+  const now=Date.now();
+  await env.DB.prepare("UPDATE orders SET status='closed',updated_ms=? WHERE status='pending' AND created_ms<?")
+    .bind(now,now-7200000).run();
+}
 async function createOrder(request, env, body, helpers) {
   await helpers.verifyDevice("order-create",body);
   const deviceHash=await consumeNonce(env,body,helpers);
   await helpers.registerDevice(deviceHash,body.publicKey);
+  await closeStaleOrders(env);
   const productId=clean(body.productId,80), method=body.paymentMethod;
   if(!/^[a-z0-9_-]{2,80}$/i.test(productId)||!["wechat","alipay"].includes(method)) throw Error("商品或支付方式无效");
   if(!paymentReady(env,method)) throw Error(method==="wechat"?"微信支付商户密钥尚未配置":"支付宝商户密钥尚未配置");
@@ -345,6 +351,7 @@ async function adminOps(req, env, path, helpers) {
   if(!await helpers.adminAuth(req,env)) return json({error:"管理员身份验证失败"},401);
   let body={}; if(req.method==="POST") body=await req.json().catch(()=>({}));
   if(path==="/v1/admin/overview") {
+    await closeStaleOrders(env);
     const [cards,apps,orders,products]=await Promise.all([
       env.DB.prepare("SELECT COUNT(*) AS n FROM license_cards").first(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM license_applications WHERE status='pending'").first(),
@@ -405,6 +412,7 @@ async function adminOps(req, env, path, helpers) {
     return json({ok:true});
   }
   if(path==="/v1/admin/orders/list") {
+    await closeStaleOrders(env);
     const result=await env.DB.prepare("SELECT o.order_id,o.order_no,o.product_name,o.amount_cents,o.payment_method,o.status,o.created_ms,o.paid_ms,o.delivered_ms,o.last_error,d.status AS delivery_status FROM orders o LEFT JOIN delivery_outbox d ON d.order_id=o.order_id ORDER BY o.created_ms DESC LIMIT 300").all();
     return json({orders:result.results||[]});
   }
