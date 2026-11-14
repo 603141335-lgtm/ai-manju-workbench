@@ -132,7 +132,7 @@ jobs:
           Write-Host "Windows Authenticode signature status: $($sig.Status)"
           if($sig.SignerCertificate){Write-Host "Signer subject: $($sig.SignerCertificate.Subject)"}else{Write-Warning 'Installer is NOT digitally signed; JS obfuscation is not code signing.'}
       - name: Publish private GitHub Release (avoids Actions artifact quota)
-        if: ${{ github.event_name == 'push' && vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
+        if: ${{ vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: dudu-ai-workbench-v1.2.0

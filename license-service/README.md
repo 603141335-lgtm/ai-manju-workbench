@@ -1,18 +1,30 @@
-# 独独AI工作台 v1.2.0｜独立卡密服务
+# 独独AI工作台 v1.2.0 · 永久卡密云端部署
 
-不依赖豆包账号、Cookies、剧本或媒体。部署到自己的 Cloudflare 账户后才能正式启用；**不要把管理员口令、发卡HMAC密钥或Ed25519签发私钥提交进GitHub**。
+本仓库开发分支已通过自动化测试。授权服务必须在你自己的Cloudflare账户内正式部署，才能向普通用户签发24小时试用和永久卡密。
 
-## 部署步骤
+## 电脑端简化部署
 
-1. Node.js 22，安装 Wrangler：npx wrangler login；本地运行 npm test。
-2. npx wrangler d1 create dudu-license；将 D1 ID 填入 wrangler.toml 的 database_id。
-3. npx wrangler d1 execute dudu-license --remote --file=schema.sql。
-4. 在本人可信电脑运行 node scripts/generate-keys.mjs；安全保存输出的私钥、管理员token和HMAC秘密。
-5. 分别运行 npx wrangler secret put DUDU_SIGNING_PRIVATE_PKCS8_B64、DUDU_DEVICE_HMAC_KEY、DUDU_CARD_HMAC_KEY、DUDU_ADMIN_TOKEN_SHA256。
-6. npx wrangler deploy；打开 https://你的workers域名/health 检查服务，再访问 /admin 使用管理员token生成永久免费卡密。
-7. GitHub 仓库 Variables 设置 DUDU_LICENSE_URL = https://你的workers域名，DUDU_LICENSE_PUBLIC_KEY_B64 = 第4步生成的公钥（SPKI DER Base64）。执行 v1.2.0 Windows 构建。
-8. **不要让新安装包使用示例公钥或空地址**；Windows发布构建必须校验这两个变量。
+1. 安装Node.js 22+，下载或克隆仓库，打开PowerShell进入 license-service 文件夹。
+2. 执行 npm install。
+3. 执行 npx wrangler login，通过浏览器授权自己的Cloudflare账户。
+4. 执行 npm run deploy:setup。工具自动检查D1数据库（没有时创建）、执行新增表结构、生成本机所有者密钥、将秘密上传到Worker、部署服务并检查 /health。
+5. 私钥和管理员口令只存在本机 license-service/.private/owner-keys.json（已在.gitignore排除）；请另行离线备份，绝不上传源码仓库、发到聊天或截图。
+6. 工具结束后显示两个GitHub Actions Variables：DUDU_LICENSE_URL（HTTPS服务地址）、DUDU_LICENSE_PUBLIC_KEY_B64（Ed25519公钥）。若要以后从GitHub自动更新Worker，再增加 DUDU_D1_DATABASE_ID。
+7. 打开提示的 /admin 地址，输入owner-keys.json中的 DUDU_ADMIN_TOKEN，批量生成免费永久卡密。每张卡原则上绑定一台电脑。
 
-**授权规则：** 24小时由首次成功请求后服务器记时，同机器重新试用不会重置；永久卡密一机绑定；首次激活要联网，离线凭证最长30天；私钥仅服务器持有；用户到期后保留本地素材与备份能力。管理员需审核系统重装/换机后的密钥变化，可在后台人工解绑卡密。此版未声称已经实现TPM不可导出密钥，默认采用Windows DPAPI保护的Ed25519设备密钥。
+在 GitHub Settings > Secrets and variables > Actions > Variables 添加上述变量。再触发 v1.2.0 Windows 构建以生成可激活安装包。GitHub workflow_dispatch 可能需要工作流文件先存在于默认分支；否则在设置变量后向v1.2.0分支提交一次新改动触发push构建。
 
-**运行保护：** Cloudflare Access/WAF 应保护管理页面及管理员接口；对激活失败设置IP和设备限速；D1与服务器密钥定期备份；妥善处理许可证恢复与隐私告知。无法防范完全控制客户端的高级攻击者。
+## GitHub CI更新云端服务（可选）
+
+使用独立的 deploy-license workflow：管理员在GitHub Secrets中保存 CLOUDFLARE_API_TOKEN 和 CLOUDFLARE_ACCOUNT_ID，并在GitHub Variables保存 DUDU_D1_DATABASE_ID。建议对production-license环境设置审批。首次Worker Secrets由本机deploy:setup上传，后续CI只更新代码和数据库表，不重新生成签名密钥。
+
+### 安全边界
+
+- 所有卡密由云端安全随机数生成，只储存HMAC摘要；用户卡密仅在管理员创建时显示一次。
+- 设备签名请求绑定时间戳与nonce，D1会拒绝重复nonce；不保存豆包Cookie、剧本或媒体。
+- Windows设备密钥使用DPAPI加密；永久签名只在云端私钥完成，Windows二进制只带Ed25519公钥；未启用TPM硬件级防复制。
+- 24小时试用记录不随应用重装重置，但完整系统重装、设备伪装和虚拟机克隆无法保证绝对识别。
+- 卡密撤销后拒绝在线续签，已签发离线凭证可能在剩余离线有效期（默认最长30天）内继续可用。
+- 管理接口仍需在Cloudflare配置Access、双因素登录和WAF频率限制。Cloudflare和GitHub私有账户的密码、令牌绝不需要发给助手。
+- 免费永久卡密不涉及支付，微信主号du4du44、备用号du6du66。
+- 正式发行前应在Windows上测试登录、旧项目升级、多账号后台任务、整段导入和豆包原生@的真实页面兼容性。
