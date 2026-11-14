@@ -146,7 +146,7 @@ class LicenseClient{
  requireValid(){const s=this.status();if(!s.valid)throw Error('试用已结束或尚未激活；请打开「授权中心」领取免费永久卡密。'+(s.reason||''));return true}
  request(op,code=''){
   if(!this.service||!this.publicKey)throw Error('授权服务尚未部署，当前仅提供开发预览与本地项目导出');
-  const i=this.identityReady(),r={deviceId:i.deviceId,publicKey:i.publicKey,ts:this.clock(),nonce:crypto.randomBytes(16).toString('hex'),code:cleanCode(code)};
+  const i=this.identityReady(),signedCode=op==='activate'?cleanCode(code):String(code||'').slice(0,1200),r={deviceId:i.deviceId,publicKey:i.publicKey,ts:this.clock(),nonce:crypto.randomBytes(16).toString('hex'),code:signedCode};
   r.signature=b64u(crypto.sign(null,enc(deviceMessage(op,r)),crypto.createPrivateKey({key:Buffer.from(i.privateKey,'base64'),format:'der',type:'pkcs8'})));
   return r;
  }
@@ -161,6 +161,31 @@ class LicenseClient{
    this.save(this.cacheFile,{token:this.token,maxSeen:this.maxSeen});
    this.lastError='';return this.status();
   }catch(e){this.lastError=String(e.message||e).slice(0,200);throw e}
+ }
+ async callPublic(op,endpoint,code=''){
+  if(!this.service||!this.publicKey)throw Error('授权服务尚未部署，当前无法提交申请或创建订单');
+  const payload=this.request(op,code);
+  try{return await this.transport(this.service,endpoint,payload)}
+  catch(e){this.lastError=String(e.message||e).slice(0,200);throw e}
+ }
+ createApplication(contact,reason){
+  const data={contact:String(contact||'').trim().slice(0,80),reason:String(reason||'').trim().slice(0,500)};
+  if(data.reason.length<8)throw Error('请填写至少8个字的申请原因');
+  return this.callPublic('application-create','/v1/application/create',JSON.stringify(data));
+ }
+ applicationStatus(applicationId){
+  const id=String(applicationId||'');if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('申请编号无效');
+  return this.callPublic('application-status','/v1/application/status',id);
+ }
+ products(){return this.callPublic('commerce-products','/v1/commerce/products','')}
+ createOrder(productId,provider){
+  if(!/^[a-z0-9-]{3,80}$/i.test(String(productId||'')))throw Error('商品编号无效');
+  if(!['wechat','alipay'].includes(provider))throw Error('请选择微信支付或支付宝');
+  return this.callPublic('order-create','/v1/orders/create',JSON.stringify({productId,provider}));
+ }
+ orderStatus(orderId){
+  const id=String(orderId||'');if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('订单编号无效');
+  return this.callPublic('order-status','/v1/orders/status',id);
  }
  startTrial(){return this.call('trial','/v1/trial/start')}
  activate(code){
