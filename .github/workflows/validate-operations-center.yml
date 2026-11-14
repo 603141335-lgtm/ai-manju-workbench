@@ -35,5 +35,7 @@ jobs:
           node-version: '22'
       - name: Install desktop dependencies
         run: npm install --no-audit --no-fund --package-lock=false
+      - name: Generate required brand assets for regression tests
+        run: npm run brand:generate && npm run installer:art
       - name: Run desktop syntax and regression checks
         run: npm run check
