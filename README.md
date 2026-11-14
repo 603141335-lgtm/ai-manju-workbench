@@ -1,4 +1,4 @@
-# 独独AI工作台 v1.0.1
+# 独独AI工作台 v1.2.0
 
 **AI 漫剧创作 · 多账号管理 · 提示词与素材一站式工作台**
 
@@ -60,3 +60,12 @@ npm start
 2. **保留安装身份** `com.manju.doubao.creativehub.public`、历史数据文件夹 `%APPDATA%\DoubaoCreativeHubPublic`，旧账号登录分区不更名。
 3. 升级前建议备份用户数据。若遇到网页原生 `@` 不兼容，请先回退 `dudu-ai-workbench-STABLE-v1.0.0` 所对应安装包，不删除本地账号与项目。
 4. Rust 原生模块只负责本地字符串规则，不接触 Cookie、账号、API Key 或参考图原文件内容。
+
+## v1.2.0｜24小时试用与永久卡密（开发分支）
+
+- Windows授权弹窗：首次试用24小时、永久卡密、复制微信 du4du44 / du6du66、未授权时只读进入与项目备份。
+- 设备Ed25519密钥使用Windows DPAPI保护，机器标识仅上传SHA256摘要；Rust编译的验证器核对服务器签名与设备标识。
+- 服务器使用Cloudflare Workers + D1，支持卡密随机生成、单设备绑定、管理后台撤销及换机解绑，详见 [license-service/README.md](license-service/README.md)。
+- **公开发行前必须部署并配置** DUDU_LICENSE_URL、DUDU_LICENSE_PUBLIC_KEY_B64；未提供时GitHub Actions只跑测试，不生成无法激活的安装包。
+- v1.1.0稳定分支和%APPDATA%\DoubaoCreativeHubPublic不变。免费试用从服务器首次成功请求计时，不会清空本地历史项目。
+- 本版采用DPAPI软件密钥方案，尚未使用TPM硬件不可导出密钥、商业加壳和Windows数字签名，不承诺绝对防破解。

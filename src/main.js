@@ -34,7 +34,7 @@ app.setPath('userData',publicUserDataDir);
 const DOUBAO_URL='https://www.doubao.com/chat/';
 const LIVE_LIMITS=Object.freeze({light:1,balanced:2,performance:3});
 let noticeService=null,noticeTimer=null,tutorialMedia=null,taskJournal=null,licenseClient=null,pruneInProgress=false;
-function guardedHandle(channel,handler){ipcMain.handle(channel,(...args)=>{licenseClient.requireValid();return handler(...args)})}
+function guardedHandle(channel,handler){ipcMain.handle(channel,(...args)=>{if(!licenseClient)throw Error('授权中心尚未初始化');licenseClient.requireValid();return handler(...args)})}
 const protectedAccounts=new Set();
 const activeDownloads=new Map();
 const activeImportAccounts=new Set();

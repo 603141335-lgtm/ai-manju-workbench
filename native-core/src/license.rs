@@ -34,4 +34,19 @@ pub fn verify_token(token:&str,pubkey:&str,expected_device:&str,now_ms:i64)->Str
 mod tests{
  use super::*;
  #[test] fn rejects_empty_and_forged(){assert!(verify_token("","","a",1000).contains("\"valid\":false"));}
+ #[test] fn accepts_only_valid_ed25519_signed_device_lease(){
+   use ed25519_dalek::{SigningKey,Signer};
+   use ed25519_dalek::pkcs8::EncodePublicKey;
+   let signing=SigningKey::from_bytes(&[7u8;32]);
+   let der=signing.verifying_key().to_public_key_der().unwrap();
+   let pubkey=STANDARD.encode(der.as_ref());
+   let claims=json!({"schema":1,"product":"dudu-ai-workbench","type":"trial","deviceId":"dev-1","issuedAt":1000,"entitlementExpiresAt":90000,"leaseExpiresAt":90000});
+   let raw=claims.to_string();
+   let signature=signing.sign(raw.as_bytes());
+   let token=format!("{}.{}",URL_SAFE_NO_PAD.encode(raw.as_bytes()),URL_SAFE_NO_PAD.encode(signature.to_bytes()));
+   assert!(verify_token(&token,&pubkey,"dev-1",2000).contains("\"valid\":true"));
+   assert!(verify_token(&token,&pubkey,"different",2000).contains("\"valid\":false"));
+   assert!(verify_token(&token,&pubkey,"dev-1",90000).contains("\"valid\":false"));
+ }
+
 }
