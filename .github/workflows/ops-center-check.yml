@@ -1,0 +1,30 @@
+name: Operations Center Compatibility Checks
+on:
+  push:
+    branches: [feature/dudu-ai-operations-center-v1.0]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check license Worker, payments and console syntax
+        run: npm run license:check
+      - name: Check public content Worker syntax
+        run: npm run cloud:check
+      - name: Check desktop license client and Electron bridge syntax
+        run: |
+          node --check src/license-client.js
+          node --check src/main.js
+          node --check src/preload.js
+          node --check src/license-ui.js
+      - name: Test desktop-to-Worker compatibility
+        run: node --test tests/operations-workbench.test.js tests/v120-license.test.js tests/v121-license-network.test.js
