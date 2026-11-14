@@ -14,8 +14,12 @@ const hex = bytes => [...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2
 const randomHex = (n=16) => hex(crypto.getRandomValues(new Uint8Array(n)));
 const clean = (v,max=300) => typeof v==="string" ? v.replace(/[\u0000-\u001f]/g," ").trim().slice(0,max) : "";
 const safeHttps = value => {
-  try { const u=new URL(value); return u.protocol==="https:"&&!u.username&&!u.password&&!u.hash&&u.port==="" ? u.toString() : ""; }
-  catch { return ""; }
+  try {
+    const u=new URL(value);
+    if(u.protocol!=="https:"||u.username||u.password||u.hash||u.port&&u.port!=="443")return "";
+    if(/^(localhost|127\\.|0\\.|10\\.|192\\.168\\.|169\\.254\\.|172\\.(1[6-9]|2\\d|3[01])\\.|::1$)/i.test(u.hostname))return "";
+    return u.toString();
+  } catch { return ""; }
 };
 const html = value => String(value||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const yuan = cents => (Number(cents)/100).toFixed(2);
@@ -29,6 +33,28 @@ async function consumeNonce(env, body, helpers) {
   return hash;
 }
 
+async function loadCurrentManifest(env) {
+  const row=await env.DB.prepare("SELECT manifest_json FROM public_content WHERE content_id=1").first();
+  if(row) return JSON.parse(row.manifest_json);
+  const legacy=safeHttps(env.DUDU_LEGACY_CONTENT_URL||"");
+  if(legacy) {
+    try {
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
+      const res=await fetch(legacy,{headers:{Accept:"application/json"},signal:controller.signal});
+      clearTimeout(timer);
+      if(res.ok) {
+        const manifest=normalizeManifest(await res.json()),now=Date.now(),value=JSON.stringify(manifest);
+        await env.DB.prepare("INSERT OR IGNORE INTO public_content_history(history_id,manifest_json,created_ms) VALUES(?,?,?)")
+          .bind(crypto.randomUUID(),value,now).run();
+        await env.DB.prepare("INSERT INTO public_content(content_id,manifest_json,updated_ms) VALUES(1,?,?) ON CONFLICT(content_id) DO NOTHING")
+          .bind(value,now).run();
+        const saved=await env.DB.prepare("SELECT manifest_json FROM public_content WHERE content_id=1").first();
+        if(saved) return JSON.parse(saved.manifest_json);
+      }
+    } catch {}
+  }
+  return defaultManifest();
+}
 function defaultManifest() {
   return {
     schemaVersion:2, updatedAt:new Date().toISOString(),
@@ -385,8 +411,9 @@ async function adminOps(req, env, path, helpers) {
     return json({wechat:{configured:paymentReady(env,"wechat"),required:["WECHATPAY_MCHID","WECHATPAY_APPID","WECHATPAY_SERIAL_NO","WECHATPAY_PRIVATE_KEY_PEM","WECHATPAY_API_V3_KEY","WECHATPAY_PLATFORM_PUBLIC_KEY_PEM","WECHATPAY_PLATFORM_SERIAL"]},alipay:{configured:paymentReady(env,"alipay"),required:["ALIPAY_APP_ID","ALIPAY_PRIVATE_KEY_PEM","ALIPAY_PUBLIC_KEY_PEM"]}});
   }
   if(path==="/v1/admin/content/get") {
-    const row=await env.DB.prepare("SELECT manifest_json,updated_ms FROM public_content WHERE content_id=1").first();
-    return json({manifest:row?JSON.parse(row.manifest_json):defaultManifest(),updatedAt:row?.updated_ms||null});
+    const manifest=await loadCurrentManifest(env);
+    const row=await env.DB.prepare("SELECT updated_ms FROM public_content WHERE content_id=1").first();
+    return json({manifest,updatedAt:row?.updated_ms||null});
   }
   if(path==="/v1/admin/content/publish") {
     const manifest=normalizeManifest(body.manifest||body);
@@ -418,8 +445,7 @@ async function adminOps(req, env, path, helpers) {
 export async function handleOpsRequest(request, env, path, helpers) {
 
   if(path==="/manifest.json"&&request.method==="GET") {
-    const row=await env.DB.prepare("SELECT manifest_json FROM public_content WHERE content_id=1").first();
-    return json(row?JSON.parse(row.manifest_json):defaultManifest(),200,{"cache-control":"public,max-age=60"});
+    return json(await loadCurrentManifest(env),200,{"cache-control":"public,max-age=60"});
   }
   if(path==="/v1/products"&&request.method==="GET") {
     const result=await env.DB.prepare("SELECT product_id,name,description,price_cents,entitlement_type FROM products WHERE enabled=1 ORDER BY sort_order,created_ms DESC").all();
