@@ -17,7 +17,7 @@ const safeHttps = value => {
   try {
     const u=new URL(value);
     if(u.protocol!=="https:"||u.username||u.password||u.hash||u.port&&u.port!=="443")return "";
-    if(/^(localhost|127\\.|0\\.|10\\.|192\\.168\\.|169\\.254\\.|172\\.(1[6-9]|2\\d|3[01])\\.|::1$)/i.test(u.hostname))return "";
+    if(/^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|::1$)/i.test(u.hostname))return "";
     return u.toString();
   } catch { return ""; }
 };
