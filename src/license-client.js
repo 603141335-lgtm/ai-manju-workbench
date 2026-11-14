@@ -144,9 +144,9 @@ class LicenseClient{
   return {...state,configured:!!(this.service&&this.publicKey),secureStorageAvailable:this.secure(),serviceOnline:!this.lastError,error:this.lastError||'',deviceLabel:this.identity?.deviceId?.slice(0,8)||''};
  }
  requireValid(){const s=this.status();if(!s.valid)throw Error('试用已结束或尚未激活；请打开「授权中心」领取免费永久卡密。'+(s.reason||''));return true}
- request(op,code=''){
+ request(op,code='',extra={}){
   if(!this.service||!this.publicKey)throw Error('授权服务尚未部署，当前仅提供开发预览与本地项目导出');
-  const i=this.identityReady(),r={deviceId:i.deviceId,publicKey:i.publicKey,ts:this.clock(),nonce:crypto.randomBytes(16).toString('hex'),code:cleanCode(code)};
+  const i=this.identityReady(),r={deviceId:i.deviceId,publicKey:i.publicKey,ts:this.clock(),nonce:crypto.randomBytes(16).toString('hex'),code:cleanCode(code),...extra};
   r.signature=b64u(crypto.sign(null,enc(deviceMessage(op,r)),crypto.createPrivateKey({key:Buffer.from(i.privateKey,'base64'),format:'der',type:'pkcs8'})));
   return r;
  }
@@ -162,6 +162,9 @@ class LicenseClient{
    this.lastError='';return this.status();
   }catch(e){this.lastError=String(e.message||e).slice(0,200);throw e}
  }
+ async signedJson(op,endpoint,data={}){if(!this.service||!this.publicKey)throw Error('授权服务尚未配置');const payload=this.request(op,'',data);return this.transport(this.service,endpoint,payload)}
+ applicationCreate(contact,reason){return this.signedJson('application_create','/v1/application/create',{contact:String(contact||'').trim().slice(0,100),reason:String(reason||'').trim().slice(0,500)})}
+ applicationStatus(applicationId){return this.signedJson('application_status','/v1/application/status',{applicationId:String(applicationId||'').trim().slice(0,80)})}
  startTrial(){return this.call('trial','/v1/trial/start')}
  activate(code){
   if(!/^DUDU(?:-[A-Z2-9]{5}){4}$/.test(cleanCode(code)))throw Error('卡密格式应为DUDU-XXXXX-XXXXX-XXXXX-XXXXX');

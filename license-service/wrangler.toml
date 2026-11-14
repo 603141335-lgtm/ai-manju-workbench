@@ -12,3 +12,8 @@ PRODUCT_ID = "dudu-ai-workbench"
 
 [secrets]
 required = ["DUDU_SIGNING_PRIVATE_PKCS8_B64", "DUDU_DEVICE_HMAC_KEY", "DUDU_CARD_HMAC_KEY", "DUDU_ADMIN_TOKEN_SHA256"]
+
+# Internal service-to-service access to the existing public content Worker.
+[[services]]
+binding = "CONTENT"
+service = "dudu-ai-content"
