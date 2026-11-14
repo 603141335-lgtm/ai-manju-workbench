@@ -39,6 +39,14 @@ deploy:setup 会复用已有的 dudu-license D1 数据库，执行增量表结�
 
 管理员令牌仍使用原来 .private/owner-keys.json 中的 DUDU_ADMIN_TOKEN。不要把令牌粘贴到 GitHub Actions Variables。
 
+如果你之前已经部署公告 Worker，且 GitHub Actions Variables 中存在 DUDU_CONTENT_URL，请先把它复制到 Cloudflare Worker 的可选变量，便于自动迁移原公告：
+
+~~~powershell
+npx wrangler secret put DUDU_LEGACY_CONTENT_URL --config wrangler.local.toml
+~~~
+
+按提示粘贴旧的 DUDU_CONTENT_URL。新 Worker 第一次读取 /manifest.json 或后台打开「公告与教程」时，会尝试读取旧清单并写入新的 D1；迁移成功后后续读取都使用新 D1。没有旧公告服务则跳过这一步。
+
 ## 4. 官方支付商户配置
 
 支付密钥只配置为 Cloudflare Worker Secrets。不要放在 GitHub 源码、GitHub Variables、浏览器、Electron 客户端或普通配置文件里。
