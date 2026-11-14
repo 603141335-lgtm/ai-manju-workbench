@@ -106,6 +106,14 @@ async function adminRequest(req,env,path){
   }
   return response({codes});
  }
+ if(path.endsWith('/overview')){
+  const [cards,applications,orders]=await Promise.all([
+   env.DB.prepare('SELECT COUNT(*) AS n FROM license_cards').first(),
+   env.DB.prepare('SELECT COUNT(*) AS n FROM license_applications WHERE status=?').bind('pending').first(),
+   env.DB.prepare('SELECT COUNT(*) AS n FROM orders').first()
+  ]);
+  return response({cardCount:cards?.n||0,pendingApplications:applications?.n||0,orderCount:orders?.n||0});
+ }
  if(path.endsWith('/cards/list')){
   const {results}=await env.DB.prepare('SELECT id,last_four,issued_ms,activated_ms,bound_device_hash IS NOT NULL AS bound,revoked_ms FROM license_cards ORDER BY issued_ms DESC LIMIT 200').all();
   return response({cards:results});
@@ -148,6 +156,7 @@ async function adminRequest(req,env,path){
   const id=String(body.id||crypto.randomUUID()),name=String(body.name||'').trim().slice(0,100),description=String(body.description||'').slice(0,1000);
   const price=Number(body.priceFen),mode=String(body.deliveryMode||'license_key'),enabled=body.enabled===true?1:0;
   if(!name||!Number.isSafeInteger(price)||price<0||!['license_auto_bind','license_key'].includes(mode))return response({error:'商品信息无效'},400);
+  if(enabled)return response({error:'微信支付/支付宝下单、回调验签和自动发货尚未完成真实沙箱验收，商品暂不可上架'},409);
   const now=Date.now();
   await env.DB.prepare('INSERT INTO products(id,name,description,price_fen,delivery_mode,enabled,created_ms,updated_ms) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,price_fen=excluded.price_fen,delivery_mode=excluded.delivery_mode,enabled=excluded.enabled,updated_ms=excluded.updated_ms').bind(id,name,description,price,mode,enabled,now,now).run();
   return response({ok:true,id});
