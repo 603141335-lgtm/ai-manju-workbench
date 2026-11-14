@@ -92,6 +92,35 @@ async function licenseRequest(request,env,op){
  }
  return stateFor(env,hash,body.deviceId);
 }
+async function applicationRequest(request,env,path){
+ const body=await request.json();
+ const op=path.endsWith('/create')?'application':'application-status';
+ await verifyDevice(op,body);
+ const hash=await hmac(env.DUDU_DEVICE_HMAC_KEY,body.deviceId);
+ const seen=await env.DB.prepare('INSERT OR IGNORE INTO request_nonces(device_hash,nonce,created_ms) VALUES (?,?,?)').bind(hash,body.nonce.toLowerCase(),Date.now()).run();
+ if(!seen.meta?.changes)throw Error('请求已处理，请重新操作');
+ const device=await registerDevice(env,hash,body.publicKey);
+ if(path.endsWith('/create')){
+  const contact=String(body.contact||'').trim().slice(0,100);
+  const reason=String(body.reason||'').trim().slice(0,500);
+  if(!contact||!reason) return response({error:'请填写联系方式和申请原因'},400);
+  const pending=await env.DB.prepare("SELECT id FROM license_applications WHERE device_hash=? AND status='pending'").bind(hash).first();
+  if(pending)return response({applicationId:pending.id,status:'pending',existing:true});
+  const id='APP-'+crypto.randomUUID().replace(/-/g,'').slice(0,16).toUpperCase();
+  try{
+   await env.DB.prepare("INSERT INTO license_applications(id,device_hash,contact,reason,status,created_ms) VALUES (?,?,?,?,'pending',?)").bind(id,hash,contact,reason,Date.now()).run();
+  }catch(e){
+   const existing=await env.DB.prepare("SELECT id FROM license_applications WHERE device_hash=? AND status='pending'").bind(hash).first();
+   if(existing)return response({applicationId:existing.id,status:'pending',existing:true});
+   throw e;
+  }
+  return response({applicationId:id,status:'pending'});
+ }
+ const id=String(body.applicationId||'').trim();
+ const app=await env.DB.prepare('SELECT id,status,created_ms,reviewed_ms,review_note FROM license_applications WHERE id=? AND device_hash=?').bind(id,hash).first();
+ if(!app)return response({error:'没有找到该设备的申请记录'},404);
+ return response({applicationId:app.id,status:app.status,createdAt:app.created_ms,reviewedAt:app.reviewed_ms,reviewNote:app.review_note});
+}
 async function adminRequest(req,env,path){
  if(!await adminAuth(req,env))return response({error:'管理员身份验证失败'},401);
  const body=await req.json();
@@ -100,15 +129,77 @@ async function adminRequest(req,env,path){
   const codes=[];
   for(let i=0;i<count;i++){
    const code=newCode(),id=crypto.randomUUID(),h=await hmac(env.DUDU_CARD_HMAC_KEY,code);
-   await env.DB.prepare('INSERT INTO license_cards(id,code_hash,last_four,issued_ms) VALUES (?,?,?,?)').bind(id,h,code.slice(-4),Date.now()).run();
+   await env.DB.prepare('INSERT INTO license_cards(id,code_hash,last_four,issued_ms,batch_name,source) VALUES (?,?,?,?,?,?)').bind(id,h,code.slice(-4),Date.now(),batchName,source).run();
    await env.DB.prepare('INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES (?,?,?)').bind('issue',id,Date.now()).run();
    codes.push(code);
   }
   return response({codes});
  }
  if(path.endsWith('/list')){
-  const {results}=await env.DB.prepare('SELECT id,last_four,issued_ms,activated_ms,bound_device_hash IS NOT NULL AS bound,revoked_ms FROM license_cards ORDER BY issued_ms DESC LIMIT 200').all();
+  const {results}=await env.DB.prepare('SELECT id,last_four,issued_ms,activated_ms,bound_device_hash IS NOT NULL AS bound,revoked_ms,batch_name,source FROM license_cards ORDER BY issued_ms DESC LIMIT 500').all();
   return response({cards:results});
+ }
+ if(path.endsWith('/applications/list')){
+  const status=String(body.status||'all');
+  const where=status==='all'?'':'WHERE a.status=?';
+  const q=env.DB.prepare(`SELECT a.id,a.contact,a.reason,a.status,a.created_ms,a.reviewed_ms,a.review_note,a.card_id,c.last_four FROM license_applications a LEFT JOIN license_cards c ON c.id=a.card_id ${where} ORDER BY a.created_ms DESC LIMIT 300`);
+  const {results}=status==='all'?await q.all():await q.bind(status).all();
+  return response({applications:results});
+ }
+ if(path.endsWith('/applications/approve')){
+  const id=String(body.applicationId||'');
+  const app=await env.DB.prepare("SELECT * FROM license_applications WHERE id=? AND status='pending'").bind(id).first();
+  if(!app)return response({error:'申请不存在或已处理'},409);
+  const lock=await env.DB.prepare("UPDATE license_applications SET status='approving',reviewed_ms=? WHERE id=? AND status='pending'").bind(Date.now(),id).run();
+  if(!lock.meta?.changes)return response({error:'该申请已被其他操作处理'},409);
+  try{
+   const code=newCode(),cardId=crypto.randomUUID(),codeHash=await hmac(env.DUDU_CARD_HMAC_KEY,code),now=Date.now();
+   await env.DB.prepare("INSERT INTO license_cards(id,code_hash,last_four,issued_ms,bound_device_hash,activated_ms,batch_name,source) VALUES (?,?,?,?,?,?,?,?)").bind(cardId,codeHash,code.slice(-4),now,app.device_hash,now,'免费申请审批','application').run();
+   await env.DB.prepare("UPDATE license_applications SET status='approved',card_id=?,review_note=? WHERE id=? AND status='approving'").bind(cardId,String(body.note||'审批通过并自动绑定设备').slice(0,300),id).run();
+   await env.DB.prepare("INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES (?,?,?)").bind('application_approve',cardId,now).run();
+   await env.DB.prepare("INSERT INTO admin_audit_v2(actor,action,target_type,target_id,details_json,occurred_ms) VALUES ('owner','application.approve','application',?,?,?)").bind(id,JSON.stringify({cardId,deviceHash:app.device_hash}),now).run();
+   return response({ok:true,applicationId:id,status:'approved',delivery:'device-bound',cardLastFour:code.slice(-4),message:'已生成永久授权并绑定申请设备；用户下次联网刷新即可激活'});
+  }catch(e){
+   await env.DB.prepare("UPDATE license_applications SET status='pending',reviewed_ms=NULL WHERE id=? AND status='approving'").bind(id).run();
+   throw e;
+  }
+ }
+ if(path.endsWith('/applications/reject')){
+  const id=String(body.applicationId||''),note=String(body.note||'申请未通过').slice(0,300),now=Date.now();
+  const result=await env.DB.prepare("UPDATE license_applications SET status='rejected',reviewed_ms=?,review_note=? WHERE id=? AND status='pending'").bind(now,note,id).run();
+  if(!result.meta?.changes)return response({error:'申请不存在或已处理'},409);
+  await env.DB.prepare("INSERT INTO admin_audit_v2(actor,action,target_type,target_id,details_json,occurred_ms) VALUES ('owner','application.reject','application',?,?,?)").bind(id,JSON.stringify({note}),now).run();
+  return response({ok:true,status:'rejected'});
+ }
+ if(path.endsWith('/products/list')){
+  const {results}=await env.DB.prepare('SELECT * FROM products ORDER BY created_ms DESC').all();
+  return response({products:results});
+ }
+ if(path.endsWith('/products/save')){
+  const id=String(body.id||crypto.randomUUID()),name=String(body.name||'').trim().slice(0,100);
+  const price=Number(body.priceFen),mode=body.deliveryMode==='manual'?'manual':'license';
+  if(!name||!Number.isSafeInteger(price)||price<0)return response({error:'商品名称或价格无效'},400);
+  const old=await env.DB.prepare('SELECT id FROM products WHERE id=?').bind(id).first(),now=Date.now();
+  if(old)await env.DB.prepare('UPDATE products SET name=?,description=?,price_fen=?,delivery_mode=?,license_type=?,enabled=?,updated_ms=? WHERE id=?').bind(name,String(body.description||'').slice(0,1000),price,mode,'permanent',body.enabled===false?0:1,now,id).run();
+  else await env.DB.prepare('INSERT INTO products(id,name,description,price_fen,delivery_mode,license_type,enabled,created_ms,updated_ms) VALUES (?,?,?,?,?,?,?,?,?)').bind(id,name,String(body.description||'').slice(0,1000),price,mode,'permanent',body.enabled===false?0:1,now,now).run();
+  return response({ok:true,id});
+ }
+ if(path.endsWith('/orders/list')){
+  const {results}=await env.DB.prepare('SELECT o.id,o.order_no,o.amount_fen,o.payment_provider,o.payment_status,o.delivery_status,o.created_ms,o.paid_ms,o.delivered_ms,p.name AS product_name FROM orders o LEFT JOIN products p ON p.id=o.product_id ORDER BY o.created_ms DESC LIMIT 300').all();
+  return response({orders:results});
+ }
+ if(path.endsWith('/overview')){
+  const [cards,apps,orders,products]=await Promise.all([
+   env.DB.prepare('SELECT COUNT(*) AS total,SUM(CASE WHEN activated_ms IS NULL AND revoked_ms IS NULL AND bound_device_hash IS NULL THEN 1 ELSE 0 END) AS available FROM license_cards').first(),
+   env.DB.prepare("SELECT COUNT(*) AS pending FROM license_applications WHERE status='pending'").first(),
+   env.DB.prepare("SELECT COUNT(*) AS unpaid FROM orders WHERE payment_status='pending'").first(),
+   env.DB.prepare('SELECT COUNT(*) AS total FROM products').first()
+  ]);
+  return response({cards,applications:apps,orders,products});
+ }
+ if(path.endsWith('/audit/list')){
+  const {results}=await env.DB.prepare('SELECT actor,action,target_type,target_id,details_json,occurred_ms FROM admin_audit_v2 ORDER BY occurred_ms DESC LIMIT 200').all();
+  return response({events:results});
  }
  if(path.endsWith('/revoke')||path.endsWith('/transfer')){
   const cardId=String(body.cardId||'');
@@ -134,7 +225,7 @@ export default {async fetch(request,env){
  if(Number(request.headers.get('content-length')||0)>8192)return response({error:'请求过大'},413);
  if(!(request.headers.get('content-type')||'').startsWith('application/json'))return response({error:'请求必须为JSON'},415);
  try{
-  if(path.startsWith('/v1/admin/'))return await adminRequest(request,env,path);
+  if(path.startsWith('/v1/admin/'))return await adminRequest(request,env,path);\n  if(path==='/v1/application/create'||path==='/v1/application/status')return await applicationRequest(request,env,path);
   const op=({'/v1/trial/start':'trial','/v1/license/activate':'activate','/v1/license/refresh':'refresh'})[path];
   if(!op)return response({error:'Not found'},404);
   return await licenseRequest(request,env,op);
