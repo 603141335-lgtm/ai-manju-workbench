@@ -4,7 +4,7 @@ concurrency:
   cancel-in-progress: true
 on:
   push:
-    branches: [feature/dudu-ai-v1.2.1-license]
+    branches: [feature/dudu-ai-v1.2.1-license-network]
   workflow_dispatch:
 permissions:
   contents: write
@@ -136,7 +136,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: dudu-ai-workbench-v1.2.1
-          target_commitish: feature/dudu-ai-v1.2.1-license
+          target_commitish: feature/dudu-ai-v1.2.1-license-network
           name: 独独AI工作台 v1.2.1（24小时试用·单设备永久卡密·Rust授权验证）
           prerelease: true
           body: |
