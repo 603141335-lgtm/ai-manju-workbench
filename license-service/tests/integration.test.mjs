@@ -8,7 +8,7 @@ const SCHEMA=readFileSync(new URL('../schema.sql',import.meta.url),'utf8');
 class FakeD1{
  constructor(){this.db=new DatabaseSync(':memory:');this.db.exec(SCHEMA)}
  prepare(sql){const stmt=this.db.prepare(sql);
-  return {bind(...args){return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})}}}
+  return {all:async()=>({results:stmt.all()}),bind(...args){return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})}}}
  }
 }
 function env(){
@@ -52,6 +52,7 @@ test('card permanently binds one device; revocation prevents online renewal',asy
  assert.equal((await call(e,'/v1/license/activate',proof(b,'activate',code))).status,400);
  assert.equal((await call(e,'/v1/license/refresh',proof(a,'refresh'))).data.type,'permanent');
  const list=await call(e,'/v1/admin/cards/list',{},true);
+ assert.equal(list.status,200,JSON.stringify(list.data));
  const id=list.data.cards[0].id;
  assert.equal((await call(e,'/v1/admin/cards/revoke',{cardId:id},true)).status,200);
  assert.equal((await call(e,'/v1/license/refresh',proof(a,'refresh'))).status,403);
