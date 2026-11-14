@@ -1,5 +1,5 @@
 // Single-owner PC operations console. Admin token remains in page memory only.
-export const adminHtml = String.raw\`<!doctype html>
+export const adminHtml = String.raw`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>独独AI运营管理中心</title>
 <style>
 :root{color-scheme:dark;--bg:#081323;--panel:#12233a;--panel2:#172b46;--line:#2c486b;--ink:#edf4ff;--muted:#9bb1cf;--blue:#4778ed;--green:#25b58b;--red:#e46c79}
@@ -116,4 +116,4 @@ $("issueCards").onclick=()=>safe(async()=>{const n=Number($("cardCount").value);
 $("copyCards").onclick=()=>safe(async()=>{if(!latestCodes.length)throw Error("本次没有可复制的卡密");await navigator.clipboard.writeText(latestCodes.join("\n"));say("卡密已复制")});
 $("saveProduct").onclick=()=>safe(saveProduct);$("resetProduct").onclick=resetProduct;
 $("loadContent").onclick=()=>safe(loadContent);$("publishContent").onclick=()=>safe(publishContent);$("loadHistory").onclick=()=>safe(loadHistory);$("rollbackContent").onclick=()=>safe(rollbackContent);$("loadPaymentStatus").onclick=()=>safe(loadPaymentStatus);
-</script></body></html>\`;
+</script></body></html>`;
