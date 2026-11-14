@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeManifest,alipaySignContent} from '../src/ops-service.mjs';
+import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic} from '../src/ops-service.mjs';
+import {generateKeyPairSync} from 'node:crypto';
 
 test('manifest normalizer keeps public content only and rejects duplicate tutorial ids',()=>{
   const value=normalizeManifest({
@@ -33,4 +34,21 @@ test('Alipay RSA2 canonical string sorts keys and excludes signature metadata',(
     method:'alipay.trade.page.pay',charset:'utf-8',biz_content:'{"x":1}'
   });
   assert.equal(value,'app_id=20260001&biz_content={"x":1}&charset=utf-8&method=alipay.trade.page.pay');
+});
+
+test('RSA key loader accepts PKCS8 and PKCS1 merchant key formats',async()=>{
+  const pair=generateKeyPairSync('rsa',{modulusLength:2048});
+  const privatePkcs8=pair.privateKey.export({type:'pkcs8',format:'pem'});
+  const privatePkcs1=pair.privateKey.export({type:'pkcs1',format:'pem'});
+  const publicSpki=pair.publicKey.export({type:'spki',format:'pem'});
+  const publicPkcs1=pair.publicKey.export({type:'pkcs1',format:'pem'});
+  const message=new TextEncoder().encode('dudu-ops-rsa-key-test');
+  for(const privatePem of [privatePkcs8,privatePkcs1]){
+    const key=await importRsaPrivate(privatePem);
+    const signature=await crypto.subtle.sign('RSASSA-PKCS1-v1_5',key,message);
+    for(const publicPem of [publicSpki,publicPkcs1]){
+      const pub=await importRsaPublic(publicPem);
+      assert.equal(await crypto.subtle.verify('RSASSA-PKCS1-v1_5',pub,signature,message),true);
+    }
+  }
 });
