@@ -29,7 +29,7 @@ async function signPermit(env,deviceId,type,endMs){
  const now=Date.now(),lease=Math.min(endMs||Number.MAX_SAFE_INTEGER,now+(type==='trial'?24*3600*1000:30*86400*1000));
  const claims={schema:1,product:PRODUCT,type,deviceId,issuedAt:now,entitlementExpiresAt:endMs||null,leaseExpiresAt:lease};
  const raw=enc.encode(JSON.stringify(claims)),key=await crypto.subtle.importKey('pkcs8',b64(env.DUDU_SIGNING_PRIVATE_PKCS8_B64),{name:'Ed25519'},false,['sign']);
- return {valid:true,type,expiresAt:endMs||null,leaseExpiresAt:lease,token:b64u(raw)+'.'+b64u(await crypto.subtle.sign('Ed25519',key,raw))};
+ return response({valid:true,type,expiresAt:endMs||null,leaseExpiresAt:lease,token:b64u(raw)+'.'+b64u(await crypto.subtle.sign('Ed25519',key,raw))});
 }
 const newCode=()=>{const bytes=crypto.getRandomValues(new Uint8Array(20));let out='';for(const b of bytes)out+=alphabet[b%alphabet.length];return 'DUDU-'+out.match(/.{1,5}/g).join('-')};
 const adminAuth=async(req,env)=>{const raw=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');if(raw.length<32||!env.DUDU_ADMIN_TOKEN_SHA256)return false;const h=await crypto.subtle.digest('SHA-256',enc.encode(raw));return boolSafeEq(Array.from(new Uint8Array(h),v=>v.toString(16).padStart(2,'0')).join(''),env.DUDU_ADMIN_TOKEN_SHA256.toLowerCase())};
