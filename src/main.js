@@ -273,6 +273,8 @@ function registerHandlers(){
   ipcMain.handle('license:trial',async()=>{const r=await licenseClient.startTrial();if(r.valid&&activeId)selectAccount(activeId);tell('license:updated',r);return r;});
   ipcMain.handle('license:activate',async(_event,code)=>{const r=await licenseClient.activate(code);if(r.valid&&activeId)selectAccount(activeId);tell('license:updated',r);return r;});
   ipcMain.handle('license:refresh',()=>licenseClient.refresh());
+  ipcMain.handle('license:applicationCreate',(_event,contact,reason)=>licenseClient.applicationCreate(contact,reason));
+  ipcMain.handle('license:applicationStatus',(_event,id)=>licenseClient.applicationStatus(id));
   ipcMain.handle('cfg:get',()=>cfg);
   ipcMain.handle('api:get',()=>apiSettings.snapshot());
   ipcMain.handle('api:save',(_event,settings)=>apiSettings.save(settings));
