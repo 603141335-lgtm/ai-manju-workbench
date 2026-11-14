@@ -9,7 +9,8 @@
     "keys": "node scripts/generate-keys.mjs",
     "deploy:setup": "node scripts/setup-cloudflare.mjs --apply",
     "deploy:check": "node scripts/prepare-wrangler.mjs",
-    "ops:bridge": "node scripts/setup-operations-bridge.mjs"
+    "ops:bridge": "node scripts/setup-operations-bridge.mjs",
+    "ops:migrate": "node scripts/backup-and-migrate-operations.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
