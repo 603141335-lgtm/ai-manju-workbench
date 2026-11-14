@@ -19,7 +19,7 @@ jobs:
           cache-dependency-path: license-service/package-lock.json
       - name: Install license service dependencies
         working-directory: license-service
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund --package-lock=false
       - name: Check license worker and admin UI syntax
         working-directory: license-service
         run: npm run check
