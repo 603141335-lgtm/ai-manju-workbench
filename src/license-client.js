@@ -120,6 +120,6 @@ class LicenseClient{
   if(!/^DUDU(?:-[A-Z2-9]{5}){4}$/.test(cleanCode(code)))throw Error('卡密格式应为DUDU-XXXXX-XXXXX-XXXXX-XXXXX');
   return this.call('activate','/v1/license/activate',code);
  }
- async refresh(){if(!this.service||!this.publicKey)return this.status();try{return await this.call('refresh','/v1/license/refresh')}catch{return this.status()}}
+ async refresh(){if(!this.service||!this.publicKey||!this.token)return this.status();try{return await this.call('refresh','/v1/license/refresh')}catch{return this.status()}}
 }
 module.exports={LicenseClient,deviceMessage,verifyTokenJS,validServiceUrl,cleanCode};

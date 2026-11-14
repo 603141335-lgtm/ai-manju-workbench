@@ -98,6 +98,6 @@ test('v0.9.7: API UI is top left, all memory mode controls removed, video retry 
   assert.match(html,/id="btnVideoManual"/);assert.match(html,/id="btnVideoRetry"/);
   assert(!html.includes('id="performanceDialog"'));assert(!html.includes('id="btnPerformance"'));
   assert.match(preload,/videoManualConfirm/);
-  assert.match(preload,/apiChat/);assert.match(main,/ipcMain\.handle\('api:chat'/);
+  assert.match(preload,/apiChat/);assert.match(main,/guardedHandle\('api:chat'/);
   assert.match(main,/manualVideoSessions\.delete\(id\)/);
 });

@@ -3,14 +3,14 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const addonPath=path.join(root,'native','dudu_core.node');
-test('v1.1.0 actual Rust N-API binary exists and exports stable APIs',{skip:!fs.existsSync(addonPath)},()=>{
+test('v1.2.0 actual Rust N-API binary exists and exports stable APIs',{skip:!fs.existsSync(addonPath)},()=>{
  assert(fs.existsSync(addonPath),'compiled native .node module not found');
  const native=require(addonPath);
  assert.equal(native.securityBuildInfo(),'dudu-native-core-1.0.1');
  for(const name of ['tokensJson','parseCodesJson','referenceSlotsJson','codeFromFile','normalizeCode'])
    assert.equal(typeof native[name],'function',name);
 });
-test('v1.1.0 reference logic runs through compiled Rust, not plaintext JS',{skip:!fs.existsSync(addonPath)},()=>{
+test('v1.2.0 reference logic runs through compiled Rust, not plaintext JS',{skip:!fs.existsSync(addonPath)},()=>{
  const native=require(addonPath),api=require('../src/import-core');
  const source=fs.readFileSync(path.join(root,'src/import-core.js'),'utf8');
  if(source.includes('_0x')){
@@ -32,13 +32,13 @@ test('v1.1.0 reference logic runs through compiled Rust, not plaintext JS',{skip
  assert.equal(api.composeText(prompt,[]),prompt);
  assert(!api.composeText(prompt,[]).includes('图1锁定人物'));
 });
-test('v1.1.0 repeated references fail closed and no AI script fallback exists',{skip:!fs.existsSync(addonPath)},()=>{
+test('v1.2.0 repeated references fail closed and no AI script fallback exists',{skip:!fs.existsSync(addonPath)},()=>{
  const api=require('../src/import-core');
  const text='需要参考图：\nA15-01 第一套\nA15-01 第二套\n分镜：停止';
  assert.deepEqual(api.referenceSlots(text).ambiguous,['A15-01']);
  assert.equal(api.parseCodes(text).codes.length,1);
 });
-test('v1.1.0 data-directory action moved to advanced project management only',()=>{
+test('v1.2.0 data-directory action moved to advanced project management only',()=>{
  const html=fs.readFileSync(path.join(root,'src/index.html'),'utf8');
  const nav=html.match(/<div class="topactions">([\s\S]*?)<\/div>/);
  assert(nav);
@@ -47,12 +47,12 @@ test('v1.1.0 data-directory action moved to advanced project management only',()
  assert(html.includes('打开本地数据目录'));
  assert(html.includes('社群·公告'));
  const app=require('../package.json');
- assert.equal(app.version,'1.1.0');
+ assert.equal(app.version,'1.2.0');
  assert.equal(app.build.appId,'com.manju.doubao.creativehub.public');
  assert(app.build.asarUnpack.includes('native/*.node'));
  assert.equal(app.build.nsis.installerSidebar,'assets/installer/sidebar.bmp');
 });
-test('v1.1.0 NSIS side and header are exact 24-bit RGB bitmaps',()=>{
+test('v1.2.0 NSIS side and header are exact 24-bit RGB bitmaps',()=>{
  for(const [name,w,h] of [['sidebar.bmp',164,314],['header.bmp',150,57]]){
   const data=fs.readFileSync(path.join(root,'assets','installer',name));
   assert.equal(data.toString('ascii',0,2),'BM');

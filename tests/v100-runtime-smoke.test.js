@@ -19,7 +19,7 @@ test('brand: Windows ICO and 256px PNG are generated from one original SVG',()=>
 });
 test('brand: visible UI renamed, installed identity and existing userData path unchanged',()=>{
  const pkg=require('../package.json');
- assert.equal(pkg.version,'1.1.0');
+ assert.equal(pkg.version,'1.2.0');
  assert.equal(pkg.build.productName,'独独AI工作台');
  assert.equal(pkg.build.appId,'com.manju.doubao.creativehub.public');
  const main=fs.readFileSync(path.join(root,'src/main.js'),'utf8');
@@ -48,7 +48,7 @@ test('runtime: real reference import files and local cloud announcement still wo
  const plan=createPlan({prompt:'需要参考图：C42 食材、A15-01 杜不凡',rows});
  assert.deepEqual(plan.items.map(x=>x.code),['C42','A15-01']);
  assert(!plan.blocked);
- const notices=new NoticeService({version:'1.1.0'});
+ const notices=new NoticeService({version:'1.2.0'});
  assert.equal(notices.snapshot().community.wechat,'du4du44');
- assert.equal(notices.snapshot().currentVersion,'1.1.0');
+ assert.equal(notices.snapshot().currentVersion,'1.2.0');
 });

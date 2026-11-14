@@ -50,5 +50,6 @@
   const v=await refresh();if(!v.valid&&first){first=false;await open();}
   return v;
  }
+ setInterval(()=>{if(dialog.open)refresh().catch(()=>{})},60000);
  window.DuduLicenseUI={init,open,refresh};
 })();
