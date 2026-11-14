@@ -336,7 +336,7 @@ export default {async fetch(request,env){
  if(path==='/v1/payments/alipay/notify'&&request.method==='POST')return paymentCallback(request,env,'alipay');
  if(request.method==='GET')return response({error:'Not found'},404);
  if(request.method!=='POST'||(!path.startsWith('/v1/')&&!path.startsWith('/api/console/')))return response({error:'Not found'},404);
- if(Number(request.headers.get('content-length')||0)>65536)return response({error:'请求过大'},413);
+ const maxBody=path==='/api/console/content/upload'?2097152:65536;if(Number(request.headers.get('content-length')||0)>maxBody)return response({error:'请求过大'},413);
  if(path.startsWith('/api/console/'))return consoleRequest(request,env,path);
  if(!(request.headers.get('content-type')||'').startsWith('application/json'))return response({error:'请求必须为JSON'},415);
  try{
