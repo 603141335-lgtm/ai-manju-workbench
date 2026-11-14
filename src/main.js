@@ -346,11 +346,11 @@ function registerHandlers(){
   });
   ipcMain.handle('nav:action',(_e,a)=>{if(!['reload','back','forward','home','zoomIn','zoomOut'].includes(a))throw Error('不支持此操作');navigate(a)});
   guardedHandle('group:add',(_e,name)=>update(()=>{cfg.groups.push({id:randomUUID(),name:normalizeName(name),edgeProfile:'Default'})}));
-  ipcMain.handle('group:rename',(_e,id,name)=>update(()=>{const g=cfg.groups.find(g=>g.id===id);if(!g)throw Error('分组不存在');g.name=normalizeName(name)}));
+  guardedHandle('group:rename',(_e,id,name)=>update(()=>{const g=cfg.groups.find(g=>g.id===id);if(!g)throw Error('分组不存在');g.name=normalizeName(name)}));
   ipcMain.handle('group:edge',(_e,id,p)=>update(()=>{const g=cfg.groups.find(g=>g.id===id);if(!g||!allowedEdgeProfile(p))throw Error('Edge 配置无效');g.edgeProfile=p}));
   guardedHandle('account:add',(_e,groupId,name)=>update(()=>{if(!cfg.groups.some(g=>g.id===groupId))throw Error('分组不存在');cfg.accounts.push({id:randomUUID(),groupId,name:normalizeName(name),done:0})}));
-  ipcMain.handle('account:rename',(_e,id,name)=>update(()=>{account(id).name=normalizeName(name)}));
-  ipcMain.handle('account:remove',(_e,id)=>{
+  guardedHandle('account:rename',(_e,id,name)=>update(()=>{account(id).name=normalizeName(name)}));
+  guardedHandle('account:remove',(_e,id)=>{
     if(cfg.accounts.length<=1)throw Error('至少保留一个账号');
     if(activeId===id)selectAccount(cfg.accounts.find(a=>a.id!==id).id);
     if(activeImportAccounts.has(id))throw Error('此账号正在上传或绑定图片，请先取消该账号任务再删除');
@@ -362,13 +362,14 @@ function registerHandlers(){
     return update(()=>{cfg.accounts=cfg.accounts.filter(a=>a.id!==id)});
   });
   ipcMain.handle('account:progress',(_e,id,delta)=>update(()=>{const a=account(id);a.done=Math.max(0,Math.min(999,a.done+Number(delta||0)))}));
-  ipcMain.handle('account:reset',()=>update(()=>cfg.accounts.forEach(a=>a.done=0)));
+  guardedHandle('account:reset',()=>update(()=>cfg.accounts.forEach(a=>a.done=0)));
   ipcMain.handle('target:set',(_e,n)=>update(()=>{cfg.target=Math.max(1,Math.min(99,Math.round(Number(n)||2)))}));
-  ipcMain.handle('segment:add',(_e,name)=>update(()=>{const s={id:randomUUID(),name:normalizeName(name),prompt:'',images:[]};cfg.segments.push(s);cfg.activeSegmentId=s.id}));
+  guardedHandle('segment:add',(_e,name)=>update(()=>{const s={id:randomUUID(),name:normalizeName(name),prompt:'',images:[]};cfg.segments.push(s);cfg.activeSegmentId=s.id}));
   ipcMain.handle('segment:select',(_e,id)=>update(()=>{segment(id);cfg.activeSegmentId=id}));
-  ipcMain.handle('segment:rename',(_e,id,name)=>update(()=>{segment(id).name=normalizeName(name)}));
-  ipcMain.handle('segment:delete',(_e,id)=>update(()=>{if(cfg.segments.length<=1)throw Error('至少保留一个段落');cfg.segments=cfg.segments.filter(x=>x.id!==id);if(cfg.activeSegmentId===id)cfg.activeSegmentId=cfg.segments[0].id}));
+  guardedHandle('segment:rename',(_e,id,name)=>update(()=>{segment(id).name=normalizeName(name)}));
+  guardedHandle('segment:delete',(_e,id)=>update(()=>{if(cfg.segments.length<=1)throw Error('至少保留一个段落');cfg.segments=cfg.segments.filter(x=>x.id!==id);if(cfg.activeSegmentId===id)cfg.activeSegmentId=cfg.segments[0].id}));
   ipcMain.on('segment:prompt',(_e,id,prompt)=>{
+    if(!licenseClient?.status().valid)return;
     try{if(typeof prompt==='string'&&prompt.length<1000000)update(()=>{segment(id).prompt=prompt})}catch(e){log(e)}
   });
   guardedHandle('images:choose',async (_e,id)=>{
@@ -455,12 +456,12 @@ function registerHandlers(){
     tell('video:status',{accountId:id,...result});
     return result;
   });
-  ipcMain.handle('ws:delete',async(_e,eid,sid)=>{
+  guardedHandle('ws:delete',async(_e,eid,sid)=>{
     const r=await workspace.deleteItem(eid,sid||null);
     tell('app:toast','已移入回收站；原始视频和参考图未删除');
     return r;
   });
-  ipcMain.handle('ws:restoreItem',(_e,id)=>workspace.restoreItem(id));
+  guardedHandle('ws:restoreItem',(_e,id)=>workspace.restoreItem(id));
   ipcMain.handle('ws:state',()=>workspace.snapshot());
   guardedHandle('ws:importText',async(_e,text,filename)=>workspace.addText(text,filename));
   guardedHandle('ws:importFiles',async()=>{
@@ -491,13 +492,13 @@ function registerHandlers(){
   guardedHandle('ws:editText',async(_e,eid,sid,text)=>{await workspace.editText(eid,sid,text);return workspace.snapshot()});
   guardedHandle('ws:editCodes',async(_e,eid,sid,codes)=>{await workspace.editCodes(eid,sid,codes);return workspace.snapshot()});
   guardedHandle('ws:status',async(_e,eid,sid,status,aid)=>{await workspace.setStatus(eid,sid,status,aid);return workspace.snapshot()});
-  ipcMain.handle('ws:hidden',(_e,eid,sid,hidden)=>workspace.setHidden(eid,sid,hidden));
-  ipcMain.handle('ws:locked',(_e,eid,sid,locked)=>workspace.setLocked(eid,sid,locked));
+  guardedHandle('ws:hidden',(_e,eid,sid,hidden)=>workspace.setHidden(eid,sid,hidden));
+  guardedHandle('ws:locked',(_e,eid,sid,locked)=>workspace.setLocked(eid,sid,locked));
   ipcMain.handle('ws:showHidden',(_e,show)=>workspace.setShowHidden(show));
-  ipcMain.handle('ws:hideDone',()=>workspace.hideDone());
+  guardedHandle('ws:hideDone',()=>workspace.hideDone());
   ipcMain.handle('ws:treeEpisode',(_e,eid)=>workspace.setTreeEpisode(eid));
   guardedHandle('ws:selection',async(_e,eid,sid,paths)=>{await workspace.setSelection(eid,sid,paths);return workspace.snapshot()});
-  ipcMain.handle('ws:version',async(_e,code,p)=>{await workspace.chooseVersion(code,p);return workspace.snapshot()});
+  guardedHandle('ws:version',async(_e,code,p)=>{await workspace.chooseVersion(code,p);return workspace.snapshot()});
   ipcMain.handle('ws:layout',async(_e,patch)=>{await workspace.setLayout(patch);return true});
   guardedHandle('ws:rename',async(_e,name)=>{if(typeof name!=='string'||!name.trim())throw Error('项目名称不能为空');workspace.data.title=name.trim().slice(0,150);await workspace.save();return workspace.snapshot()});
   ipcMain.handle('tail:status',(_e,eid,sid)=>{
@@ -522,7 +523,7 @@ function registerHandlers(){
     return voiceBindings.add(code,pick.filePaths,label||'人物声音');
   });
   guardedHandle('voice:default',(_e,code,id)=>voiceBindings.setDefault(code,id));
-  ipcMain.handle('voice:remove',(_e,code,id)=>voiceBindings.remove(code,id));
+  guardedHandle('voice:remove',(_e,code,id)=>voiceBindings.remove(code,id));
   ipcMain.handle('voice:play',async(_e,code,id)=>{
     const file=(voiceBindings.data.bindings[code]||[]).find(x=>x.id===id)?.path;
     if(!file||!exists(file))throw Error('声音文件已失效');
