@@ -18,7 +18,7 @@
     "verify:release": "node scripts/verify-package-boundary.js",
     "tutorial:generate": "python scripts/generate-tutorial-screenshots.py",
     "cloud:check": "node --check cloud-content/src/worker.js && node --check cloud-content/src/admin-page.js",
-    "license:check": "node --check license-service/src/worker.mjs && node --check license-service/src/admin-ui.mjs && node --test license-service/tests/*.test.mjs",
+    "license:check": "node --check license-service/src/worker.mjs && node --check license-service/src/admin-ui.mjs && node --check license-service/src/operations-ui.mjs && node --check license-service/src/payments.mjs && node --check license-service/scripts/setup-operations-bridge.mjs && node --check license-service/scripts/backup-and-migrate-operations.mjs && node --test license-service/tests/*.test.mjs",
     "license:prepare": "node scripts/prepare-license.js"
   },
   "devDependencies": {
