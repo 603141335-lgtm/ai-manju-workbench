@@ -277,7 +277,7 @@ async function createOrder(request, env, body, helpers) {
   const product=await env.DB.prepare("SELECT * FROM products WHERE product_id=? AND enabled=1").bind(productId).first();
   if(!product) throw Error("商品不存在或已下架");
   const now=Date.now();
-  const pending=await env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE device_hash=? AND status='pending' AND created_ms>?").bind(deviceHash,now-1800000).first();
+  const pending=await env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE device_hash=? AND status='pending' AND created_ms>?").bind(deviceHash,now-7200000).first();
   if(Number(pending?.n||0)>=3) throw Error("当前有多笔未支付订单，请先完成付款或等待订单关闭");
   const id=crypto.randomUUID(), no=orderNo();
   await env.DB.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,'pending',?,?)")
