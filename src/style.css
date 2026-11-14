@@ -262,3 +262,13 @@
 #licenseMessage{font-size:12px;color:#b7d7ee;line-height:1.6;margin:0}#licenseMessage[data-kind="error"]{color:#ffb4aa}
 .licenseNote{font-size:11px;color:#839fbe}
 #licenseStatusMini{font-size:10px;color:#a7dfde}
+.licenseDialog{width:min(760px,94vw)}
+.licensePane select,.licensePane textarea{min-width:0;flex:1;border:1px solid #54728e;border-radius:8px;background:#081c31;color:#fff;padding:10px;font:inherit}
+.licensePane textarea{width:100%;margin-top:8px;resize:vertical;min-height:62px}
+.licenseInlineResult{font-size:12px;color:#a9c5df;margin-top:9px;overflow-wrap:anywhere}
+.licensePayBox{display:grid;grid-template-columns:230px 1fr;gap:16px;align-items:center;margin-top:14px;padding:14px;border-radius:10px;background:#0c1b2e;border:1px solid #355475}
+#licensePayQr{width:220px;height:220px;background:#fff;border-radius:8px;display:grid;place-items:center;padding:8px}
+#licensePayQr img,#licensePayQr canvas{max-width:204px;max-height:204px}
+.licensePayBox p{margin:8px 0;color:#b6cce3;font-size:12px}
+@media(max-width:600px){.licensePayBox{grid-template-columns:1fr}.licensePayBox>div:first-child{margin:auto}}
+
