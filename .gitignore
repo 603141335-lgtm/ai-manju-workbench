@@ -33,3 +33,6 @@ User Data/
 
 # Temporary private Cloudflare service-binding configuration
 cloud-content/.private/
+
+# Live D1 SQL exports contain license and applicant records; keep local and out of Git
+license-service/backups/
