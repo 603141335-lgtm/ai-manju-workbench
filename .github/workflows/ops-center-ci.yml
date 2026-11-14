@@ -1,0 +1,35 @@
+name: Operations Center CI
+on:
+  push:
+    branches: [feature/ops-center-v1.0]
+  pull_request:
+    branches: [feature/dudu-ai-v1.2.0-license]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install license service dependencies
+        working-directory: license-service
+        run: npm install --no-audit --no-fund
+      - name: Run license, commerce and content tests
+        working-directory: license-service
+        run: npm test
+      - name: Check Worker and admin source syntax
+        working-directory: license-service
+        run: npm run check
+      - name: Check desktop client and Electron bridge syntax
+        run: |
+          node --check src/license-client.js
+          node --check src/license-ui.js
+          node --check src/main.js
+          node --check src/preload.js
+          node --check scripts/prepare-public-notice.js
+      - name: Validate additive D1 schema source
+        run: node --test license-service/tests/schema.test.mjs
