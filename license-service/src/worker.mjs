@@ -31,6 +31,14 @@ async function signPermit(env,deviceId,type,endMs){
  const raw=enc.encode(JSON.stringify(claims)),key=await crypto.subtle.importKey('pkcs8',b64(env.DUDU_SIGNING_PRIVATE_PKCS8_B64),{name:'Ed25519'},false,['sign']);
  return response({valid:true,type,expiresAt:endMs||null,leaseExpiresAt:lease,token:b64u(raw)+'.'+b64u(await crypto.subtle.sign('Ed25519',key,raw))});
 }
+// Public endpoint for CI: prove the deployed Worker owns the private key
+// corresponding to the Windows client's verification key. Never signs user input.
+async function attestSigningKey(env){
+ const payload=enc.encode(JSON.stringify({schema:1,product:PRODUCT,purpose:'license-public-key-v1',issuedAt:Date.now()}));
+ const key=await crypto.subtle.importKey('pkcs8',b64(env.DUDU_SIGNING_PRIVATE_PKCS8_B64),{name:'Ed25519'},false,['sign']);
+ const signature=await crypto.subtle.sign('Ed25519',key,payload);
+ return response({payload:b64u(payload),signature:b64u(signature)});
+}
 const newCode=()=>{const bytes=crypto.getRandomValues(new Uint8Array(20));let out='';for(const b of bytes)out+=alphabet[b%alphabet.length];return 'DUDU-'+out.match(/.{1,5}/g).join('-')};
 const adminAuth=async(req,env)=>{const raw=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');if(raw.length<32||!env.DUDU_ADMIN_TOKEN_SHA256)return false;const h=await crypto.subtle.digest('SHA-256',enc.encode(raw));return boolSafeEq(Array.from(new Uint8Array(h),v=>v.toString(16).padStart(2,'0')).join(''),env.DUDU_ADMIN_TOKEN_SHA256.toLowerCase())};
 const row=async(env,id)=>env.DB.prepare('SELECT * FROM devices WHERE device_hash=?').bind(id).first();
@@ -118,6 +126,9 @@ async function adminRequest(req,env,path){
 export default {async fetch(request,env){
  const path=new URL(request.url).pathname;
  if(path==='/health'&&request.method==='GET')return response({status:'ok',service:'dudu-license-v1'});
+ if(path==='/v1/license/attest'&&request.method==='GET'){
+  try{return await attestSigningKey(env)}catch{return response({error:'服务器签名服务尚未正确配置'},503)}
+ }
  if(path==='/admin'&&request.method==='GET')return new Response(adminHtml,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','content-security-policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'}});
  if(request.method!=='POST'||!path.startsWith('/v1/'))return response({error:'Not found'},404);
  if(Number(request.headers.get('content-length')||0)>8192)return response({error:'请求过大'},413);

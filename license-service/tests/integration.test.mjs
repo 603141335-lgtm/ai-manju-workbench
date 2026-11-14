@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {generateKeyPairSync,sign,randomBytes,createHash} from 'node:crypto';
+import * as cryptoExtra from 'node:crypto';
 import worker,{deviceMessage} from '../src/worker.mjs';
 const SCHEMA=readFileSync(new URL('../schema.sql',import.meta.url),'utf8');
 class FakeD1{
@@ -68,6 +69,17 @@ test('card permanently binds one device; revocation prevents online renewal',asy
  const id=list.data.cards[0].id;
  assert.equal((await call(e,'/v1/admin/cards/revoke',{cardId:id},true)).status,200);
  assert.equal((await call(e,'/v1/license/refresh',proof(a,'refresh'))).status,403);
+});
+test('public signing attestation is a verifiable server-held private key proof',async()=>{
+ const e=env();
+ const reply=await worker.fetch(new Request('https://license.example.test/v1/license/attest',{method:'GET'}),e);
+ assert.equal(reply.status,200);
+ const signed=await reply.json();
+ const privateKey=cryptoExtra.createPrivateKey({key:Buffer.from(e.DUDU_SIGNING_PRIVATE_PKCS8_B64,'base64'),type:'pkcs8',format:'der'});
+ const publicKey=cryptoExtra.createPublicKey(privateKey);
+ assert.equal(cryptoExtra.verify(null,Buffer.from(signed.payload,'base64url'),publicKey,Buffer.from(signed.signature,'base64url')),true);
+ const att=JSON.parse(Buffer.from(signed.payload,'base64url').toString('utf8'));
+ assert.equal(att.purpose,'license-public-key-v1');
 });
 test('bad device signature and bad admin token are denied',async()=>{
  const e=env(),a=device('f'.repeat(64));
