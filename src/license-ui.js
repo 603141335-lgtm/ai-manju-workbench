@@ -37,6 +37,7 @@
   catch(err){feedback('操作失败：'+String(err.message||err),'error')}
   finally{await refresh().catch(()=>{})}
  }
+ if(B.onLicenseUpdated)B.onLicenseUpdated(v=>{render(v)});
  $('btnLicense').onclick=()=>open().catch(err=>feedback(err.message,'error'));
  $('btnLicenseTrial').onclick=()=>action(()=>B.licenseTrial());
  $('btnLicenseActivate').onclick=()=>action(()=>B.licenseActivate($('licenseCode').value.trim()));
