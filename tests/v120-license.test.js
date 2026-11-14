@@ -38,3 +38,8 @@ test('all 3 high value creation IPCs must be gated',()=>{
  assert.match(src,/guardedHandle\('api:chat'/);
  assert.match(src,/licenseClient\.requireValid\(\)/);
 });
+
+test('unlicensed account must never attach its Doubao browser view',()=>{
+ assert.match(src,/if\(!overlayShown&&licenseClient\?\.status\(\)\.valid\)/);
+ assert.match(src,/else if\(licenseClient\?\.status\(\)\.valid\)/);
+});
