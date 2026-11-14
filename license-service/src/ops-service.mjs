@@ -420,7 +420,7 @@ export async function handleOpsRequest(request, env, path, helpers) {
     try { return await orderStatus(request,env,await request.json(),helpers); }
     catch(e) { return json({error:clean(e.message,180)||"订单查询失败"},400); }
   }
-  if(path.startsWith("/v1/admin/")&&request.method==="POST") {
+  if(path.startsWith("/v1/admin/")&&!path.startsWith("/v1/admin/cards/")&&request.method==="POST") {
     try { return await adminOps(request,env,path,helpers); }
     catch(e) { return json({error:clean(e.message,180)||"管理操作失败"},400); }
   }
