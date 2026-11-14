@@ -217,7 +217,7 @@ function selectAccount(id){
   let slot=views.get(id);
   if(!slot){slot=configureView(id);views.set(id,slot)}
   slot.lastUsed=now();
-  if(!overlayShown)win.contentView.addChildView(slot.view);
+  if(!overlayShown&&licenseClient?.status().valid)win.contentView.addChildView(slot.view);
   if(lastBounds)slot.view.setBounds(lastBounds);
   cfg.activeAccountId=id;save();
   tell('perf:changed',performanceState());
@@ -270,8 +270,8 @@ function initializeUpdater(){
 
 function registerHandlers(){
   ipcMain.handle('license:status',()=>licenseClient.status());
-  ipcMain.handle('license:trial',()=>licenseClient.startTrial());
-  ipcMain.handle('license:activate',(_event,code)=>licenseClient.activate(code));
+  ipcMain.handle('license:trial',async()=>{const r=await licenseClient.startTrial();if(r.valid&&activeId)selectAccount(activeId);tell('license:updated',r);return r;});
+  ipcMain.handle('license:activate',async(_event,code)=>{const r=await licenseClient.activate(code);if(r.valid&&activeId)selectAccount(activeId);tell('license:updated',r);return r;});
   ipcMain.handle('license:refresh',()=>licenseClient.refresh());
   ipcMain.handle('cfg:get',()=>cfg);
   ipcMain.handle('api:get',()=>apiSettings.snapshot());
@@ -342,7 +342,7 @@ function registerHandlers(){
   ipcMain.on('overlay:set',(_e,shown)=>{
     if(!win||win.isDestroyed())return;const slot=views.get(activeId);
     if(!slot||overlayShown===!!shown)return;
-    try{if(shown)win.contentView.removeChildView(slot.view);else{win.contentView.addChildView(slot.view);if(lastBounds)slot.view.setBounds(lastBounds)}overlayShown=!!shown}catch(e){log(e)}
+    try{if(shown)win.contentView.removeChildView(slot.view);else if(licenseClient?.status().valid){win.contentView.addChildView(slot.view);if(lastBounds)slot.view.setBounds(lastBounds)}overlayShown=!!shown}catch(e){log(e)}
   });
   ipcMain.handle('nav:action',(_e,a)=>{if(!['reload','back','forward','home','zoomIn','zoomOut'].includes(a))throw Error('不支持此操作');navigate(a)});
   guardedHandle('group:add',(_e,name)=>update(()=>{cfg.groups.push({id:randomUUID(),name:normalizeName(name),edgeProfile:'Default'})}));
