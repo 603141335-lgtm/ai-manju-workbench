@@ -407,6 +407,10 @@ async function adminOps(req, env, path, helpers) {
     await markOrderPaid(env,order,order.provider_trade_no,"admin-resend-"+randomHex(8),"manual",helpers);
     return json({ok:true,delivered:true});
   }
+  if(path==="/v1/admin/audit/list") {
+    const result=await env.DB.prepare("SELECT id,event,card_id,occurred_ms FROM admin_audit ORDER BY occurred_ms DESC LIMIT 200").all();
+    return json({events:result.results||[]});
+  }
   if(path==="/v1/admin/payments/status") {
     return json({wechat:{configured:paymentReady(env,"wechat"),required:["WECHATPAY_MCHID","WECHATPAY_APPID","WECHATPAY_SERIAL_NO","WECHATPAY_PRIVATE_KEY_PEM","WECHATPAY_API_V3_KEY","WECHATPAY_PLATFORM_PUBLIC_KEY_PEM","WECHATPAY_PLATFORM_SERIAL"]},alipay:{configured:paymentReady(env,"alipay"),required:["ALIPAY_APP_ID","ALIPAY_PRIVATE_KEY_PEM","ALIPAY_PUBLIC_KEY_PEM"]}});
   }
