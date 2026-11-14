@@ -94,7 +94,7 @@ async function licenseRequest(request,env,op){
 }
 async function adminRequest(req,env,path){
  if(!await adminAuth(req,env))return response({error:'管理员身份验证失败'},401);
- const body=await req.json();
+ const body=await req.json().catch(()=>({}));
  if(path.endsWith('/issue')){
   const count=Number(body.count);if(!Number.isInteger(count)||count<1||count>50)return response({error:'一次生成1到50张'},400);
   const codes=[];
@@ -110,6 +110,53 @@ async function adminRequest(req,env,path){
   const {results}=await env.DB.prepare('SELECT id,last_four,issued_ms,activated_ms,bound_device_hash IS NOT NULL AS bound,revoked_ms FROM license_cards ORDER BY issued_ms DESC LIMIT 200').all();
   return response({cards:results});
  }
+ if(path.endsWith('/applications/list')){
+  const {results}=await env.DB.prepare('SELECT a.id,a.contact,a.reason,a.status,a.created_ms,a.reviewed_ms,a.reviewer_note,a.card_id,a.device_hash,d.created_ms AS device_created_ms FROM license_applications a LEFT JOIN devices d ON d.device_hash=a.device_hash ORDER BY CASE a.status WHEN "pending" THEN 0 ELSE 1 END,a.created_ms DESC LIMIT 300').all();
+  return response({applications:results});
+ }
+ if(path.endsWith('/applications/approve')){
+  const id=String(body.applicationId||'');
+  const app=await env.DB.prepare("SELECT * FROM license_applications WHERE id=? AND status='pending'").bind(id).first();
+  if(!app)return response({error:'申请不存在或已处理'},404);
+  const code=newCode(),cardId=crypto.randomUUID(),codeHash=await hmac(env.DUDU_CARD_HMAC_KEY,code),now=Date.now();
+  await env.DB.prepare('INSERT INTO license_cards(id,code_hash,last_four,issued_ms,bound_device_hash,activated_ms) VALUES (?,?,?,?,?,?)').bind(cardId,codeHash,code.slice(-4),now,body.bindDevice===false?null:app.device_hash,body.bindDevice===false?null:now).run();
+  const changed=await env.DB.prepare("UPDATE license_applications SET status='approved',card_id=?,reviewer_note=?,reviewed_ms=? WHERE id=? AND status='pending'").bind(cardId,String(body.note||'').slice(0,300),now,id).run();
+  if(!changed.meta?.changes){
+   await env.DB.prepare('DELETE FROM license_cards WHERE id=? AND activated_ms IS ?').bind(cardId,body.bindDevice===false?null:now).run();
+   return response({error:'申请已被其他管理员处理，请刷新列表'},409);
+  }
+  await env.DB.prepare('INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES (?,?,?)').bind('application_approve',cardId,now).run();
+  return response({ok:true,applicationId:id,cardId,code,bound:body.bindDevice!==false});
+ }
+ if(path.endsWith('/applications/reject')){
+  const id=String(body.applicationId||''),note=String(body.note||'').trim().slice(0,300);
+  if(!id||!note)return response({error:'请填写申请编号和拒绝原因'},400);
+  const result=await env.DB.prepare("UPDATE license_applications SET status='rejected',reviewer_note=?,reviewed_ms=? WHERE id=? AND status='pending'").bind(note,Date.now(),id).run();
+  if(!result.meta?.changes)return response({error:'申请不存在或已处理'},404);
+  await env.DB.prepare('INSERT INTO admin_audit(event,occurred_ms) VALUES (?,?)').bind('application_reject',Date.now()).run();
+  return response({ok:true});
+ }
+ if(path.endsWith('/orders/list')){
+  const {results}=await env.DB.prepare('SELECT o.id,o.order_no,o.product_id,p.name AS product_name,o.contact,o.amount_fen,o.payment_channel,o.payment_status,o.delivery_status,o.created_ms,o.paid_ms,o.delivered_ms,o.failure_reason,o.card_id FROM orders o LEFT JOIN products p ON p.id=o.product_id ORDER BY o.created_ms DESC LIMIT 300').all();
+  return response({orders:results});
+ }
+ if(path.endsWith('/products/list')){
+  const {results}=await env.DB.prepare('SELECT id,name,description,price_fen,delivery_mode,enabled,created_ms,updated_ms FROM products ORDER BY created_ms DESC').all();
+  return response({products:results});
+ }
+ if(path.endsWith('/products/save')){
+  const id=String(body.id||crypto.randomUUID()),name=String(body.name||'').trim().slice(0,100),description=String(body.description||'').slice(0,1000);
+  const price=Number(body.priceFen),mode=String(body.deliveryMode||'license_key'),enabled=body.enabled===true?1:0;
+  if(!name||!Number.isSafeInteger(price)||price<0||!['license_auto_bind','license_key'].includes(mode))return response({error:'商品信息无效'},400);
+  const now=Date.now();
+  await env.DB.prepare('INSERT INTO products(id,name,description,price_fen,delivery_mode,enabled,created_ms,updated_ms) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,price_fen=excluded.price_fen,delivery_mode=excluded.delivery_mode,enabled=excluded.enabled,updated_ms=excluded.updated_ms').bind(id,name,description,price,mode,enabled,now,now).run();
+  return response({ok:true,id});
+ }
+ if(path.endsWith('/payment/readiness')){
+  return response({wechatReady:!!env.WECHAT_MCH_ID&&!!env.WECHAT_SERIAL_NO&&!!env.WECHAT_PRIVATE_KEY_PEM&&!!env.WECHAT_API_V3_KEY&&!!env.WECHAT_PLATFORM_CERT_PEM&&!!env.WECHAT_NOTIFY_URL,
+   alipayReady:!!env.ALIPAY_APP_ID&&!!env.ALIPAY_PRIVATE_KEY_PEM&&!!env.ALIPAY_PUBLIC_KEY_PEM&&!!env.ALIPAY_NOTIFY_URL,
+   note:'支付下单与回调只有在官方商户参数、签名验签和真实沙箱测试全部完成后才开放。'});
+ }
  if(path.endsWith('/revoke')||path.endsWith('/transfer')){
   const cardId=String(body.cardId||'');
   if(!/^[0-9a-f-]{36}$/i.test(cardId))return response({error:'卡密ID无效'},400);
@@ -123,6 +170,27 @@ async function adminRequest(req,env,path){
  }
  return response({error:'未知管理员操作'},404);
 }
+async function applicationRequest(request,env,path){
+ const body=await request.json();const op=path.endsWith('/create')?'application_create':'application_status';
+ await verifyDevice(op,body);
+ const hash=await hmac(env.DUDU_DEVICE_HMAC_KEY,body.deviceId);
+ const nonce=await env.DB.prepare('INSERT OR IGNORE INTO request_nonces(device_hash,nonce,created_ms) VALUES(?,?,?)').bind(hash,body.nonce.toLowerCase(),Date.now()).run();
+ if(!nonce.meta?.changes)return response({error:'请求已处理，请重新操作'},409);
+ await registerDevice(env,hash,body.publicKey);
+ if(path.endsWith('/create')){
+  const contact=String(body.contact||'').trim().slice(0,100),reason=String(body.reason||'').trim().slice(0,500);
+  if(contact.length<2||reason.length<5)return response({error:'请填写有效联系方式和至少5个字的申请原因'},400);
+  const pending=await env.DB.prepare("SELECT id FROM license_applications WHERE device_hash=? AND status='pending' LIMIT 1").bind(hash).first();
+  if(pending)return response({error:'你已有一条待审批申请',applicationId:pending.id},409);
+  const id='DQ'+Date.now().toString(36).toUpperCase()+crypto.randomUUID().slice(0,6).toUpperCase(),now=Date.now();
+  await env.DB.prepare('INSERT INTO license_applications(id,device_hash,contact,reason,status,created_ms) VALUES (?,?,?,?,?,?)').bind(id,hash,contact,reason,'pending',now).run();
+  return response({ok:true,applicationId:id,status:'pending',createdAt:now});
+ }
+ const id=String(body.applicationId||'');
+ const app=await env.DB.prepare('SELECT id,status,reviewer_note,created_ms,reviewed_ms FROM license_applications WHERE id=? AND device_hash=?').bind(id,hash).first();
+ if(!app)return response({error:'未找到申请记录'},404);
+ return response({application:app});
+}
 export default {async fetch(request,env){
  const path=new URL(request.url).pathname;
  if(path==='/health'&&request.method==='GET')return response({status:'ok',service:'dudu-license-v1'});
@@ -135,6 +203,7 @@ export default {async fetch(request,env){
  if(!(request.headers.get('content-type')||'').startsWith('application/json'))return response({error:'请求必须为JSON'},415);
  try{
   if(path.startsWith('/v1/admin/'))return await adminRequest(request,env,path);
+  if(path==='/v1/application/create'||path==='/v1/application/status')return await applicationRequest(request,env,path);
   const op=({'/v1/trial/start':'trial','/v1/license/activate':'activate','/v1/license/refresh':'refresh'})[path];
   if(!op)return response({error:'Not found'},404);
   return await licenseRequest(request,env,op);
