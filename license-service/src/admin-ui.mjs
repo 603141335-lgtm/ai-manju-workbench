@@ -30,7 +30,7 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <button class="active" data-tab="overview">▦ 总览</button><button data-tab="cards">▣ 卡密管理</button>
 <button data-tab="applications">✉ 免费申请</button><button data-tab="products">◇ 商品管理</button>
 <button data-tab="orders">▤ 订单管理</button><button data-tab="content">▧ 公告与教程</button>
-<button data-tab="payments">￥ 支付配置</button>
+<button data-tab="payments">￥ 支付配置</button><button data-tab="audit">◷ 操作日志</button>
 </nav>
 <div class="auth"><label>管理员令牌<input id="token" type="password" autocomplete="off" placeholder="粘贴管理员令牌"></label><div class="row"><button id="connect">连接后台</button><button class="secondary" id="clearToken">清空</button></div><p class="help">令牌仅保存在当前页面内存；关闭页面即清除。建议 Cloudflare Access + 双因素验证。</p></div>
 </aside>
@@ -73,7 +73,7 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <label class="field">公告标题<input id="cNoticeTitle"></label><label class="field wide">公告正文<textarea id="cNoticeBody"></textarea></label>
 </div><div class="row"><button id="loadContent">读取已发布内容</button><button id="publishContent">发布公告与教程</button><button id="loadHistory" class="secondary">历史版本</button><select id="historySelect" style="max-width:300px"></select><button id="rollbackContent" class="secondary">回滚所选版本</button></div></section>
 
-<section class="panel" id="tab-payments"><h2>官方支付配置</h2><p class="help">密钥只通过 Cloudflare Worker Secrets 配置，不在网页显示，也不进入 GitHub 源码或桌面安装包。</p>
+<section class="panel" id="tab-audit"><h2>管理员操作日志</h2><div class="row"><button id="loadAudit">刷新日志</button><span class="help">最近200条，记录卡密、审批、商品和公告操作</span></div><div class="tablewrap"><table><thead><tr><th>时间</th><th>操作</th><th>关联卡密ID</th></tr></thead><tbody id="auditBody"></tbody></table></div></section>\n<section class="panel" id="tab-payments"><h2>官方支付配置</h2><p class="help">密钥只通过 Cloudflare Worker Secrets 配置，不在网页显示，也不进入 GitHub 源码或桌面安装包。</p>
 <div class="grid"><div class="stat"><small>微信支付</small><strong id="wechatStatus">未检测</strong><div class="help" id="wechatFields"></div></div><div class="stat"><small>支付宝</small><strong id="alipayStatus">未检测</strong><div class="help" id="alipayFields"></div></div></div>
 <div class="notice">请在 license-service 目录执行 wrangler secret put，按下方变量名逐项配置。配置后点击“重新检测”。</div>
 <div class="code" id="secretGuide">微信支付：WECHATPAY_MCHID、WECHATPAY_APPID、WECHATPAY_SERIAL_NO、WECHATPAY_PRIVATE_KEY_PEM、WECHATPAY_API_V3_KEY、WECHATPAY_PLATFORM_PUBLIC_KEY_PEM、WECHATPAY_PLATFORM_SERIAL
@@ -83,14 +83,14 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 </main></div>
 <script>
 const $=id=>document.getElementById(id);let latestCodes=[],currentManifest=null,connected=false;
-const titles={overview:"运营总览",cards:"卡密管理",applications:"免费申请审批",products:"商品管理",orders:"订单管理",content:"公告与教程",payments:"支付配置"};
+const titles={overview:"运营总览",cards:"卡密管理",applications:"免费申请审批",products:"商品管理",orders:"订单管理",content:"公告与教程",payments:"支付配置",audit:"管理员操作日志"};
 function say(text,bad){$("status").textContent=text;$("status").style.color=bad?"#ff9da8":"#9edfc8"}
 function token(){return $("token").value.trim()}
 async function api(path,data){if(!token())throw Error("请先输入管理员令牌");const r=await fetch(path,{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+token()},body:JSON.stringify(data||{})});const v=await r.json().catch(()=>({}));if(!r.ok)throw Error(v.error||("HTTP "+r.status));return v}
 function cell(tr,value){const td=document.createElement("td");td.textContent=value==null?"":String(value);tr.append(td);return td}
 function button(text,fn,kind){const b=document.createElement("button");b.textContent=text;if(kind)b.className=kind;b.addEventListener("click",()=>safe(fn));return b}
 function showTab(name){document.querySelectorAll(".panel").forEach(x=>x.classList.toggle("active",x.id==="tab-"+name));document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===name));$("pageTitle").textContent=titles[name]||"运营管理";if(connected)loadTab(name).catch(e=>say(e.message,true))}
-async function loadTab(name){if(name==="overview")return loadOverview();if(name==="cards")return loadCards();if(name==="applications")return loadApplications();if(name==="products")return loadProducts();if(name==="orders")return loadOrders();if(name==="content")return loadContent();if(name==="payments")return loadPaymentStatus()}
+async function loadTab(name){if(name==="overview")return loadOverview();if(name==="cards")return loadCards();if(name==="applications")return loadApplications();if(name==="products")return loadProducts();if(name==="orders")return loadOrders();if(name==="content")return loadContent();if(name==="payments")return loadPaymentStatus();if(name==="audit")return loadAudit()}
 async function loadOverview(){const v=await api("/v1/admin/overview");$("statCards").textContent=v.cards;$("statApps").textContent=v.pendingApplications;$("statOrders").textContent=v.paidOrders;$("statProducts").textContent=v.activeProducts}
 async function loadCards(){const v=await api("/v1/admin/cards/list");const root=$("cardsBody");root.replaceChildren();v.cards.forEach(x=>{const tr=document.createElement("tr");cell(tr,x.id);cell(tr,x.last_four);cell(tr,new Date(x.issued_ms).toLocaleString());cell(tr,x.bound?"已绑定":"未绑定");cell(tr,x.revoked_ms?"已停用":(x.bound?"已激活":"未激活"));const td=document.createElement("td");td.append(button("复制ID",()=>navigator.clipboard.writeText(x.id)),button("停用",()=>cardAction("revoke",x.id),"danger"),button("解绑",()=>cardAction("transfer",x.id),"secondary"));tr.append(td);root.append(tr)})}
 async function cardAction(action,id){if(!confirm(action==="revoke"?"确认停用这张卡？":"确认解绑设备？"))return;await api("/v1/admin/cards/"+action,{cardId:id});say("卡密操作完成");loadCards()}
@@ -104,6 +104,7 @@ async function loadContent(){const v=await api("/v1/admin/content/get");setConte
 async function publishContent(){let slides;try{slides=JSON.parse($("cSlides").value||"[]")}catch{throw Error("教程步骤 JSON 格式不正确")}const m={schemaVersion:2,community:{...(currentManifest?.community||{}),headline:$("cHeadline").value,subtitle:$("cSubtitle").value,wechat:$("cWechat").value,backupWechat:$("cBackup").value,description:$("cDescription").value,qrUrl:$("cQrUrl").value,qrExpiresAt:$("cQrExpiry").value},tutorial:{...(currentManifest?.tutorial||{}),title:$("cTutorialTitle").value,version:$("cTutorialVersion").value,slides},release:{...(currentManifest?.release||{}),version:$("cReleaseVersion").value,url:$("cReleaseUrl").value,notes:$("cReleaseNotes").value},notice:{id:"notice-"+Date.now(),title:$("cNoticeTitle").value,body:$("cNoticeBody").value,showHint:true}};const v=await api("/v1/admin/content/publish",{manifest:m});say("公告已发布："+v.updatedAt);await loadContent()}
 async function loadHistory(){const v=await api("/v1/admin/content/history");const sel=$("historySelect");sel.replaceChildren();v.history.forEach(x=>{const o=document.createElement("option");o.value=x.history_id;o.textContent=x.history_id+" · "+new Date(x.created_ms).toLocaleString();sel.append(o)});say("已读取历史版本")}
 async function rollbackContent(){if(!$("historySelect").value)throw Error("请先选择历史版本");if(!confirm("确认回滚所选公告版本？"))return;await api("/v1/admin/content/rollback",{historyId:$("historySelect").value});say("公告已回滚");await loadContent()}
+async function loadAudit(){const v=await api("/v1/admin/audit/list");const root=$("auditBody");root.replaceChildren();v.events.forEach(x=>{const tr=document.createElement("tr");cell(tr,new Date(x.occurred_ms).toLocaleString());cell(tr,x.event);cell(tr,x.card_id||"—");root.append(tr)})}
 async function loadPaymentStatus(){const v=await api("/v1/admin/payments/status");$("wechatStatus").textContent=v.wechat.configured?"已配置":"未配置";$("wechatStatus").style.color=v.wechat.configured?"#7ce0ba":"#f2c47f";$("wechatFields").textContent=v.wechat.configured?"必需密钥均已检测到": "缺少："+v.wechat.required.join("、");$("alipayStatus").textContent=v.alipay.configured?"已配置":"未配置";$("alipayStatus").style.color=v.alipay.configured?"#7ce0ba":"#f2c47f";$("alipayFields").textContent=v.alipay.configured?"必需密钥均已检测到":"缺少："+v.alipay.required.join("、")}
 async function connect(){await loadOverview();connected=true;say("已连接运营后台");await loadTab(document.querySelector("[data-tab].active")?.dataset.tab||"overview")}
 async function safe(fn){try{await fn()}catch(e){say(e.message,true)}}
@@ -115,5 +116,5 @@ $("loadCards").onclick=()=>safe(loadCards);$("loadApplications").onclick=()=>saf
 $("issueCards").onclick=()=>safe(async()=>{const n=Number($("cardCount").value);const v=await api("/v1/admin/cards/issue",{count:n});latestCodes=v.codes||[];$("issuedCodes").textContent=latestCodes.join("\n")||"没有生成卡密";say("已生成 "+latestCodes.length+" 张卡密");await loadCards()});
 $("copyCards").onclick=()=>safe(async()=>{if(!latestCodes.length)throw Error("本次没有可复制的卡密");await navigator.clipboard.writeText(latestCodes.join("\n"));say("卡密已复制")});
 $("saveProduct").onclick=()=>safe(saveProduct);$("resetProduct").onclick=resetProduct;
-$("loadContent").onclick=()=>safe(loadContent);$("publishContent").onclick=()=>safe(publishContent);$("loadHistory").onclick=()=>safe(loadHistory);$("rollbackContent").onclick=()=>safe(rollbackContent);$("loadPaymentStatus").onclick=()=>safe(loadPaymentStatus);
+$("loadContent").onclick=()=>safe(loadContent);$("publishContent").onclick=()=>safe(publishContent);$("loadHistory").onclick=()=>safe(loadHistory);$("rollbackContent").onclick=()=>safe(rollbackContent);$("loadPaymentStatus").onclick=()=>safe(loadPaymentStatus);$("loadAudit").onclick=()=>safe(loadAudit);
 </script></body></html>`;
