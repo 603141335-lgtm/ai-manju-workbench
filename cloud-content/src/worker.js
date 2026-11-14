@@ -29,7 +29,7 @@ function validate(d,origin){
  for(const s of slides)if(s.imageUrl&&(!validMedia(s.imageUrl,origin)||!/^[0-9a-f]{64}$/.test(s.sha256)))throw Error('教程图片必须经过后台上传并带SHA256');
  const qr=clean(c.qrUrl,400);if(qr&&!validMedia(qr,origin))throw Error('二维码需上传到官方媒体服务');
  const output={schemaVersion:2,updatedAt:new Date().toISOString(),
-  community:{title:clean(c.title,100),headline:clean(c.headline,100),description:clean(c.description,400),subtitle:clean(c.subtitle,220),wechat:clean(c.wechat,80),backupWechat:clean(c.backupWechat,80),qrUrl:qr,qrExpiresAt:clean(c.qrExpiresAt,42),enabled:c.enabled!==false,startup:c.startup!==false,benefits:(Array.isArray(c.benefits)?c.benefits:[]).slice(0,4).map(x=>clean(x,90))},
+  community:{title:clean(c.title,100),headline:clean(c.headline,100),description:clean(c.description,400),subtitle:clean(c.subtitle,220),wechat:clean(c.wechat,80),backupWechat:clean(c.backupWechat,80),qqUrl:publicHttps(c.qqUrl)?clean(c.qqUrl,400):'',qrUrl:qr,qrExpiresAt:clean(c.qrExpiresAt,42),enabled:c.enabled!==false,startup:c.startup!==false,benefits:(Array.isArray(c.benefits)?c.benefits:[]).slice(0,4).map(x=>clean(x,90))},
   tutorial:{version:clean(t.version,40),title:clean(t.title,90),slides},
   notice:{id:clean(n.id,80),title:clean(n.title,100),body:clean(n.body,1200),showHint:n.showHint===true},
   release:{version:clean(r.version,32),title:clean(r.title,100),notes:clean(r.notes,1200),url:publicHttps(r.url)?r.url:''}};
