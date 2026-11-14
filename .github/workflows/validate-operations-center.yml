@@ -1,0 +1,39 @@
+name: Validate Dudu Operations Center
+on:
+  push:
+    branches: [feature/dudu-operations-center-v1.0]
+  pull_request:
+    branches: [feature/dudu-ai-v1.2.1-license-network]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  license-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: license-service/package-lock.json
+      - name: Install license service dependencies
+        working-directory: license-service
+        run: npm ci --no-audit --no-fund
+      - name: Check license worker and admin UI syntax
+        working-directory: license-service
+        run: npm run check
+      - name: Run license, application and integration tests
+        working-directory: license-service
+        run: npm test
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install desktop dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run desktop syntax and regression checks
+        run: npm run check
