@@ -270,7 +270,10 @@ async function createOrder(request, env, body, helpers) {
   if(!paymentReady(env,method)) throw Error(method==="wechat"?"微信支付商户密钥尚未配置":"支付宝商户密钥尚未配置");
   const product=await env.DB.prepare("SELECT * FROM products WHERE product_id=? AND enabled=1").bind(productId).first();
   if(!product) throw Error("商品不存在或已下架");
-  const id=crypto.randomUUID(), no=orderNo(), now=Date.now();
+  const now=Date.now();
+  const pending=await env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE device_hash=? AND status='pending' AND created_ms>?").bind(deviceHash,now-1800000).first();
+  if(Number(pending?.n||0)>=3) throw Error("当前有多笔未支付订单，请先完成付款或等待订单关闭");
+  const id=crypto.randomUUID(), no=orderNo();
   await env.DB.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,'pending',?,?)")
     .bind(id,no,deviceHash,product.product_id,product.name,product.price_cents,method,now,now).run();
   const order={order_id:id,order_no:no,product_name:product.name,amount_cents:product.price_cents};
@@ -300,8 +303,11 @@ async function applicationCreate(request, env, body, helpers) {
   const contact=clean(body.contact,80),reason=clean(body.reason,400);
   if(contact.length<2) throw Error("请填写微信号或联系方式");
   const existing=await env.DB.prepare("SELECT application_id,status,created_ms FROM license_applications WHERE device_hash=? ORDER BY created_ms DESC LIMIT 1").bind(deviceHash).first();
-  if(existing?.status==="pending") return json({applicationId:existing.application_id,status:"pending",createdAt:existing.created_ms});
-  const id=crypto.randomUUID(),now=Date.now();
+  if(existing?.status==="pending"||existing?.status==="approved") return json({applicationId:existing.application_id,status:existing.status,createdAt:existing.created_ms});
+  const now=Date.now();
+  const recent=await env.DB.prepare("SELECT COUNT(*) AS n FROM license_applications WHERE device_hash=? AND created_ms>?").bind(deviceHash,now-86400000).first();
+  if(Number(recent?.n||0)>=3) throw Error("24小时内申请次数已达上限，请联系官方客服");
+  const id=crypto.randomUUID();
   await env.DB.prepare("INSERT INTO license_applications(application_id,device_hash,contact,reason,status,created_ms) VALUES(?,?,?,?,'pending',?)")
     .bind(id,deviceHash,contact,reason,now).run();
   return json({applicationId:id,status:"pending",createdAt:now},201);
