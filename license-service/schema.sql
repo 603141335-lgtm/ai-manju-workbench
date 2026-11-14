@@ -107,8 +107,7 @@ CREATE TABLE IF NOT EXISTS delivery_outbox (
   created_ms INTEGER NOT NULL,
   delivered_ms INTEGER,
   last_error TEXT NOT NULL DEFAULT '',
-  FOREIGN KEY(order_id) REFERENCES orders(order_id),
-  FOREIGN KEY(card_id) REFERENCES license_cards(id)
+  FOREIGN KEY(order_id) REFERENCES orders(order_id)
 );
 
 -- Public workbench content is served by the same Worker as licensing.
