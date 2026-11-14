@@ -17,6 +17,14 @@ CREATE TABLE IF NOT EXISTS license_cards (
   FOREIGN KEY (bound_device_hash) REFERENCES devices(device_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_cards_device ON license_cards(bound_device_hash);
+-- Idempotent replay defense: signing a request does not authorize reusing its nonce.
+CREATE TABLE IF NOT EXISTS request_nonces (
+  device_hash TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  created_ms INTEGER NOT NULL,
+  PRIMARY KEY(device_hash,nonce)
+);
+CREATE INDEX IF NOT EXISTS idx_nonce_age ON request_nonces(created_ms);
 CREATE TABLE IF NOT EXISTS admin_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event TEXT NOT NULL,

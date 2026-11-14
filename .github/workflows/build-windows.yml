@@ -142,8 +142,8 @@ jobs:
           body: |
             独独AI工作台 v1.2.0：24小时试用与永久卡密授权，服务器签发Ed25519离线凭证；后台未部署或缺少公钥则不生成正式安装包。12张实际工作台界面演示数据截图（红框及内嵌水印），云端教程与社群公告管理源码、备用微信 du6du66、教程弹窗与左右翻页。账号独立后台上传任务，切换账号不再自动取消；原生蓝色@需要原账号前台焦点时等待回到对应账号。保留原Rust核心、ASAR成品逆向检查、科幻NSIS安装器和历史数据目录。Cloudflare后台需本人部署和配置 DUDU_CONTENT_URL，未部署时使用本地教程。真实豆包网页登录流程与覆盖安装需Windows实机验收。没有商业加壳许可证或签名证书时不声称已部署。
           files: |
-            release/独独AI工作台-Setup-v1.1.0-x64.exe
+            release/独独AI工作台-Setup-v1.2.0-x64.exe
             release/SHA256SUMS.txt
-            release/DuduAI-Tutorial-12-v1.1.0.zip
+            release/DuduAI-Tutorial-12-v1.2.0.zip
             release/*.blockmap
           fail_on_unmatched_files: true

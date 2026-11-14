@@ -16,6 +16,9 @@ workbench.json
 素材/
 剧本/
 
+# Private card signing keys. These must NEVER enter any Git repository.
+license-service/.private/
+license-service/wrangler.local.toml
 # Local runtime profiles and personal data must never enter a public build
 workspace.json
 config.json

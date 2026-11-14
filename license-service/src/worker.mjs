@@ -52,6 +52,14 @@ async function stateFor(env,hash,deviceId){
 async function licenseRequest(request,env,op){
  const body=await request.json();await verifyDevice(op,body);
  const hash=await hmac(env.DUDU_DEVICE_HMAC_KEY,body.deviceId);
+ // A valid signature is necessary but never sufficient to replay the same request.
+ // Atomic D1 primary key prevents duplicate nonces even during concurrent requests.
+ const seen=await env.DB.prepare('INSERT OR IGNORE INTO request_nonces(device_hash,nonce,created_ms) VALUES(?,?,?)').bind(hash,body.nonce.toLowerCase(),Date.now()).run();
+ if(!seen.meta?.changes)throw Error('请求已处理，请重新操作');
+ // Sampled pruning avoids an unbounded nonce table without adding a write to every request.
+ if(crypto.getRandomValues(new Uint8Array(1))[0]===0){
+   await env.DB.prepare('DELETE FROM request_nonces WHERE created_ms<?').bind(Date.now()-10*60*1000).run();
+ }
  const d=await registerDevice(env,hash,body.publicKey);
  if(op==='trial'){
   if(d.trial_started_ms!==null)return stateFor(env,hash,body.deviceId);

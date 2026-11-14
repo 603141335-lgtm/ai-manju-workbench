@@ -41,6 +41,18 @@ test('same device never gets more than one 24-hour trial, different key cannot c
  const stolen=await call(e,'/v1/trial/start',proof(clone,'trial'));
  assert.notEqual(stolen.status,200);
 });
+test('signed requests cannot be replayed with the same nonce',async()=>{
+ const e=env(),a=device('c'.repeat(64));
+ const signed=proof(a,'trial');
+ const first=await call(e,'/v1/trial/start',signed);
+ assert.equal(first.status,200,JSON.stringify(first.data));
+ const second=await call(e,'/v1/trial/start',signed);
+ assert.equal(second.status,400);
+ assert.match(second.data.error,/请求已处理/);
+ const third=await call(e,'/v1/trial/start',proof(a,'trial'));
+ assert.equal(third.status,200);
+ assert.equal(third.data.expiresAt,first.data.expiresAt);
+});
 test('card permanently binds one device; revocation prevents online renewal',async()=>{
  const e=env(),a=device('a'.repeat(64)),b=device('b'.repeat(64));
  const generated=await call(e,'/v1/admin/cards/issue',{count:1},true);
