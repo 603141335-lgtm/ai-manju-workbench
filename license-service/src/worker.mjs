@@ -231,7 +231,10 @@ async function publicOrderCreate(request,env){
  if(!paymentReadiness(env)[provider])return response({error:(provider==='wechat'?'微信支付':'支付宝')+'商户接口尚未配置'},503);
  const active=await env.DB.prepare('SELECT id FROM license_cards WHERE bound_device_hash=? AND revoked_ms IS NULL LIMIT 1').bind(hash).first();
  if(active)return response({error:'当前设备已经拥有永久授权，无需重复购买'},409);
- const now=Date.now(),id=crypto.randomUUID(),orderNo='DU'+now.toString(36).toUpperCase()+crypto.randomUUID().replace(/-/g,'').slice(0,12).toUpperCase(),expires=now+15*60*1000;
+ const now=Date.now();
+ const pending=await env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE device_hash=? AND payment_status='pending' AND expires_ms>?").bind(hash,now).first();
+ if(Number(pending?.n||0)>=3)return response({error:'当前设备已有3笔待支付订单，请先完成或等待订单过期'},429);
+ const id=crypto.randomUUID(),orderNo='DU'+now.toString(36).toUpperCase()+crypto.randomUUID().replace(/-/g,'').slice(0,12).toUpperCase(),expires=now+15*60*1000;
  await env.DB.prepare("INSERT INTO orders(id,order_no,device_hash,product_id,product_name,amount_fen,provider,payment_status,delivery_status,expires_ms,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,'pending','pending',?,?,?)").bind(id,orderNo,hash,product.id,product.name,product.price_fen,provider,expires,now,now).run();
  try{
   const pay=provider==='wechat'?await createWechatPayment(env,{orderNo,amountFen:product.price_fen,productName:product.name}):await createAlipayPayment(env,{orderNo,amountFen:product.price_fen,productName:product.name});
