@@ -1,0 +1,10 @@
+import {readFileSync,writeFileSync} from 'node:fs';
+import {resolve,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const id=String(process.env.DUDU_D1_DATABASE_ID||'').trim();
+if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))throw Error('DUDU_D1_DATABASE_ID is absent or not a valid UUID');
+const source=readFileSync(resolve(root,'wrangler.toml'),'utf8');
+if(!source.includes('REPLACE_WITH_YOUR_D1_ID'))throw Error('D1 placeholder missing');
+writeFileSync(resolve(root,'wrangler.local.toml'),source.replace('REPLACE_WITH_YOUR_D1_ID',id));
+console.log('D1 binding generated, only public UUID inserted.');
