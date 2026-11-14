@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   licenseTrial:()=>ipcRenderer.invoke('license:trial'),
   licenseActivate:code=>ipcRenderer.invoke('license:activate',code),
   licenseRefresh:()=>ipcRenderer.invoke('license:refresh'),
+  licenseApplicationCreate:(contact,reason)=>ipcRenderer.invoke('license:applicationCreate',contact,reason),
+  licenseApplicationStatus:id=>ipcRenderer.invoke('license:applicationStatus',id),
   onLicenseUpdated:fn=>ipcRenderer.on('license:updated',(_e,v)=>fn(v)),
   apiGet:()=>ipcRenderer.invoke('api:get'),
   apiSave:settings=>ipcRenderer.invoke('api:save',settings),
