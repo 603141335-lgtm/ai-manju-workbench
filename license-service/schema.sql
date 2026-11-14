@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS license_applications (
   device_hash TEXT NOT NULL,
   contact TEXT NOT NULL DEFAULT '',
   reason TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approving','approved','rejected')),
   created_ms INTEGER NOT NULL,
   reviewed_ms INTEGER,
   review_note TEXT NOT NULL DEFAULT '',
