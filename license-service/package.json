@@ -8,7 +8,8 @@
     "check": "node --check src/worker.mjs && node --check src/admin-ui.mjs",
     "keys": "node scripts/generate-keys.mjs",
     "deploy:setup": "node scripts/setup-cloudflare.mjs --apply",
-    "deploy:check": "node scripts/prepare-wrangler.mjs"
+    "deploy:check": "node scripts/prepare-wrangler.mjs",
+    "ops:bridge": "node scripts/setup-operations-bridge.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
