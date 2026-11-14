@@ -108,7 +108,7 @@ function alipaySignContent(params) {
   return Object.keys(params).filter(k=>k!=="sign"&&k!=="sign_type"&&params[k]!==undefined&&params[k]!==null&&params[k]!=="")
     .sort().map(k=>k+"="+params[k]).join("&");
 }
-export { alipaySignContent, normalizeManifest };
+export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic };
 
 function paymentReady(env, method) {
   if(method==="wechat") return !!(env.WECHATPAY_MCHID&&env.WECHATPAY_APPID&&env.WECHATPAY_SERIAL_NO&&env.WECHATPAY_PRIVATE_KEY_PEM&&env.WECHATPAY_API_V3_KEY&&env.WECHATPAY_PLATFORM_PUBLIC_KEY_PEM&&env.WECHATPAY_PLATFORM_SERIAL);
