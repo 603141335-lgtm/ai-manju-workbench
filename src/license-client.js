@@ -35,6 +35,53 @@ function post(service,endpoint,data){
   req.on('error',reject);req.end(body);
  });
 }
+// Electron Chromium networking honors the system proxy/PAC used by browsers.
+// Keep the signed device request and server-side Ed25519 verification unchanged.
+function makeChromiumTransport(fetcher,{timeoutMs=25000}={}){
+ if(typeof fetcher!=='function')throw Error('授权网络模块未初始化');
+ if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>120000)throw Error('授权连接超时配置无效');
+ return async(service,endpoint,data)=>{
+  const origin=validServiceUrl(service);
+  if(!origin)throw Error('授权服务器地址不安全');
+  const url=new URL(endpoint,origin);
+  if(url.origin!==origin||url.protocol!=='https:')throw Error('授权接口地址不安全');
+  const body=JSON.stringify(data);
+  if(Buffer.byteLength(body)>8192)throw Error('授权请求过长');
+  const signal=AbortSignal.timeout(timeoutMs);
+  let res;
+  try{
+   res=await fetcher(url.toString(),{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},body,signal,redirect:'error',cache:'no-store',credentials:'omit'});
+   if(!res||typeof res.status!=='number')throw Error('服务器响应无效');
+   if(Number(res.headers?.get?.('content-length')||0)>MAX_RESPONSE)throw Error('授权响应过大');
+   const reader=res.body?.getReader?.(),parts=[];let size=0;
+   if(reader){
+    try{
+     while(true){
+      const chunk=await reader.read();
+      if(chunk.done)break;
+      size+=chunk.value?.byteLength||0;
+      if(size>MAX_RESPONSE)throw Error('授权响应过大');
+      parts.push(Buffer.from(chunk.value));
+     }
+    }finally{reader.releaseLock()}
+   }else{
+    const buffer=Buffer.from(await res.arrayBuffer());
+    if(buffer.length>MAX_RESPONSE)throw Error('授权响应过大');
+    parts.push(buffer);
+   }
+   let payload;
+   try{payload=JSON.parse(Buffer.concat(parts).toString('utf8'))}catch{throw Error('授权服务器返回内容无效')}
+   if(!res.ok)throw Error(String(payload.error||payload.reason||'授权服务器响应异常').slice(0,200));
+   return payload;
+  }catch(error){
+   if(signal.aborted||['TimeoutError','AbortError'].includes(error?.name))throw Error('授权服务连接超时（25秒），请检查软件网络或代理设置');
+   if(/授权响应过大|授权服务器返回内容无效|授权服务器响应异常|卡密|设备|签名|请求|试用|管理员/.test(String(error?.message||'')))throw error;
+   if(error instanceof TypeError||/fetch failed|ERR_|network/i.test(String(error?.message||'')))throw Error('授权连接失败：请检查本机代理或Cloudflare网络');
+   throw error;
+  }
+ };
+}
+
 function verifyTokenJS(token,publicKey,deviceId,now=Date.now()){
  try{
   const parts=String(token||'').split('.');if(parts.length!==2)throw Error('凭证格式');
@@ -122,4 +169,4 @@ class LicenseClient{
  }
  async refresh(){if(!this.service||!this.publicKey||!this.token)return this.status();try{return await this.call('refresh','/v1/license/refresh')}catch{return this.status()}}
 }
-module.exports={LicenseClient,deviceMessage,verifyTokenJS,validServiceUrl,cleanCode};
+module.exports={LicenseClient,deviceMessage,verifyTokenJS,validServiceUrl,cleanCode,makeChromiumTransport};

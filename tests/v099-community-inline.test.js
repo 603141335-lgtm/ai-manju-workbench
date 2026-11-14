@@ -73,5 +73,5 @@ test('v0.9.9: startup promo UI and durable opt-out IPC are wired, source QR deco
  const png=Buffer.from(m[1],'base64');
  assert.equal(png.subarray(1,4).toString('ascii'),'PNG');
  assert(png.length>2000);
- assert.equal(read('package.json').includes('"version": "1.2.0"'),true);
+ assert.equal(read('package.json').includes('"version": "1.2.1"'),true);
 });

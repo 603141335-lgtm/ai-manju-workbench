@@ -1,8 +1,8 @@
 {
   "name": "doubao-creative-hub",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
-  "description": "独独AI工作台 v1.1.0：远程图文教程与社群管理、按账号独立后台导入、Rust保护与科幻安装器",
+  "description": "独独AI工作台 v1.2.1：修复授权连接超时，Chromium系统代理网络与永久卡密",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",

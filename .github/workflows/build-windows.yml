@@ -1,10 +1,10 @@
-name: Build Dudu AI Workbench v1.2.0 Signed Trial and Permanent Licenses
+name: Build Dudu AI Workbench v1.2.1 Signed Trial and Permanent Licenses
 concurrency:
-  group: "dudu-v120-${{ github.ref }}"
+  group: "dudu-v121-${{ github.ref }}"
   cancel-in-progress: true
 on:
   push:
-    branches: [feature/dudu-ai-v1.2.0-license]
+    branches: [feature/dudu-ai-v1.2.1-license]
   workflow_dispatch:
 permissions:
   contents: write
@@ -52,7 +52,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             native-core/target
-          key: dudu-rust-windows-v120-${{ hashFiles('native-core/Cargo.toml') }}
+          key: dudu-rust-windows-v121-${{ hashFiles('native-core/Cargo.toml') }}
       - uses: dtolnay/rust-toolchain@stable
       - name: Resolve Rust dependency lockfile for this build
         run: cargo generate-lockfile --manifest-path native-core/Cargo.toml
@@ -119,11 +119,11 @@ jobs:
         run: |
           $images=@(Get-ChildItem assets/tutorial -Filter 'step-*.webp' -File)
           if($images.Count -ne 12){throw 'Exactly 12 tutorial images are required'}
-          Compress-Archive -Path assets/tutorial/step-*.webp -DestinationPath release/DuduAI-Tutorial-12-v1.2.0.zip -Force
+          Compress-Archive -Path assets/tutorial/step-*.webp -DestinationPath release/DuduAI-Tutorial-12-v1.2.1.zip -Force
       - name: Verify installer and SHA256
         if: ${{ vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
         run: |
-          $exe = @(Get-ChildItem release -Filter '独独AI工作台-Setup-v1.2.0-x64.exe' -File)
+          $exe = @(Get-ChildItem release -Filter '独独AI工作台-Setup-v1.2.1-x64.exe' -File)
           if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
           $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
           "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
@@ -135,15 +135,15 @@ jobs:
         if: ${{ vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dudu-ai-workbench-v1.2.0
-          target_commitish: feature/dudu-ai-v1.2.0-license
-          name: 独独AI工作台 v1.2.0（24小时试用·单设备永久卡密·Rust授权验证）
+          tag_name: dudu-ai-workbench-v1.2.1
+          target_commitish: feature/dudu-ai-v1.2.1-license
+          name: 独独AI工作台 v1.2.1（24小时试用·单设备永久卡密·Rust授权验证）
           prerelease: true
           body: |
-            独独AI工作台 v1.2.0：24小时试用与永久卡密授权，服务器签发Ed25519离线凭证；后台未部署或缺少公钥则不生成正式安装包。12张实际工作台界面演示数据截图（红框及内嵌水印），云端教程与社群公告管理源码、备用微信 du6du66、教程弹窗与左右翻页。账号独立后台上传任务，切换账号不再自动取消；原生蓝色@需要原账号前台焦点时等待回到对应账号。保留原Rust核心、ASAR成品逆向检查、科幻NSIS安装器和历史数据目录。Cloudflare后台需本人部署和配置 DUDU_CONTENT_URL，未部署时使用本地教程。真实豆包网页登录流程与覆盖安装需Windows实机验收。没有商业加壳许可证或签名证书时不声称已部署。
+            独独AI工作台 v1.2.1：24小时试用与永久卡密授权，服务器签发Ed25519离线凭证；后台未部署或缺少公钥则不生成正式安装包。12张实际工作台界面演示数据截图（红框及内嵌水印），云端教程与社群公告管理源码、备用微信 du6du66、教程弹窗与左右翻页。账号独立后台上传任务，切换账号不再自动取消；原生蓝色@需要原账号前台焦点时等待回到对应账号。修复了v1.2.0授权请求仅通过Node.js直连并在9秒超时的问题，改用Electron Chromium代理网络通道，测试卡密无需重新生成。保留原Rust核心、ASAR成品逆向检查、科幻NSIS安装器和历史数据目录。Cloudflare后台需本人部署和配置 DUDU_CONTENT_URL，未部署时使用本地教程。真实豆包网页登录流程与覆盖安装需Windows实机验收。没有商业加壳许可证或签名证书时不声称已部署。
           files: |
-            release/独独AI工作台-Setup-v1.2.0-x64.exe
+            release/独独AI工作台-Setup-v1.2.1-x64.exe
             release/SHA256SUMS.txt
-            release/DuduAI-Tutorial-12-v1.2.0.zip
+            release/DuduAI-Tutorial-12-v1.2.1.zip
             release/*.blockmap
           fail_on_unmatched_files: true
