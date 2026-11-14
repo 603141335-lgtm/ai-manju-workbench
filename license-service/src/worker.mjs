@@ -162,9 +162,10 @@ async function adminRequest(req,env,path){
   return response({ok:true,id});
  }
  if(path.endsWith('/payment/readiness')){
-  return response({wechatReady:!!env.WECHAT_MCH_ID&&!!env.WECHAT_SERIAL_NO&&!!env.WECHAT_PRIVATE_KEY_PEM&&!!env.WECHAT_API_V3_KEY&&!!env.WECHAT_PLATFORM_CERT_PEM&&!!env.WECHAT_NOTIFY_URL,
-   alipayReady:!!env.ALIPAY_APP_ID&&!!env.ALIPAY_PRIVATE_KEY_PEM&&!!env.ALIPAY_PUBLIC_KEY_PEM&&!!env.ALIPAY_NOTIFY_URL,
-   note:'支付下单与回调只有在官方商户参数、签名验签和真实沙箱测试全部完成后才开放。'});
+  return response({wechatConfigured:!!env.WECHAT_MCH_ID&&!!env.WECHAT_SERIAL_NO&&!!env.WECHAT_PRIVATE_KEY_PEM&&!!env.WECHAT_API_V3_KEY&&!!env.WECHAT_PLATFORM_CERT_PEM&&!!env.WECHAT_NOTIFY_URL,
+   alipayConfigured:!!env.ALIPAY_APP_ID&&!!env.ALIPAY_PRIVATE_KEY_PEM&&!!env.ALIPAY_PUBLIC_KEY_PEM&&!!env.ALIPAY_NOTIFY_URL,
+   wechatReady:false,alipayReady:false,checkoutEnabled:false,
+   note:'当前版本尚未开放真实支付下单与回调验签。即使商户参数已配置，也必须先完成支付适配器、官方验签、退款和真实沙箱验收。'});
  }
  if(path.endsWith('/revoke')||path.endsWith('/transfer')){
   const cardId=String(body.cardId||'');
