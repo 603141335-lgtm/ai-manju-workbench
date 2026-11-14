@@ -53,15 +53,15 @@ npx wrangler secret put DUDU_LEGACY_CONTENT_URL --config wrangler.local.toml
 
 ### 微信支付（Native 扫码支付）
 
-在微信支付商户平台完成 Native 支付产品开通，准备：
+在微信支付商户平台完成 Native 支付产品开通，并选择微信支付公钥验签模式，准备：
 
 - 商户号：WECHATPAY_MCHID
 - 商户 AppID：WECHATPAY_APPID
 - 商户 API 证书序列号：WECHATPAY_SERIAL_NO
 - 商户 API 私钥 PEM：WECHATPAY_PRIVATE_KEY_PEM
 - APIv3 密钥（32字节）：WECHATPAY_API_V3_KEY
-- 微信支付公钥 PEM：WECHATPAY_PLATFORM_PUBLIC_KEY_PEM
-- 对应的微信支付公钥 ID / 序列号：WECHATPAY_PLATFORM_SERIAL
+- 微信支付公钥 PEM（SPKI 格式）：WECHATPAY_PLATFORM_PUBLIC_KEY_PEM
+- 对应的微信支付公钥 ID（PUB_KEY_ID_...）：WECHATPAY_PLATFORM_SERIAL
 
 回调地址为：
 
