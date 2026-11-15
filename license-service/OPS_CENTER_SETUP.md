@@ -123,6 +123,9 @@ npx wrangler secret put ALIPAY_SELLER_ID --config wrangler.local.toml
 - 申请状态查询
 - 商品列表读取
 - 微信 / 支付宝订单创建
+- 最近20笔本机订单记录，关闭软件后重新打开仍可恢复查看
+- 待付款订单可重新打开收银台
+- 用户可点击「已付款？核对到账」，由授权设备签名请求支付平台查单；核验成功后自动发放并刷新授权
 - 付款后轮询订单状态并自动刷新授权
 - 公开公告从 DUDU_LICENSE_URL/manifest.json 读取
 
