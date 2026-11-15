@@ -468,7 +468,7 @@ async function handleWechatRefundNotify(request,env) {
     await logPaymentWebhook(env,{provider:"wechat",eventId,orderNo:refund.order_no,outcome:"accepted",message:"退款回调验签通过："+clean(trade.refund_status,40),raw});
     return json({code:"SUCCESS",message:state.message||"成功"});
   } catch(error) {
-    await logPaymentWebhook(env,{provider:"wechat",eventId,outcome:"error",message:error.message||"退款回调处理失败",raw});
+    await logPaymentWebhook(env,{provider:"wechat",eventId,outcome:"error",message:"微信退款回调处理失败："+clean(error.message||"未知错误",140),raw});
     return json({code:"FAIL",message:clean(error.message,120)||"处理失败"},400);
   }
 }
