@@ -1,0 +1,17 @@
+name = "dudu-ai-license-staging"
+main = "src/worker.mjs"
+compatibility_date = "2026-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dudu-license-staging"
+database_id = "REPLACE_WITH_DUDU_STAGING_D1_ID"
+
+[vars]
+PRODUCT_ID = "dudu-ai-workbench"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[secrets]
+required = ["DUDU_SIGNING_PRIVATE_PKCS8_B64", "DUDU_DEVICE_HMAC_KEY", "DUDU_CARD_HMAC_KEY", "DUDU_ADMIN_TOKEN_SHA256"]
