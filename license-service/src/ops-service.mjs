@@ -774,7 +774,7 @@ async function adminOps(req, env, path, helpers) {
       env.DB.prepare("SELECT payment_method,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY payment_method").bind(fromMs,toMs).all(),
       env.DB.prepare("SELECT product_name,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY product_name ORDER BY gross_cents DESC LIMIT 30").bind(fromMs,toMs).all(),
       env.DB.prepare("SELECT strftime('%Y-%m-%d',paid_ms/1000,'unixepoch',?) AS day,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY day ORDER BY day").bind((tzOffsetMinutes>=0?"+":"")+tzOffsetMinutes+" minutes",fromMs,toMs).all(),
-      env.DB.prepare("SELECT COUNT(*) AS n FROM refunds WHERE status IN ('requested','processing','manual_review','abnormal')").first()
+      env.DB.prepare("SELECT COUNT(*) AS n FROM refunds WHERE status IN ('requested','processing','failed','manual_review','abnormal','closed')").first()
     ]);
     const gross=Number(sales?.gross_cents||0),refunded=Number(refunds?.refunded_cents||0);
     return json({fromMs,toMs,tzOffsetMinutes,orders:Number(sales?.orders||0),grossCents:gross,refundCount:Number(refunds?.count||0),refundedCents:refunded,netCents:gross-refunded,pendingRefunds:Number(pendingRefunds?.n||0),channels:channels.results||[],products:products.results||[],daily:daily.results||[]});
@@ -877,7 +877,7 @@ async function adminOps(req, env, path, helpers) {
       env.DB.prepare("SELECT d.order_id,d.last_error,d.created_ms FROM delivery_outbox d JOIN orders o ON o.order_id=d.order_id WHERE d.status='failed' AND o.status='paid' ORDER BY d.created_ms DESC LIMIT 50").all(),
       env.DB.prepare("SELECT order_id,order_no,last_error,paid_ms FROM orders WHERE status='paid' AND delivered_ms IS NULL ORDER BY paid_ms ASC LIMIT 50").all(),
       env.DB.prepare("SELECT id,provider,order_no,message,outcome,occurred_ms FROM payment_webhook_logs WHERE outcome IN ('rejected','error') AND occurred_ms>? ORDER BY occurred_ms DESC LIMIT 50").bind(since).all(),
-      env.DB.prepare("SELECT r.refund_id,r.refund_no,r.status,r.last_error,r.updated_ms,o.order_no FROM refunds r JOIN orders o ON o.order_id=r.order_id WHERE r.status IN ('manual_review','abnormal') OR (r.status='processing' AND r.updated_ms<?) ORDER BY r.updated_ms ASC LIMIT 50").bind(Date.now()-15*60*1000).all()
+      env.DB.prepare("SELECT r.refund_id,r.refund_no,r.status,r.last_error,r.updated_ms,o.order_no FROM refunds r JOIN orders o ON o.order_id=r.order_id WHERE r.status IN ('failed','manual_review','abnormal','closed') OR (r.status='processing' AND r.updated_ms<?) ORDER BY r.updated_ms ASC LIMIT 50").bind(Date.now()-15*60*1000).all()
     ]);
     const alerts=[
       ...(deliveries.results||[]).map(x=>({type:"发货失败",severity:"high",id:x.order_id,detail:x.last_error||"自动发货失败",occurred_ms:x.created_ms})),
