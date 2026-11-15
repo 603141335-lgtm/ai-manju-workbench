@@ -432,8 +432,10 @@ async function reconcileAdminRefund(env,refundId) {
   const refund=await env.DB.prepare("SELECT * FROM refunds WHERE refund_id=?").bind(clean(refundId,80)).first();
   if(!refund) return json({error:"退款记录不存在"},404);
   if(refund.status==="succeeded"||refund.status==="failed") return json({ok:true,status:refund.status,message:refund.status==="succeeded"?"退款已确认成功":"该退款单已确认未成功，请核对后再决定是否重新申请"});
+  const queryIntervalMs=refund.provider==="wechat"?60000:10000;
+  const lastAttemptMs=Number(refund.last_checked_ms||refund.created_ms||0);
+  if(Date.now()-lastAttemptMs<queryIntervalMs) return json({error:refund.provider==="wechat"?"微信退款查询建议在上次申请或查询60秒后进行":"支付宝退款查询建议在上次申请或查询10秒后进行"},429);
   if(!paymentReady(env,refund.provider)) return json({error:"对应支付商户密钥尚未完整配置"},400);
-  if(refund.provider==="alipay"&&Date.now()-refund.created_ms<10000) return json({error:"支付宝退款查询建议在发起退款10秒后进行"},429);
   const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(refund.order_id).first();
   if(!order) return json({error:"原订单不存在"},404);
   try {
