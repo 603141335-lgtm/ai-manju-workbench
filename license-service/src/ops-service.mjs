@@ -403,10 +403,10 @@ async function createAdminRefund(req,env,body) {
   const id=clean(body.orderId,80),reason=clean(body.reason,200)||"用户申请退款";
   const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(id).first();
   if(!order) return json({error:"订单不存在"},404);
-  if(order.status!=="paid") return json({error:"只有已确认付款且未退款的订单可以退款"},400);
-  if(!paymentReady(env,order.payment_method)) return json({error:"对应支付商户密钥尚未完整配置"},400);
   const active=await env.DB.prepare("SELECT refund_id,status FROM refunds WHERE order_id=? AND status IN ('processing','manual_review','succeeded') ORDER BY created_ms DESC LIMIT 1").bind(id).first();
   if(active) return json({error:active.status==="succeeded"?"该订单已经退款成功":"该订单已有退款正在处理或等待人工核对",refundId:active.refund_id,status:active.status},409);
+  if(order.status!=="paid") return json({error:"只有已确认付款且未退款的订单可以退款"},400);
+  if(!paymentReady(env,order.payment_method)) return json({error:"对应支付商户密钥尚未完整配置"},400);
   const now=Date.now(),refund={refund_id:crypto.randomUUID(),order_id:id,refund_no:newRefundNo(),provider:order.payment_method,amount_cents:order.amount_cents,reason,status:"processing",created_ms:now,updated_ms:now};
   try {
     await env.DB.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms) VALUES(?,?,?,?,?,?,'processing',?,?)")
