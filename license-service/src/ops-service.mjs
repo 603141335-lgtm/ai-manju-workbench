@@ -391,6 +391,7 @@ async function decryptWechatResource(resource, env) {
   return JSON.parse(dec.decode(plain));
 }
 async function handleWechatNotify(request, env, helpers) {
+  if(Number(request.headers.get("content-length")||0)>65536) return json({code:"FAIL",message:"请求过大"},413);
   const raw=await request.text(), bytes=enc.encode(raw).length;
   let notice={};try{notice=JSON.parse(raw)}catch{}
   const eventId=clean(notice.id,120);
@@ -425,6 +426,7 @@ async function handleWechatNotify(request, env, helpers) {
   }
 }
 async function handleAlipayNotify(request, env, helpers) {
+  if(Number(request.headers.get("content-length")||0)>65536) return new Response("failure",{status:413});
   const raw=await request.text(),bytes=enc.encode(raw).length,params=Object.fromEntries(new URLSearchParams(raw).entries());
   const eventId=clean(params.notify_id,120),orderNo=clean(params.out_trade_no,80);
   if(bytes>65536) {
