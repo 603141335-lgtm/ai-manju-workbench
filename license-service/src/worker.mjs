@@ -121,7 +121,7 @@ async function adminRequest(req,env,path){
  const action=path.endsWith('/issue')?'issue':path.endsWith('/revoke')?'revoke':path.endsWith('/transfer')?'transfer':'list';
  const allowed=principal.role==='super_admin'
   ||(action==='issue'&&principal.role==='operations')
-  ||(action==='list'&&['finance','operations','support'].includes(principal.role))
+  ||(action==='list'&&['operations','support'].includes(principal.role))
   ||(['revoke','transfer'].includes(action)&&principal.role==='support');
  if(!allowed)return response({error:'当前管理员角色没有此操作权限'},403);
  const body=await req.json();
