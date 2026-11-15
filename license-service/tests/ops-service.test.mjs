@@ -213,7 +213,8 @@ function signedAlipayEnvelope(data,privateKey){
 }
 function signedWechatResponse(data,privateKey,serial='platform-serial'){
   const raw=JSON.stringify(data),timestamp=String(Math.floor(Date.now()/1000)),nonce='response-nonce';
-  const signature=nodeSign('RSA-SHA256',Buffer.from(timestamp+'\n'+nonce+'\n'+raw+'\\n'),privateKey).toString('base64');
+  const message=[timestamp,nonce,raw,""].join(String.fromCharCode(10));
+  const signature=nodeSign('RSA-SHA256',Buffer.from(message),privateKey).toString('base64');
   return new Response(raw,{status:200,headers:{
     'content-type':'application/json',
     'Wechatpay-Serial':serial,'Wechatpay-Timestamp':timestamp,'Wechatpay-Nonce':nonce,'Wechatpay-Signature':signature
@@ -221,11 +222,12 @@ function signedWechatResponse(data,privateKey,serial='platform-serial'){
 }
 async function signedWechatRefundNotify(data,env,privateKey){
   const nonce='123456789012',associated='';
-  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.WECHATPAY_API_V3_KEY),{name:'AES-GCM'},false,['encrypt']);
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.WECHPAY_API_V3_KEY||env.WECHATPAY_API_V3_KEY),{name:'AES-GCM'},false,['encrypt']);
   const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv:new TextEncoder().encode(nonce),additionalData:new TextEncoder().encode(associated),tagLength:128},key,new TextEncoder().encode(JSON.stringify(data)));
   const notice={id:'refund-event-1',event_type:'REFUND.SUCCESS',resource:{original_type:'refund',algorithm:'AEAD_AES_256_GCM',ciphertext:Buffer.from(encrypted).toString('base64'),associated_data:associated,nonce}};
   const raw=JSON.stringify(notice),timestamp=String(Math.floor(Date.now()/1000)),sigNonce='callback-nonce';
-  const signature=nodeSign('RSA-SHA256',Buffer.from(timestamp+'\n'+sigNonce+'\n'+raw+'\\n'),privateKey).toString('base64');
+  const message=[timestamp,sigNonce,raw,""].join(String.fromCharCode(10));
+  const signature=nodeSign('RSA-SHA256',Buffer.from(message),privateKey).toString('base64');
   return new Request('https://dudu.example/v1/payments/wechat/refund-notify',{method:'POST',headers:{
     'content-type':'application/json','Wechatpay-Serial':env.WECHATPAY_PLATFORM_SERIAL,
     'Wechatpay-Timestamp':timestamp,'Wechatpay-Nonce':sigNonce,'Wechatpay-Signature':signature
@@ -240,7 +242,7 @@ test('finance summary reports gross sales, completed refunds, net cash flow and 
   db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,succeeded_ms) VALUES('refund-1','order-refunded','RF-1','alipay',2500,'用户申请','succeeded',?,?,?)")
     .run(Date.now()-2000,Date.now()-1000,Date.now()-1000);
   const env={DB:makeD1(db)},helpers={adminAuth:async()=>true};
-  const req=new Request('https://dudu.example/v1/admin/finance/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startMs:0,endMs:Date.now()+10000})});
+  const req=new Request('https://dudu.example/v1/admin/finance/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startMs:Date.now()-86400000,endMs:Date.now()+10000})});
   const response=await handleOpsRequest(req,env,'/v1/admin/finance/summary',helpers);
   assert.equal(response.status,200);
   const v=await response.json();
