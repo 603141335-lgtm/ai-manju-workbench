@@ -222,7 +222,7 @@ function signedWechatResponse(data,privateKey,serial='platform-serial'){
 }
 async function signedWechatRefundNotify(data,env,privateKey){
   const nonce='123456789012',associated='';
-  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.WECHPAY_API_V3_KEY||env.WECHATPAY_API_V3_KEY),{name:'AES-GCM'},false,['encrypt']);
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.WECHATPAY_API_V3_KEY),{name:'AES-GCM'},false,['encrypt']);
   const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv:new TextEncoder().encode(nonce),additionalData:new TextEncoder().encode(associated),tagLength:128},key,new TextEncoder().encode(JSON.stringify(data)));
   const notice={id:'refund-event-1',event_type:'REFUND.SUCCESS',resource:{original_type:'refund',algorithm:'AEAD_AES_256_GCM',ciphertext:Buffer.from(encrypted).toString('base64'),associated_data:associated,nonce}};
   const raw=JSON.stringify(notice),timestamp=String(Math.floor(Date.now()/1000)),sigNonce='callback-nonce';
