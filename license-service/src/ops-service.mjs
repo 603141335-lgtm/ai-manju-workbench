@@ -762,19 +762,19 @@ async function adminOps(req, env, path, helpers) {
   if(!roleCanAccess(actor.role,path))return json({error:"当前管理员角色没有此操作权限"},403);
   let body={}; if(req.method==="POST") body=await req.json().catch(()=>({}));
   if(path==="/v1/admin/finance/summary") {
-    const fromMs=Number(body.fromMs),toMs=Number(body.toMs);
-    if(!Number.isSafeInteger(fromMs)||!Number.isSafeInteger(toMs)||fromMs<0||toMs<=fromMs||toMs-fromMs>366*86400000)
-      return json({error:"统计日期范围无效，最多查询366天"},400);
+    const fromMs=Number(body.fromMs),toMs=Number(body.toMs),tzOffsetMinutes=Number(body.tzOffsetMinutes??0);
+    if(!Number.isSafeInteger(fromMs)||!Number.isSafeInteger(toMs)||fromMs<0||toMs<=fromMs||toMs-fromMs>366*86400000||!Number.isInteger(tzOffsetMinutes)||tzOffsetMinutes< -720||tzOffsetMinutes>840)
+      return json({error:"统计日期范围或时区无效，日期最多查询366天"},400);
     const [sales,refunds,channels,products,daily,pendingRefunds]=await Promise.all([
       env.DB.prepare("SELECT COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<?").bind(fromMs,toMs).first(),
       env.DB.prepare("SELECT COUNT(*) AS count,COALESCE(SUM(amount_cents),0) AS refunded_cents FROM refunds WHERE status='succeeded' AND completed_ms>=? AND completed_ms<?").bind(fromMs,toMs).first(),
       env.DB.prepare("SELECT payment_method,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY payment_method").bind(fromMs,toMs).all(),
       env.DB.prepare("SELECT product_name,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY product_name ORDER BY gross_cents DESC LIMIT 30").bind(fromMs,toMs).all(),
-      env.DB.prepare("SELECT strftime('%Y-%m-%d',paid_ms/1000,'unixepoch') AS day,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY day ORDER BY day").bind(fromMs,toMs).all(),
+      env.DB.prepare("SELECT strftime('%Y-%m-%d',paid_ms/1000,'unixepoch',?) AS day,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY day ORDER BY day").bind((tzOffsetMinutes>=0?"+":"")+tzOffsetMinutes+" minutes",fromMs,toMs).all(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM refunds WHERE status IN ('requested','processing','manual_review','abnormal')").first()
     ]);
     const gross=Number(sales?.gross_cents||0),refunded=Number(refunds?.refunded_cents||0);
-    return json({fromMs,toMs,orders:Number(sales?.orders||0),grossCents:gross,refundCount:Number(refunds?.count||0),refundedCents:refunded,netCents:gross-refunded,pendingRefunds:Number(pendingRefunds?.n||0),channels:channels.results||[],products:products.results||[],daily:daily.results||[]});
+    return json({fromMs,toMs,tzOffsetMinutes,orders:Number(sales?.orders||0),grossCents:gross,refundCount:Number(refunds?.count||0),refundedCents:refunded,netCents:gross-refunded,pendingRefunds:Number(pendingRefunds?.n||0),channels:channels.results||[],products:products.results||[],daily:daily.results||[]});
   }
   if(path==="/v1/admin/customers/list") {
     const result=await env.DB.prepare("SELECT d.device_hash,d.created_ms,d.trial_started_ms,d.trial_ends_ms,dc.blocked_ms,dc.block_reason,(SELECT contact FROM license_applications a WHERE a.device_hash=d.device_hash ORDER BY a.created_ms DESC LIMIT 1) AS contact,(SELECT COUNT(*) FROM orders o WHERE o.device_hash=d.device_hash) AS order_count,(SELECT COUNT(*) FROM orders o WHERE o.device_hash=d.device_hash AND o.status IN ('paid','refunded')) AS paid_orders,(SELECT COALESCE(SUM(amount_cents),0) FROM orders o WHERE o.device_hash=d.device_hash AND o.status IN ('paid','refunded')) AS gross_cents,(SELECT MAX(COALESCE(paid_ms,created_ms)) FROM orders o WHERE o.device_hash=d.device_hash) AS last_order_ms,(SELECT COUNT(*) FROM license_cards c WHERE c.bound_device_hash=d.device_hash AND c.revoked_ms IS NULL) AS active_cards FROM devices d LEFT JOIN device_controls dc ON dc.device_hash=d.device_hash ORDER BY (SELECT MAX(COALESCE(o2.paid_ms,o2.created_ms)) FROM orders o2 WHERE o2.device_hash=d.device_hash) DESC,d.created_ms DESC LIMIT 300").all();
@@ -962,6 +962,7 @@ async function adminOps(req, env, path, helpers) {
     if(order.status==="refunded") return json({status:"refunded",message:"订单已退款，不能自动发放授权"});
     if(order.status==="paid") {
       if(!order.delivered_ms) await deliverPaidOrder(env,order,helpers);
+      await recordAdminActivity(env,actor,"order_reconcile","order",id,"订单已确认付款并检查授权发放");
       return json({status:"paid",delivered:true,message:"订单已确认付款"});
     }
     if(!paymentReady(env,order.payment_method)) throw Error("对应支付商户密钥尚未完整配置");
