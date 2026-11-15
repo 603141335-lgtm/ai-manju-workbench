@@ -874,7 +874,7 @@ async function adminOps(req, env, path, helpers) {
   if(path==="/v1/admin/alerts/list") {
     const since=Date.now()-24*60*60*1000;
     const [deliveries,undelivered,webhooks,refunds]=await Promise.all([
-      env.DB.prepare("SELECT order_id,last_error,created_ms FROM delivery_outbox WHERE status='failed' ORDER BY created_ms DESC LIMIT 50").all(),
+      env.DB.prepare("SELECT d.order_id,d.last_error,d.created_ms FROM delivery_outbox d JOIN orders o ON o.order_id=d.order_id WHERE d.status='failed' AND o.status='paid' ORDER BY d.created_ms DESC LIMIT 50").all(),
       env.DB.prepare("SELECT order_id,order_no,last_error,paid_ms FROM orders WHERE status='paid' AND delivered_ms IS NULL ORDER BY paid_ms ASC LIMIT 50").all(),
       env.DB.prepare("SELECT id,provider,order_no,message,outcome,occurred_ms FROM payment_webhook_logs WHERE outcome IN ('rejected','error') AND occurred_ms>? ORDER BY occurred_ms DESC LIMIT 50").bind(since).all(),
       env.DB.prepare("SELECT r.refund_id,r.refund_no,r.status,r.last_error,r.updated_ms,o.order_no FROM refunds r JOIN orders o ON o.order_id=r.order_id WHERE r.status IN ('manual_review','abnormal') OR (r.status='processing' AND r.updated_ms<?) ORDER BY r.updated_ms ASC LIMIT 50").bind(Date.now()-15*60*1000).all()
@@ -996,7 +996,7 @@ async function adminOps(req, env, path, helpers) {
     const [pending,undelivered,failedDeliveries,failedWebhooks,webhookCounts,lastWechat,lastAlipay,lastReconcile] = await Promise.all([
       env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status='pending'").first(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status='paid' AND delivered_ms IS NULL").first(),
-      env.DB.prepare("SELECT COUNT(*) AS n FROM delivery_outbox WHERE status IN ('pending','failed')").first(),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM delivery_outbox d JOIN orders o ON o.order_id=d.order_id WHERE o.status='paid' AND d.status IN ('pending','failed')").first(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM payment_webhook_logs WHERE outcome IN ('rejected','error') AND occurred_ms>?").bind(since).first(),
       env.DB.prepare("SELECT provider,outcome,COUNT(*) AS n FROM payment_webhook_logs WHERE occurred_ms>? GROUP BY provider,outcome").bind(since).all(),
       env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' ORDER BY occurred_ms DESC LIMIT 1").first(),
@@ -1018,7 +1018,7 @@ async function adminOps(req, env, path, helpers) {
     return json({events:result.results||[]});
   }
   if(path==="/v1/admin/deliveries/list") {
-    const result=await env.DB.prepare("SELECT d.delivery_id,o.order_id,d.card_id,d.last_four,COALESCE(d.status,'pending') AS status,COALESCE(d.attempts,0) AS attempts,COALESCE(d.created_ms,o.paid_ms) AS created_ms,d.delivered_ms,COALESCE(d.last_error,o.last_error,'') AS last_error,o.order_no,o.product_name,o.amount_cents,o.status AS order_status FROM orders o LEFT JOIN delivery_outbox d ON d.order_id=o.order_id WHERE (o.status='paid' AND o.delivered_ms IS NULL) OR d.status IN ('pending','failed') ORDER BY CASE WHEN COALESCE(d.status,'pending') IN ('failed','pending') THEN 0 ELSE 1 END,COALESCE(d.created_ms,o.paid_ms) DESC LIMIT 200").all();
+    const result=await env.DB.prepare("SELECT d.delivery_id,o.order_id,d.card_id,d.last_four,COALESCE(d.status,'pending') AS status,COALESCE(d.attempts,0) AS attempts,COALESCE(d.created_ms,o.paid_ms) AS created_ms,d.delivered_ms,COALESCE(d.last_error,o.last_error,'') AS last_error,o.order_no,o.product_name,o.amount_cents,o.status AS order_status FROM orders o LEFT JOIN delivery_outbox d ON d.order_id=o.order_id WHERE o.status='paid' AND (o.delivered_ms IS NULL OR d.status IN ('pending','failed')) ORDER BY CASE WHEN COALESCE(d.status,'pending') IN ('failed','pending') THEN 0 ELSE 1 END,COALESCE(d.created_ms,o.paid_ms) DESC LIMIT 200").all();
     return json({deliveries:result.results||[]});
   }
   if(path==="/v1/admin/payments/self-test") {
