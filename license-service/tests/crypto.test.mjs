@@ -42,7 +42,7 @@ test('operations admin inline script parses and exposes payment monitoring actio
  const script=adminHtml.match(/<script>([\s\S]*?)<\/script>/)?.[1];
  assert.ok(script,'admin page contains its application script');
  assert.doesNotThrow(()=>new Function(script));
- for(const id of ['tab-monitor','paymentEventsBody','deliveriesBody','runPaymentReconcile','runPaymentSelfTest']){
+ for(const id of ['tab-monitor','paymentEventsBody','deliveriesBody','runPaymentReconcile','runPaymentSelfTest','tab-finance','financeGross','financeChannelsBody','tab-refunds','refundsBody','loadFinance','loadRefunds']){
   assert.ok(adminHtml.includes(id),id+' control exists');
  }
 });
