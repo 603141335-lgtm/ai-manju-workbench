@@ -484,3 +484,73 @@ test('a late processing query result cannot overwrite a verified successful WeCh
     assert.ok(db.prepare("SELECT revoked_ms FROM license_cards WHERE id=?").get(seeded.cardId).revoked_ms);
   }finally{releaseFetch?.();globalThis.fetch=originalFetch;db.close()}
 });
+
+
+test('local test console and simulator routes are unavailable off loopback or without local-only mode',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const env={DB:makeD1(db),DUDU_TEST_MODE:'local-only'};
+  const helpers={adminAuth:async()=>true};
+  const remotePage=await handleOpsRequest(new Request('https://dudu.example/__test'),env,'/__test',helpers);
+  assert.equal(remotePage.status,404);
+  const remoteApi=await handleOpsRequest(new Request('https://dudu.example/v1/admin/test/orders/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({paymentMethod:'wechat'})}),env,'/v1/admin/test/orders/create',helpers);
+  assert.equal(remoteApi.status,404);
+  const unauthorized=await handleOpsRequest(new Request('http://127.0.0.1:8788/v1/admin/test/orders/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({paymentMethod:'wechat'})}),env,'/v1/admin/test/orders/create',{adminAuth:async()=>false});
+  assert.equal(unauthorized.status,401);
+  const localPage=await handleOpsRequest(new Request('http://127.0.0.1:8788/__test'),env,'/__test',helpers);
+  assert.equal(localPage.status,200);
+  assert.match(await localPage.text(),/不发生真实扣款或退款/);
+  const disabled=await handleOpsRequest(new Request('http://127.0.0.1:8788/__test'),{DB:makeD1(db)},'/__test',helpers);
+  assert.equal(disabled.status,404);
+  db.close();
+});
+
+test('local-only simulated payment and successful refund update finance and revoke only the purchased card',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const now=Date.now();
+  db.prepare("INSERT INTO products(product_id,name,description,price_cents,entitlement_type,enabled,sort_order,created_ms,updated_ms) VALUES('v13-test-product','V1.3本机测试商品','仅用于本机模拟',990,'permanent',1,0,?,?)").run(now,now);
+  const env={DB:makeD1(db),DUDU_TEST_MODE:'local-only',DUDU_CARD_HMAC_KEY:'local-test-card-hmac-key-0123456789'};
+  let codeNo=0;
+  const helpers={adminAuth:async()=>true,hmac:async(_key,value)=>'local-test-hmac-'+value,newCode:()=> 'LOCAL-TEST-CARD-'+(++codeNo)};
+  const call=(path,body)=>handleOpsRequest(new Request('http://127.0.0.1:8788'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),env,path,helpers);
+  const created=await call('/v1/admin/test/orders/create',{productId:'v13-test-product',paymentMethod:'alipay'});
+  assert.equal(created.status,201);
+  const order=await created.json();assert.equal(order.status,'pending');assert.equal(order.simulated,true);
+  const paid=await call('/v1/admin/test/payments/mark-paid',{orderId:order.orderId});
+  assert.equal(paid.status,200);assert.equal((await paid.json()).delivered,true);
+  const card=db.prepare("SELECT id,revoked_ms FROM license_cards WHERE bound_device_hash=(SELECT device_hash FROM orders WHERE order_id=?)").get(order.orderId);
+  assert.ok(card);assert.equal(card.revoked_ms,null);
+  const refundStarted=await call('/v1/admin/test/refunds/start',{orderId:order.orderId,reason:'本机模拟退款'});
+  assert.equal(refundStarted.status,202);
+  const refund=await refundStarted.json();assert.equal(refund.status,'processing');
+  assert.equal(db.prepare("SELECT revoked_ms FROM license_cards WHERE id=?").get(card.id).revoked_ms,null);
+  const completed=await call('/v1/admin/test/refunds/complete',{refundId:refund.refundId});
+  assert.equal(completed.status,200);assert.equal((await completed.json()).status,'succeeded');
+  assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(order.orderId).status,'refunded');
+  assert.ok(db.prepare("SELECT revoked_ms FROM license_cards WHERE id=?").get(card.id).revoked_ms);
+  const financeResponse=await call('/v1/admin/finance/summary',{startMs:now-10*60*1000,endMs:Date.now()+10000});
+  const finance=await financeResponse.json();
+  assert.equal(financeResponse.status,200,JSON.stringify(finance));
+  assert.equal(finance.grossCents,990);assert.equal(finance.refundsCents,990);assert.equal(finance.netCents,0);
+  db.close();
+});
+
+test('local-only simulated failed refund keeps the paid order and its card active',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const now=Date.now();
+  db.prepare("INSERT INTO products(product_id,name,description,price_cents,entitlement_type,enabled,sort_order,created_ms,updated_ms) VALUES('v13-test-product','V1.3本机测试商品','仅用于本机模拟',990,'permanent',1,0,?,?)").run(now,now);
+  const env={DB:makeD1(db),DUDU_TEST_MODE:'local-only',DUDU_CARD_HMAC_KEY:'local-test-card-hmac-key-0123456789'};
+  let codeNo=0;
+  const helpers={adminAuth:async()=>true,hmac:async(_key,value)=>'local-test-hmac-'+value,newCode:()=> 'LOCAL-TEST-CARD-'+(++codeNo)};
+  const call=(path,body)=>handleOpsRequest(new Request('http://127.0.0.1:8788'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),env,path,helpers);
+  const created=await call('/v1/admin/test/orders/create',{productId:'v13-test-product',paymentMethod:'wechat'});
+  const order=await created.json();
+  await call('/v1/admin/test/payments/mark-paid',{orderId:order.orderId});
+  const card=db.prepare("SELECT id FROM license_cards WHERE bound_device_hash=(SELECT device_hash FROM orders WHERE order_id=?)").get(order.orderId);
+  const started=await call('/v1/admin/test/refunds/start',{orderId:order.orderId});
+  const refund=await started.json();
+  const failed=await call('/v1/admin/test/refunds/fail',{refundId:refund.refundId});
+  assert.equal(failed.status,200);assert.equal((await failed.json()).status,'failed');
+  assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(order.orderId).status,'paid');
+  assert.equal(db.prepare("SELECT revoked_ms FROM license_cards WHERE id=?").get(card.id).revoked_ms,null);
+  db.close();
+});
