@@ -16,11 +16,15 @@ echo [1/3] 正在按锁定版本安装依赖，并启用已审核的本机运行
 call npm ci --no-audit --no-fund
 if errorlevel 1 goto failed
 echo.
-echo [2/3] 检查启动代码...
+echo [2/4] 检查代码语法...
 call npm run check
 if errorlevel 1 goto failed
 echo.
-echo [3/3] 启动本机测试 Worker...
+echo [3/4] 运行自动测试...
+call npm test
+if errorlevel 1 goto failed
+echo.
+echo [4/4] 初始化独立本机数据库并启动测试 Worker...
 call npm run test:env
 if errorlevel 1 goto failed
 echo.
