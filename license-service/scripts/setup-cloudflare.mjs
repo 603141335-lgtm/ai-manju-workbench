@@ -25,10 +25,11 @@ export function renderLocalConfig(template,id){
 export function assertExistingDeploymentIdentity({databaseId,localConfig='',deploymentInfo=null}){
  if(!uuid.test(databaseId||''))throw Error('D1数据库ID无效');
  const configured=localConfig.match(/^database_id\s*=\s*"([^"]+)"/m)?.[1]||'';
- const recorded=typeof deploymentInfo?.d1Id==='string'&&uuid.test(deploymentInfo.d1Id)?deploymentInfo.d1Id:'';
- if(!uuid.test(configured)&&!recorded)throw Error('无法确认这是原有D1数据库：缺少有效的 wrangler.local.toml 数据库ID和 deployment-public.json 记录。请从原部署电脑恢复至少一份原始部署记录后再继续。');
- if(uuid.test(configured)&&configured!==databaseId)throw Error('检测到本机 wrangler.local.toml 的D1 ID与Cloudflare同名数据库不一致；为保护原授权数据，已停止部署');
- if(recorded&&recorded!==databaseId)throw Error('deployment-public.json记录的D1 ID与当前数据库不一致；为保护原授权数据，已停止部署');
+ const recorded=typeof deploymentInfo?.d1Id==='string'?deploymentInfo.d1Id:'';
+ const hasLocal=uuid.test(configured),hasRecorded=uuid.test(recorded);
+ if(!hasLocal&&!hasRecorded)throw Error('缺少原部署D1身份记录；请恢复原 wrangler.local.toml 或 deployment-public.json，禁止猜测数据库');
+ if(hasLocal&&configured!==databaseId)throw Error('检测到本机 wrangler.local.toml 的D1 ID与Cloudflare同名数据库不一致；为保护原授权数据，已停止部署');
+ if(hasRecorded&&recorded!==databaseId)throw Error('deployment-public.json记录的D1 ID与当前数据库不一致；为保护原授权数据，已停止部署');
 }
 function cmd(args,{input}={}){
  const win=process.platform==='win32';
@@ -42,20 +43,17 @@ async function main(){
  if(!process.argv.includes('--apply')){
   console.log('执行前请在license-service目录运行 npx wrangler login，再运行 npm run deploy:setup');return;
  }
- // V1.2 is already deployed: never generate a replacement signing key or silently create a new D1.
  if(!existsSync(ownerKeysPath))throw Error('缺少原部署密钥文件 .private/owner-keys.json。为避免更换签名密钥并导致既有授权失效，部署已停止；请先从原部署电脑恢复该文件。');
  const {data,path:keyPath,created}=ensureOwnerKeys();
  if(created)throw Error('检测到部署密钥意外新建，已停止部署；不得用新密钥覆盖既有授权服务。');
  const required=['DUDU_SIGNING_PRIVATE_PKCS8_B64','DUDU_LICENSE_PUBLIC_KEY_B64','DUDU_DEVICE_HMAC_KEY','DUDU_CARD_HMAC_KEY','DUDU_ADMIN_TOKEN','DUDU_ADMIN_TOKEN_SHA256'];
  if(required.some(k=>!data[k]))throw Error('原部署密钥文件缺少必要字段，已停止部署；请恢复完整备份。');
  mkdirSync(privateDir,{recursive:true,mode:0o700});
- // A separate bootstrap config prevents placeholder D1 UUID errors.
  writeFileSync(join(privateDir,'bootstrap.toml'),'name = "dudu-ai-license"\nmain = "../src/worker.mjs"\ncompatibility_date = "2026-11-01"\n');
  const base=['--config','.private/bootstrap.toml'];
  try{cmd(['whoami',...base])}catch{throw Error('请先运行 npx wrangler login 登录原Cloudflare账户')}
  const list=parseDatabaseList(cmd(['d1','list','--json',...base]));
  const found=list.find(x=>x.name===database);
- // Never create a same-named replacement database during an upgrade.
  if(!found)throw Error('Cloudflare账户中未找到原有 dudu-license D1 数据库；为防止创建空库并造成授权数据分叉，已停止部署。请确认登录的是原Cloudflare账户。');
  if(!uuid.test(found.id))throw Error('Cloudflare D1数据库ID无效');
  const localConfig=existsSync(localConfigPath)?readFileSync(localConfigPath,'utf8'):'';
