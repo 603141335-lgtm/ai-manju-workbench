@@ -22,14 +22,20 @@ function winMachineGuid(){
   return m?m[1].trim().toLowerCase():'';
  }catch{return ''}
 }
-function validServiceUrl(url){
- try{const u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password&&!u.hash&&!u.search&&!u.port&&!/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(u.hostname)?u.origin:''}catch{return ''}
+function validServiceUrl(url,{allowLocalTest=false}={}){
+ try{
+  const u=new URL(url),clean=!u.username&&!u.password&&!u.hash&&!u.search&&!u.port;
+  if(!clean)return '';
+  if(u.protocol==='https:'&&!/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(u.hostname))return u.origin;
+  if(allowLocalTest&&u.protocol==='http:'&&u.hostname==='127.0.0.1'&&u.port==='8788'&&(u.pathname==='/'||u.pathname===''))return u.origin;
+  return '';
+ }catch{return ''}
 }
 function post(service,endpoint,data){
  return new Promise((resolve,reject)=>{
   const url=new URL(endpoint,service);const body=JSON.stringify(data);
   if(body.length>8192)return reject(Error('授权请求过长'));
-  const req=https.request(url,{method:'POST',timeout:9000,headers:{'content-type':'application/json','content-length':Buffer.byteLength(body),'accept':'application/json'}},res=>{
+  const transport=url.protocol==='http:'?http:https;const req=transport.request(url,{method:'POST',timeout:9000,headers:{'content-type':'application/json','content-length':Buffer.byteLength(body),'accept':'application/json'}},res=>{
    const chunks=[];let len=0;res.on('data',b=>{len+=b.length;if(len>MAX_RESPONSE)req.destroy(Error('授权响应过大'));else chunks.push(b)});
    res.on('end',()=>{try{const result=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(res.statusCode<200||res.statusCode>=300)return reject(Error(String(result.error||result.reason||'授权服务异常').slice(0,200)));resolve(result)}catch(e){reject(e)}});
   });
@@ -40,7 +46,7 @@ function post(service,endpoint,data){
 function getJson(service,endpoint){
  return new Promise((resolve,reject)=>{
   const url=new URL(endpoint,service);
-  const req=https.get(url,{timeout:9000,headers:{'accept':'application/json'}},res=>{
+  const transport=url.protocol==='http:'?http:https;const req=transport.get(url,{timeout:9000,headers:{'accept':'application/json'}},res=>{
    const chunks=[];let len=0;
    res.on('data',b=>{len+=b.length;if(len>MAX_RESPONSE)req.destroy(Error('授权响应过大'));else chunks.push(b)});
    res.on('end',()=>{try{const value=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(res.statusCode<200||res.statusCode>=300)return reject(Error(String(value.error||'授权服务异常').slice(0,200)));resolve(value)}catch(e){reject(e)}});
@@ -66,7 +72,8 @@ function verifyTokenJS(token,publicKey,deviceId,now=Date.now()){
 class LicenseClient{
  constructor({root,safeStorage,packaged=false,native=null,config=licenseConfig,clock=()=>Date.now(),transport=post}){
   this.root=root;this.storage=safeStorage;this.packaged=packaged;this.native=native;this.clock=clock;this.transport=transport;
-  this.service=validServiceUrl(config?.serviceUrl);
+  this.localTestMode=!packaged&&config?.localTestMode===true;
+  this.service=validServiceUrl(config?.serviceUrl,{allowLocalTest:this.localTestMode});
   this.publicKey=/^[A-Za-z0-9+/]{50,150}={0,2}$/.test(config?.publicKey||'')?config.publicKey:'';
   this.identityFile=path.join(root,'license-device.bin');this.cacheFile=path.join(root,'license-cache.bin');
   this.identity=null;this.token='';this.maxSeen=0;this.lastError='';
@@ -107,9 +114,10 @@ class LicenseClient{
  }
  status(){
   const state=this.verify();
-  return {...state,configured:!!(this.service&&this.publicKey),secureStorageAvailable:this.secure(),serviceOnline:!this.lastError,error:this.lastError||'',deviceLabel:this.identity?.deviceId?.slice(0,8)||''};
+  return {...state,configured:!!(this.service&&this.publicKey),localTestMode:this.localTestMode,secureStorageAvailable:this.secure(),serviceOnline:!this.lastError,error:this.lastError||'',deviceLabel:this.identity?.deviceId?.slice(0,8)||''};
  }
  requireValid(){const s=this.status();if(!s.valid)throw Error('试用已结束或尚未激活；请打开「授权中心」领取免费永久卡密。'+(s.reason||''));return true}
+ adminUrl(){return this.service?new URL('/admin',this.service).toString():''}
  request(op,code='',extra={}){
   if(!this.service||!this.publicKey)throw Error('授权服务尚未部署，当前仅提供开发预览与本地项目导出');
   const i=this.identityReady(),r={deviceId:i.deviceId,publicKey:i.publicKey,ts:this.clock(),nonce:crypto.randomBytes(16).toString('hex'),code:cleanCode(code)};
