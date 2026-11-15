@@ -9,7 +9,8 @@
     "keys": "node scripts/generate-keys.mjs",
     "deploy:setup": "node scripts/setup-cloudflare.mjs --apply",
     "deploy:check": "node scripts/prepare-wrangler.mjs",
-    "deploy:backup": "node scripts/backup-before-v1.3.mjs"
+    "deploy:backup": "node scripts/backup-before-v1.3.mjs",
+    "deploy:preflight": "node scripts/preflight-v1.3.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
