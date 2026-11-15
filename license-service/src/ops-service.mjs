@@ -591,6 +591,7 @@ function maskContact(value) {
   return v.length>4?v.slice(0,2)+"***":v.slice(0,1)+"***";
 }
 function roleCanAccess(role,path) {
+  if(path==="/v1/admin/session")return true;
   if(role==="super_admin")return true;
   if(role==="finance")return path==="/v1/admin/overview"||path==="/v1/admin/orders/list"||path==="/v1/admin/audit/list"||path.startsWith("/v1/admin/finance/")||path.startsWith("/v1/admin/refunds/")||path==="/v1/admin/alerts/list";
   if(role==="operations")return path==="/v1/admin/overview"||path.startsWith("/v1/admin/applications/")||path.startsWith("/v1/admin/products/")||path.startsWith("/v1/admin/orders/")||path.startsWith("/v1/admin/payments/")||path.startsWith("/v1/admin/deliveries/")||path.startsWith("/v1/admin/content/")||path==="/v1/admin/audit/list"||path==="/v1/admin/alerts/list";
@@ -879,6 +880,7 @@ async function adminOps(req, env, path, helpers) {
     ].sort((a,b)=>b.occurred_ms-a.occurred_ms).slice(0,150);
     return json({alerts});
   }
+  if(path==="/v1/admin/session") return json({id:actor.id,name:actor.name,role:actor.role});
   if(path==="/v1/admin/overview") {
     await closeStaleOrders(env);
     const [cards,apps,orders,products]=await Promise.all([
