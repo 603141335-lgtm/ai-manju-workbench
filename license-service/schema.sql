@@ -120,6 +120,81 @@ CREATE TABLE IF NOT EXISTS payment_reconcile_state (
 );
 CREATE INDEX IF NOT EXISTS idx_payment_reconcile_checked ON payment_reconcile_state(last_checked_ms);
 
+-- V1.3: full-refund ledger. A single full refund is permitted per order; ambiguous
+-- provider results remain processing/manual_review until queried, never guessed.
+CREATE TABLE IF NOT EXISTS refunds (
+  refund_id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL UNIQUE,
+  refund_no TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL CHECK(provider IN ('wechat','alipay')),
+  amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+  reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'requested'
+    CHECK(status IN ('requested','processing','succeeded','failed','closed','abnormal','manual_review')),
+  provider_refund_id TEXT NOT NULL DEFAULT '',
+  provider_status TEXT NOT NULL DEFAULT '',
+  last_error TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL DEFAULT '',
+  created_ms INTEGER NOT NULL,
+  updated_ms INTEGER NOT NULL,
+  completed_ms INTEGER,
+  last_checked_ms INTEGER,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY(order_id) REFERENCES orders(order_id)
+);
+CREATE INDEX IF NOT EXISTS idx_refunds_status_updated ON refunds(status, updated_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_refunds_provider_refund_no ON refunds(provider, refund_no);
+
+CREATE TABLE IF NOT EXISTS refund_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  refund_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  provider_status TEXT NOT NULL DEFAULT '',
+  message TEXT NOT NULL DEFAULT '',
+  occurred_ms INTEGER NOT NULL,
+  FOREIGN KEY(refund_id) REFERENCES refunds(refund_id)
+);
+CREATE INDEX IF NOT EXISTS idx_refund_events_refund_time ON refund_events(refund_id, occurred_ms DESC);
+
+-- Device blocks are separate from device registration so the original device key
+-- and trial history remain intact. A block immediately prevents license refresh.
+CREATE TABLE IF NOT EXISTS device_controls (
+  device_hash TEXT PRIMARY KEY,
+  blocked_ms INTEGER,
+  block_reason TEXT NOT NULL DEFAULT '',
+  blocked_by TEXT NOT NULL DEFAULT '',
+  updated_ms INTEGER NOT NULL,
+  FOREIGN KEY(device_hash) REFERENCES devices(device_hash)
+);
+
+-- Operator tokens are stored as SHA-256 hashes only. The original owner token remains
+-- the root super-admin credential and is never written to this table.
+CREATE TABLE IF NOT EXISTS admin_operators (
+  operator_id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('finance','operations','support')),
+  token_sha256 TEXT NOT NULL UNIQUE,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+  created_ms INTEGER NOT NULL,
+  updated_ms INTEGER NOT NULL,
+  last_login_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_admin_operators_enabled_role ON admin_operators(enabled, role);
+
+CREATE TABLE IF NOT EXISTS admin_activity (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id TEXT NOT NULL,
+  actor_name TEXT NOT NULL,
+  actor_role TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL DEFAULT '',
+  target_id TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  occurred_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_admin_activity_time ON admin_activity(occurred_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_activity_actor ON admin_activity(actor_id, occurred_ms DESC);
+
 -- A unique outbox row per paid order makes delivery idempotent under duplicate callbacks.
 -- It stores only the card HMAC, never the plaintext card code.
 CREATE TABLE IF NOT EXISTS delivery_outbox (
