@@ -379,8 +379,8 @@ test('Alipay refund query does not mark a refund successful without REFUND_SUCCE
 test('refund reconciliation applies one-minute WeChat and ten-second Alipay query cooldowns from the last attempt',async()=>{
   const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
   const now=Date.now();
-  const wx=seedPaidOrder(db,{orderId:'order-wx-cooldown',orderNo:'DU-WX-CD',provider:'wechat'});
-  const ali=seedPaidOrder(db,{orderId:'order-ali-cooldown',orderNo:'DU-ALI-CD',provider:'alipay'});
+  const wx=seedPaidOrder(db,{orderId:'order-wx-cooldown',orderNo:'DU-WX-CD',provider:'wechat',cardId:'card-wx-cd'});
+  const ali=seedPaidOrder(db,{orderId:'order-ali-cooldown',orderNo:'DU-ALI-CD',provider:'alipay',cardId:'card-ali-cd'});
   db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,last_checked_ms) VALUES('refund-wx-cd',?,'RF-WX-CD','wechat',1200,'test','processing',?,?,?)")
     .run(wx.orderId,now-120000,now-120000,now-30000);
   db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,last_checked_ms) VALUES('refund-ali-cd',?,'RF-ALI-CD','alipay',1200,'test','processing',?,?,?)")
