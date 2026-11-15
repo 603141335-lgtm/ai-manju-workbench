@@ -36,3 +36,13 @@ test('device proof binds order history and self-service payment reconciliation',
  }
  assert.equal(verify(null,Buffer.from(deviceMessage('order-reconcile',{...r,orderId:'00000000-0000-0000-0000-000000000000'})),publicKey,sign(null,Buffer.from(deviceMessage('order-reconcile',r)),privateKey)),false);
 });
+
+test('operations admin inline script parses and exposes payment monitoring actions',async()=>{
+ const {adminHtml}=await import('../src/admin-ui.mjs');
+ const script=adminHtml.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+ assert.ok(script,'admin page contains its application script');
+ assert.doesNotThrow(()=>new Function(script));
+ for(const id of ['tab-monitor','paymentEventsBody','deliveriesBody','runPaymentReconcile','runPaymentSelfTest']){
+  assert.ok(adminHtml.includes(id),id+' control exists');
+ }
+});
