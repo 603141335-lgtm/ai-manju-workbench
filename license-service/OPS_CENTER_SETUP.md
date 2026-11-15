@@ -43,6 +43,27 @@ npm run deploy:backup -- --confirm-export
 
 如果脚本提示缺少原密钥或原 D1 身份记录，先停止，不要重新生成密钥，也不要创建新数据库；从原部署电脑恢复文件后再继续。
 
+## 2.1 V1.3 本机只读安全自检（Windows）
+
+此步骤不连接 Cloudflare、不生成/更新密钥、不执行真实支付或退款、不部署 Worker。
+
+在原部署电脑上，进入 `license-service` 目录后双击 `双击检查V1.3安全状态.bat`，或执行：
+
+~~~powershell
+npm run check
+npm test
+npm run deploy:preflight
+~~~
+
+检查项目：
+- 原 `.private/owner-keys.json` 是否存在，签名公私钥能否匹配，管理员口令 SHA-256 是否一致。
+- `wrangler.local.toml` 与 `.private/deployment-public.json` 的原 D1 UUID 是否存在且一致。
+- 最新 `.private/backups/v1.3-before-...` 备份是否包含原密钥、SQL 和清单，以及 SQL 大小、SHA-256 和原密钥字节是否完全一致。
+
+检查只在控制台显示检查结果，不输出密钥明文，不保存新报告。缺少备份或数据异常将退出失败，**不要因此重新生成密钥**。备份完成后可再次双击检查。
+
+注意：本机检查通过不代表远程 D1 已验证，也不代表备份已复制到离线介质、支付商户沙箱已验收或生产部署已被批准。以上项目仍需独立核验。
+
 ## 3. 部署前检查与生产部署入口
 
 先在 `license-service` 目录执行：
