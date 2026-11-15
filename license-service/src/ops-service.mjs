@@ -579,6 +579,178 @@ async function checkoutPage(request, env, orderId) {
   return new Response("支付信息暂不可用",{status:502});
 }
 
+
+function maskContact(value) {
+  const v=clean(value,120);
+  if(!v)return "";
+  if(v.includes("@")) {
+    const [name,domain]=v.split("@");
+    return (name.length>2?name.slice(0,2)+"***":name.slice(0,1)+"***")+"@"+domain;
+  }
+  if(/^\+?\d{7,}$/.test(v))return v.slice(0,3)+"****"+v.slice(-4);
+  return v.length>4?v.slice(0,2)+"***":v.slice(0,1)+"***";
+}
+function roleCanAccess(role,path) {
+  if(role==="super_admin")return true;
+  if(role==="finance")return path==="/v1/admin/overview"||path==="/v1/admin/orders/list"||path==="/v1/admin/audit/list"||path.startsWith("/v1/admin/finance/")||path.startsWith("/v1/admin/refunds/")||path==="/v1/admin/alerts/list";
+  if(role==="operations")return path==="/v1/admin/overview"||path.startsWith("/v1/admin/applications/")||path.startsWith("/v1/admin/products/")||path.startsWith("/v1/admin/orders/")||path.startsWith("/v1/admin/payments/")||path.startsWith("/v1/admin/deliveries/")||path.startsWith("/v1/admin/content/")||path==="/v1/admin/audit/list"||path==="/v1/admin/alerts/list";
+  if(role==="support")return path==="/v1/admin/overview"||path==="/v1/admin/orders/list"||path==="/v1/admin/cards/list"||path==="/v1/admin/applications/list"||path.startsWith("/v1/admin/customers/")||path.startsWith("/v1/admin/devices/")||path==="/v1/admin/audit/list"||path==="/v1/admin/alerts/list";
+  return false;
+}
+async function recordAdminActivity(env,actor,action,targetType="",targetId="",detail="") {
+  const who=actor||{id:"system",name:"系统任务",role:"system"};
+  await env.DB.prepare("INSERT INTO admin_activity(actor_id,actor_name,actor_role,action,target_type,target_id,detail,occurred_ms) VALUES(?,?,?,?,?,?,?,?)")
+    .bind(clean(who.id,80),clean(who.name,80),clean(who.role,32),clean(action,80),clean(targetType,40),clean(targetId,100),clean(detail,300),Date.now()).run();
+}
+function refundStatusFromWechat(value) {
+  return ({SUCCESS:"succeeded",PROCESSING:"processing",CLOSED:"closed",ABNORMAL:"abnormal"})[value]||"manual_review";
+}
+async function wechatSignedRequest(env,method,path,body="") {
+  const timestamp=String(Math.floor(Date.now()/1000)),nonce=randomHex(16);
+  const signature=await rsaSign(env.WECHATPAY_PRIVATE_KEY_PEM,wechatRequestMessage(method,path,timestamp,nonce,body));
+  const authorization='WECHATPAY2-SHA256-RSA2048 mchid="'+env.WECHATPAY_MCHID+'",nonce_str="'+nonce+'",timestamp="'+timestamp+'",serial_no="'+env.WECHATPAY_SERIAL_NO+'",signature="'+signature+'"';
+  return fetch("https://api.mch.weixin.qq.com"+path,{
+    method,headers:{Authorization:authorization,"Wechatpay-Serial":env.WECHATPAY_PLATFORM_SERIAL,Accept:"application/json","Content-Type":"application/json"},
+    ...(method==="GET"?{}:{body})
+  });
+}
+async function alipayApiCall(env,method,bizContent) {
+  const timestamp=new Date().toISOString().replace("T"," ").slice(0,19);
+  const params={app_id:env.ALIPAY_APP_ID,method,format:"JSON",charset:"utf-8",sign_type:"RSA2",timestamp,version:"1.0",biz_content:JSON.stringify(bizContent)};
+  params.sign=await rsaSign(env.ALIPAY_PRIVATE_KEY_PEM,alipaySignContent(params));
+  const res=await fetch(alipayGateway(env),{method:"POST",headers:{Accept:"application/json","Content-Type":"application/x-www-form-urlencoded;charset=utf-8"},body:new URLSearchParams(params).toString()});
+  const raw=await res.text();let envelope={};try{envelope=JSON.parse(raw)}catch{}
+  const responseKey=method+"_response",data=envelope[responseKey];
+  if(!res.ok||!data||!envelope.sign||!await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,alipaySignContent(data),envelope.sign))
+    throw Error("支付宝"+method+"响应验签失败或网关不可用");
+  return data;
+}
+async function finalizeRefundSuccess(env,refund,providerStatus,providerRefundId,actor) {
+  const current=await env.DB.prepare("SELECT * FROM refunds WHERE refund_id=?").bind(refund.refund_id).first();
+  if(!current)return {status:"not_found"};
+  if(current.status==="succeeded")return {status:"succeeded",alreadySucceeded:true};
+  const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(current.order_id).first();
+  if(!order||order.status!=="paid")throw Error("退款对应订单状态不是已支付，需人工核对");
+  const now=Date.now();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE refunds SET status='succeeded',provider_status=?,provider_refund_id=?,last_error='',updated_ms=?,completed_ms=COALESCE(completed_ms,?),last_checked_ms=? WHERE refund_id=? AND status!='succeeded'")
+      .bind(clean(providerStatus,40),clean(providerRefundId,80),now,now,now,current.refund_id),
+    env.DB.prepare("UPDATE orders SET status='refunded',refunded_ms=COALESCE(refunded_ms,?),updated_ms=?,last_error='' WHERE order_id=? AND status='paid'")
+      .bind(now,now,current.order_id),
+    env.DB.prepare("UPDATE license_cards SET revoked_ms=COALESCE(revoked_ms,?) WHERE id IN (SELECT card_id FROM delivery_outbox WHERE order_id=?)")
+      .bind(now,current.order_id),
+    env.DB.prepare("INSERT INTO refund_events(refund_id,event_type,provider_status,message,occurred_ms) VALUES(?,'confirmed_success',?,?,?)")
+      .bind(current.refund_id,clean(providerStatus,40),"支付渠道已确认退款成功；对应授权已撤销",now)
+  ]);
+  await recordAdminActivity(env,actor,"refund_success","order",current.order_id,"全额退款成功，已同步撤销对应授权");
+  return {status:"succeeded"};
+}
+async function updateRefundStatus(env,refund,status,providerStatus="",providerRefundId="",message="",actor) {
+  if(status==="succeeded")return finalizeRefundSuccess(env,refund,providerStatus,providerRefundId,actor);
+  const now=Date.now();
+  await env.DB.prepare("UPDATE refunds SET status=?,provider_status=?,provider_refund_id=CASE WHEN ?='' THEN provider_refund_id ELSE ? END,last_error=?,updated_ms=?,last_checked_ms=?,attempts=attempts+1 WHERE refund_id=? AND status!='succeeded'")
+    .bind(status,clean(providerStatus,40),clean(providerRefundId,80),clean(providerRefundId,80),clean(message,240),now,now,refund.refund_id).run();
+  await env.DB.prepare("INSERT INTO refund_events(refund_id,event_type,provider_status,message,occurred_ms) VALUES(?,?,?,?,?)")
+    .bind(refund.refund_id,"status_"+status,clean(providerStatus,40),clean(message,240),now).run();
+  return {status};
+}
+async function submitRefund(env,refund,order,origin,actor) {
+  if(refund.status==="succeeded")return {status:"succeeded",alreadySucceeded:true};
+  if(!["requested","failed"].includes(refund.status))return {status:refund.status,message:"退款已经提交，请查询退款状态，不要重复发起"};
+  if(order.status!=="paid")throw Error("只有已支付且未退款的订单可以申请退款");
+  if(Number(refund.amount_cents)!==Number(order.amount_cents))throw Error("当前版本只支持全额退款");
+  if(!paymentReady(env,refund.provider))throw Error("对应支付渠道的商户密钥尚未完整配置");
+  const now=Date.now();
+  await env.DB.prepare("UPDATE refunds SET status='processing',last_error='',updated_ms=?,attempts=attempts+1 WHERE refund_id=? AND status IN ('requested','failed')")
+    .bind(now,refund.refund_id).run();
+  try {
+    if(refund.provider==="wechat") {
+      const path="/v3/refund/domestic/refunds";
+      const body=JSON.stringify({
+        out_trade_no:order.order_no,out_refund_no:refund.refund_no,reason:clean(refund.reason,80),
+        notify_url:origin+"/v1/payments/wechat/refund-notify",
+        amount:{refund:refund.amount_cents,total:order.amount_cents,currency:"CNY"}
+      });
+      const res=await wechatSignedRequest(env,"POST",path,body),raw=await res.text();
+      if(!await verifyWechatHeaders(res.headers,env,raw)) {
+        await updateRefundStatus(env,refund,"manual_review","RESPONSE_UNVERIFIED","", "微信退款响应验签失败，结果不确定；请使用原退款单号查询",actor);
+        return {status:"manual_review",message:"微信退款响应未能验签，请查询原退款单号确认，禁止重新创建退款单"};
+      }
+      let data={};try{data=JSON.parse(raw)}catch{}
+      if(!res.ok) {
+        await updateRefundStatus(env,refund,"failed",clean(data.code||"API_ERROR",40),"",clean(data.message||"微信退款申请失败",180),actor);
+        return {status:"failed",message:clean(data.message||data.code||"微信退款申请失败",180)};
+      }
+      if(data.out_refund_no!==refund.refund_no||data.out_trade_no!==order.order_no)throw Error("微信退款响应订单号不匹配");
+      await updateRefundStatus(env,refund,"processing",clean(data.status||"PROCESSING",40),data.refund_id||"","微信支付已受理退款申请，等待最终退款状态",actor);
+      return {status:"processing",message:"微信支付已受理退款，最终到账以退款查询结果为准"};
+    }
+    const data=await alipayApiCall(env,"alipay.trade.refund",{
+      out_trade_no:order.order_no,trade_no:order.provider_trade_no||undefined,
+      refund_amount:yuan(refund.amount_cents),refund_reason:clean(refund.reason,256),out_request_no:refund.refund_no
+    });
+    if(data.out_trade_no!==order.order_no||data.out_request_no!==refund.refund_no)throw Error("支付宝退款响应订单号不匹配");
+    if(data.code!=="10000") {
+      await updateRefundStatus(env,refund,"failed",clean(data.code||"API_ERROR",40),"",clean(data.sub_msg||data.msg||"支付宝退款申请失败",180),actor);
+      return {status:"failed",message:clean(data.sub_msg||data.msg||"支付宝退款申请失败",180)};
+    }
+    if(data.fund_change==="Y") {
+      await finalizeRefundSuccess(env,refund,"FUND_CHANGED",data.trade_no||order.provider_trade_no||"",actor);
+      return {status:"succeeded",message:"支付宝已确认发生退款资金变动，授权已撤销"};
+    }
+    await updateRefundStatus(env,refund,"processing",clean(data.fund_change||"PENDING_CONFIRM",40),data.trade_no||"","支付宝已受理退款请求，正在查询最终退款状态",actor);
+    return await syncRefund(env,refund,order,actor);
+  } catch(error) {
+    await updateRefundStatus(env,refund,"manual_review","RESULT_UNKNOWN","",clean(error?.message||"退款请求结果不确定",180),actor);
+    return {status:"manual_review",message:"退款请求结果暂不确定，请查询原退款单号；系统不会生成新的退款单号"};
+  }
+}
+async function syncRefund(env,refund,order,actor) {
+  if(refund.status==="succeeded")return {status:"succeeded",alreadySucceeded:true};
+  if(refund.provider==="wechat") {
+    const path="/v3/refund/domestic/refunds/"+encodeURIComponent(refund.refund_no);
+    const res=await wechatSignedRequest(env,"GET",path,""),raw=await res.text();
+    if(!await verifyWechatHeaders(res.headers,env,raw))throw Error("微信退款查询响应验签失败");
+    let data={};try{data=JSON.parse(raw)}catch{}
+    if(!res.ok)throw Error("微信退款查询失败："+clean(data.message||data.code||"接口异常",120));
+    if(data.out_refund_no!==refund.refund_no||data.out_trade_no!==order.order_no)throw Error("微信退款查询订单号不匹配");
+    if(Number(data.amount?.refund)!==Number(refund.amount_cents)||Number(data.amount?.total)!==Number(order.amount_cents))throw Error("微信退款查询金额不匹配");
+    const status=refundStatusFromWechat(data.status);
+    return await updateRefundStatus(env,refund,status,data.status,data.refund_id||"",clean(data.status||"微信退款状态待确认",80),actor);
+  }
+  const data=await alipayApiCall(env,"alipay.trade.fastpay.refund.query",{
+    out_trade_no:order.order_no,trade_no:order.provider_trade_no||undefined,out_request_no:refund.refund_no
+  });
+  if(data.out_trade_no!==order.order_no||data.out_request_no!==refund.refund_no)throw Error("支付宝退款查询订单号不匹配");
+  if(data.code!=="10000")throw Error("支付宝退款查询失败："+clean(data.sub_msg||data.msg||data.sub_code||"接口异常",120));
+  if(data.refund_status==="REFUND_SUCCESS") {
+    if(Math.round(Number(data.refund_amount)*100)!==Number(refund.amount_cents))throw Error("支付宝退款查询金额不匹配");
+    return await finalizeRefundSuccess(env,refund,"REFUND_SUCCESS",data.trade_no||order.provider_trade_no||"",actor);
+  }
+  return await updateRefundStatus(env,refund,"manual_review",clean(data.refund_status||"STATUS_NOT_CONFIRMED",40),"","支付宝查询尚未返回可确认成功的退款状态，需稍后再次查询或人工核对",actor);
+}
+async function handleWechatRefundNotify(request,env,helpers) {
+  if(Number(request.headers.get("content-length")||0)>65536)return json({code:"FAIL",message:"请求过大"},413);
+  const raw=await request.text();
+  if(enc.encode(raw).length>65536)return json({code:"FAIL",message:"请求过大"},413);
+  let notice={};try{notice=JSON.parse(raw)}catch{}
+  let verified=false;try{verified=await verifyWechatCallback(request,env,raw)}catch{}
+  if(!verified)return json({code:"FAIL",message:"签名验证失败"},401);
+  try {
+    const trade=await decryptWechatResource(notice.resource,env);
+    const refund=await env.DB.prepare("SELECT * FROM refunds WHERE refund_no=? AND provider='wechat'").bind(clean(trade.out_refund_no,80)).first();
+    if(!refund)return json({code:"FAIL",message:"退款单不存在"},404);
+    const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(refund.order_id).first();
+    if(!order||trade.out_trade_no!==order.order_no||trade.mchid!==env.WECHATPAY_MCHID)throw Error("退款回调订单或商户信息不匹配");
+    if(Number(trade.amount?.refund)!==Number(refund.amount_cents)||Number(trade.amount?.total)!==Number(order.amount_cents))throw Error("退款回调金额不匹配");
+    await updateRefundStatus(env,refund,refundStatusFromWechat(trade.refund_status),trade.refund_status,trade.refund_id||"", "微信退款异步通知："+clean(trade.refund_status,40),{id:"system",name:"微信支付回调",role:"system"});
+    return json({code:"SUCCESS",message:"成功"});
+  } catch(error) {
+    console.error("wechat-refund-notify-failed",clean(error?.message||"退款回调处理失败",180));
+    return json({code:"FAIL",message:"退款通知处理失败"},400);
+  }
+}
+
 async function adminOps(req, env, path, helpers) {
   if(!await helpers.adminAuth(req,env)) return json({error:"管理员身份验证失败"},401);
   let body={}; if(req.method==="POST") body=await req.json().catch(()=>({}));
