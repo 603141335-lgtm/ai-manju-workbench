@@ -375,3 +375,28 @@ test('Alipay refund query does not mark a refund successful without REFUND_SUCCE
     assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(seeded.orderId).status,'paid');
   }finally{globalThis.fetch=originalFetch;db.close()}
 });
+
+test('refund reconciliation applies one-minute WeChat and ten-second Alipay query cooldowns from the last attempt',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const now=Date.now();
+  const wx=seedPaidOrder(db,{orderId:'order-wx-cooldown',orderNo:'DU-WX-CD',provider:'wechat'});
+  const ali=seedPaidOrder(db,{orderId:'order-ali-cooldown',orderNo:'DU-ALI-CD',provider:'alipay'});
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,last_checked_ms) VALUES('refund-wx-cd',?,'RF-WX-CD','wechat',1200,'test','processing',?,?,?)")
+    .run(wx.orderId,now-120000,now-120000,now-30000);
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,last_checked_ms) VALUES('refund-ali-cd',?,'RF-ALI-CD','alipay',1200,'test','processing',?,?,?)")
+    .run(ali.orderId,now-120000,now-120000,now-5000);
+  const env={DB:makeD1(db)},helpers={adminAuth:async()=>true};
+  const reconcile=refundId=>handleOpsRequest(new Request('https://dudu.example/v1/admin/refunds/reconcile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({refundId})}),env,'/v1/admin/refunds/reconcile',helpers);
+  try{
+    const wxTooSoon=await reconcile('refund-wx-cd');
+    assert.equal(wxTooSoon.status,429);
+    assert.match((await wxTooSoon.json()).error,/60秒/);
+    const aliTooSoon=await reconcile('refund-ali-cd');
+    assert.equal(aliTooSoon.status,429);
+    assert.match((await aliTooSoon.json()).error,/10秒/);
+    db.prepare("UPDATE refunds SET last_checked_ms=? WHERE refund_id='refund-wx-cd'").run(now-61000);
+    db.prepare("UPDATE refunds SET last_checked_ms=? WHERE refund_id='refund-ali-cd'").run(now-11000);
+    assert.equal((await reconcile('refund-wx-cd')).status,400);
+    assert.equal((await reconcile('refund-ali-cd')).status,400);
+  }finally{db.close()}
+});
