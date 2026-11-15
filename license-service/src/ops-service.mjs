@@ -752,8 +752,133 @@ async function handleWechatRefundNotify(request,env,helpers) {
 }
 
 async function adminOps(req, env, path, helpers) {
-  if(!await helpers.adminAuth(req,env)) return json({error:"管理员身份验证失败"},401);
+  const principal=helpers.adminPrincipal?await helpers.adminPrincipal(req,env):null;
+  if(!principal&&!await helpers.adminAuth(req,env)) return json({error:"管理员身份验证失败"},401);
+  const actor=principal||{id:"owner",name:"超级管理员",role:"super_admin"};
+  if(!roleCanAccess(actor.role,path))return json({error:"当前管理员角色没有此操作权限"},403);
   let body={}; if(req.method==="POST") body=await req.json().catch(()=>({}));
+  if(path==="/v1/admin/finance/summary") {
+    const fromMs=Number(body.fromMs),toMs=Number(body.toMs);
+    if(!Number.isSafeInteger(fromMs)||!Number.isSafeInteger(toMs)||fromMs<0||toMs<=fromMs||toMs-fromMs>366*86400000)
+      return json({error:"统计日期范围无效，最多查询366天"},400);
+    const [sales,refunds,channels,products,daily,pendingRefunds]=await Promise.all([
+      env.DB.prepare("SELECT COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<?").bind(fromMs,toMs).first(),
+      env.DB.prepare("SELECT COUNT(*) AS count,COALESCE(SUM(amount_cents),0) AS refunded_cents FROM refunds WHERE status='succeeded' AND completed_ms>=? AND completed_ms<?").bind(fromMs,toMs).first(),
+      env.DB.prepare("SELECT payment_method,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY payment_method").bind(fromMs,toMs).all(),
+      env.DB.prepare("SELECT product_name,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY product_name ORDER BY gross_cents DESC LIMIT 30").bind(fromMs,toMs).all(),
+      env.DB.prepare("SELECT strftime('%Y-%m-%d',paid_ms/1000,'unixepoch') AS day,COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS gross_cents FROM orders WHERE status IN ('paid','refunded') AND paid_ms>=? AND paid_ms<? GROUP BY day ORDER BY day").bind(fromMs,toMs).all(),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM refunds WHERE status IN ('requested','processing','manual_review','abnormal')").first()
+    ]);
+    const gross=Number(sales?.gross_cents||0),refunded=Number(refunds?.refunded_cents||0);
+    return json({fromMs,toMs,orders:Number(sales?.orders||0),grossCents:gross,refundCount:Number(refunds?.count||0),refundedCents:refunded,netCents:gross-refunded,pendingRefunds:Number(pendingRefunds?.n||0),channels:channels.results||[],products:products.results||[],daily:daily.results||[]});
+  }
+  if(path==="/v1/admin/customers/list") {
+    const result=await env.DB.prepare("SELECT d.device_hash,d.created_ms,d.trial_started_ms,d.trial_ends_ms,dc.blocked_ms,dc.block_reason,(SELECT contact FROM license_applications a WHERE a.device_hash=d.device_hash ORDER BY a.created_ms DESC LIMIT 1) AS contact,(SELECT COUNT(*) FROM orders o WHERE o.device_hash=d.device_hash) AS order_count,(SELECT COUNT(*) FROM orders o WHERE o.device_hash=d.device_hash AND o.status IN ('paid','refunded')) AS paid_orders,(SELECT COALESCE(SUM(amount_cents),0) FROM orders o WHERE o.device_hash=d.device_hash AND o.status IN ('paid','refunded')) AS gross_cents,(SELECT MAX(COALESCE(paid_ms,created_ms)) FROM orders o WHERE o.device_hash=d.device_hash) AS last_order_ms,(SELECT COUNT(*) FROM license_cards c WHERE c.bound_device_hash=d.device_hash AND c.revoked_ms IS NULL) AS active_cards FROM devices d LEFT JOIN device_controls dc ON dc.device_hash=d.device_hash ORDER BY COALESCE(last_order_ms,d.created_ms) DESC LIMIT 300").all();
+    return json({customers:(result.results||[]).map(x=>({...x,contact:maskContact(x.contact)}))});
+  }
+  if(path==="/v1/admin/customers/detail") {
+    const deviceHash=clean(body.deviceHash,64);
+    if(!/^[a-f0-9]{64}$/i.test(deviceHash))return json({error:"设备编号无效"},400);
+    const device=await env.DB.prepare("SELECT d.device_hash,d.created_ms,d.trial_started_ms,d.trial_ends_ms,dc.blocked_ms,dc.block_reason,(SELECT contact FROM license_applications a WHERE a.device_hash=d.device_hash ORDER BY a.created_ms DESC LIMIT 1) AS contact FROM devices d LEFT JOIN device_controls dc ON dc.device_hash=d.device_hash WHERE d.device_hash=?").bind(deviceHash).first();
+    if(!device)return json({error:"设备不存在"},404);
+    const [orders,applications,cards]=await Promise.all([
+      env.DB.prepare("SELECT order_id,order_no,product_name,amount_cents,payment_method,status,created_ms,paid_ms,refunded_ms FROM orders WHERE device_hash=? ORDER BY created_ms DESC LIMIT 100").bind(deviceHash).all(),
+      env.DB.prepare("SELECT application_id,contact,reason,status,created_ms,reviewed_ms,review_note FROM license_applications WHERE device_hash=? ORDER BY created_ms DESC LIMIT 50").bind(deviceHash).all(),
+      env.DB.prepare("SELECT id,last_four,issued_ms,activated_ms,revoked_ms FROM license_cards WHERE bound_device_hash=? ORDER BY issued_ms DESC LIMIT 100").bind(deviceHash).all()
+    ]);
+    return json({device:{...device,contact:clean(device.contact,120)},orders:orders.results||[],applications:applications.results||[],cards:cards.results||[]});
+  }
+  if(path==="/v1/admin/devices/block"||path==="/v1/admin/devices/unblock") {
+    const deviceHash=clean(body.deviceHash,64);
+    if(!/^[a-f0-9]{64}$/i.test(deviceHash))return json({error:"设备编号无效"},400);
+    const device=await env.DB.prepare("SELECT device_hash FROM devices WHERE device_hash=?").bind(deviceHash).first();
+    if(!device)return json({error:"设备不存在"},404);
+    const now=Date.now();
+    if(path.endsWith("/block")) {
+      const reason=clean(body.reason,180)||"管理员手动停用";
+      await env.DB.prepare("INSERT INTO device_controls(device_hash,blocked_ms,block_reason,blocked_by,updated_ms) VALUES(?,?,?,?,?) ON CONFLICT(device_hash) DO UPDATE SET blocked_ms=excluded.blocked_ms,block_reason=excluded.block_reason,blocked_by=excluded.blocked_by,updated_ms=excluded.updated_ms")
+        .bind(deviceHash,now,reason,actor.id,now).run();
+      await recordAdminActivity(env,actor,"device_block","device",deviceHash,reason);
+      return json({ok:true,blocked:true});
+    }
+    await env.DB.prepare("UPDATE device_controls SET blocked_ms=NULL,block_reason='',blocked_by='',updated_ms=? WHERE device_hash=?")
+      .bind(now,deviceHash).run();
+    await recordAdminActivity(env,actor,"device_unblock","device",deviceHash,"恢复设备授权");
+    return json({ok:true,blocked:false});
+  }
+  if(path==="/v1/admin/refunds/list") {
+    const result=await env.DB.prepare("SELECT r.refund_id,r.order_id,r.refund_no,r.provider,r.amount_cents,r.reason,r.status,r.provider_refund_id,r.provider_status,r.last_error,r.created_by,r.created_ms,r.updated_ms,r.completed_ms,o.order_no,o.product_name,o.payment_method,o.status AS order_status FROM refunds r JOIN orders o ON o.order_id=r.order_id ORDER BY r.created_ms DESC LIMIT 200").all();
+    return json({refunds:result.results||[]});
+  }
+  if(path==="/v1/admin/refunds/request") {
+    const orderId=clean(body.orderId,80),reason=clean(body.reason,80);
+    const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(orderId).first();
+    if(!order||order.status!=="paid")return json({error:"只有已支付且未退款的订单可以申请退款"},400);
+    const existing=await env.DB.prepare("SELECT refund_id,status,refund_no FROM refunds WHERE order_id=?").bind(orderId).first();
+    if(existing)return json({error:"该订单已有退款记录，请查看现有退款状态",refund:existing},409);
+    const now=Date.now(),refundId=crypto.randomUUID(),refundNo="RF"+now.toString(36).toUpperCase()+randomHex(6).toUpperCase();
+    const result=await env.DB.prepare("INSERT OR IGNORE INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_by,created_ms,updated_ms) VALUES(?,?,?,?,?,?,'requested',?,?,?)")
+      .bind(refundId,orderId,refundNo,order.payment_method,order.amount_cents,reason,actor.id,now,now).run();
+    if(!result.meta?.changes)return json({error:"退款申请已被其他操作创建，请刷新退款列表"},409);
+    await env.DB.prepare("INSERT INTO refund_events(refund_id,event_type,message,occurred_ms) VALUES(?,'requested','管理员创建全额退款申请',?)").bind(refundId,now).run();
+    await recordAdminActivity(env,actor,"refund_requested","order",orderId,"全额退款申请："+reason);
+    return json({ok:true,refundId,refundNo,status:"requested",amountCents:order.amount_cents});
+  }
+  if(path==="/v1/admin/refunds/submit"||path==="/v1/admin/refunds/sync") {
+    const refundId=clean(body.refundId,80);
+    const refund=await env.DB.prepare("SELECT * FROM refunds WHERE refund_id=?").bind(refundId).first();
+    if(!refund)return json({error:"退款记录不存在"},404);
+    const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(refund.order_id).first();
+    if(!order)return json({error:"原支付订单不存在"},404);
+    if(path.endsWith("/submit")) {
+      const result=await submitRefund(env,refund,order,new URL(req.url).origin,actor);
+      await recordAdminActivity(env,actor,"refund_submit","refund",refundId,result.message||result.status);
+      return json({ok:result.status!=="failed",...result,refundNo:refund.refund_no});
+    }
+    if(refund.status==="requested")return json({error:"退款尚未提交，请先确认并发起退款"},400);
+    const result=await syncRefund(env,refund,order,actor);
+    await recordAdminActivity(env,actor,"refund_sync","refund",refundId,result.status);
+    return json({ok:true,...result,refundNo:refund.refund_no});
+  }
+  if(path==="/v1/admin/operators/list") {
+    const result=await env.DB.prepare("SELECT operator_id,display_name,role,enabled,created_ms,updated_ms,last_login_ms FROM admin_operators ORDER BY created_ms DESC LIMIT 100").all();
+    return json({operators:result.results||[]});
+  }
+  if(path==="/v1/admin/operators/create") {
+    const name=clean(body.displayName,50),role=clean(body.role,20);
+    if(name.length<2||!["finance","operations","support"].includes(role))return json({error:"管理员名称或角色无效"},400);
+    const token="DUDU-OP-"+randomHex(24).toUpperCase(),tokenHash=hex(await crypto.subtle.digest("SHA-256",enc.encode(token)));
+    const id=crypto.randomUUID(),now=Date.now();
+    await env.DB.prepare("INSERT INTO admin_operators(operator_id,display_name,role,token_sha256,enabled,created_ms,updated_ms) VALUES(?,?,?,?,1,?,?)")
+      .bind(id,name,role,tokenHash,now,now).run();
+    await recordAdminActivity(env,actor,"operator_create","operator",id,"创建"+role+"角色："+name);
+    return json({ok:true,operator:{operator_id:id,display_name:name,role,enabled:1,created_ms:now},token,tokenShownOnce:true});
+  }
+  if(path==="/v1/admin/operators/update") {
+    const id=clean(body.operatorId,80),role=clean(body.role,20),enabled=body.enabled===false?0:1;
+    if(!id||!["finance","operations","support"].includes(role))return json({error:"管理员编号或角色无效"},400);
+    const result=await env.DB.prepare("UPDATE admin_operators SET role=?,enabled=?,updated_ms=? WHERE operator_id=?")
+      .bind(role,enabled,Date.now(),id).run();
+    if(!result.meta?.changes)return json({error:"管理员不存在"},404);
+    await recordAdminActivity(env,actor,"operator_update","operator",id,"更新角色为"+role+"，启用状态："+enabled);
+    return json({ok:true});
+  }
+  if(path==="/v1/admin/alerts/list") {
+    const since=Date.now()-24*60*60*1000;
+    const [deliveries,undelivered,webhooks,refunds]=await Promise.all([
+      env.DB.prepare("SELECT order_id,last_error,created_ms FROM delivery_outbox WHERE status='failed' ORDER BY created_ms DESC LIMIT 50").all(),
+      env.DB.prepare("SELECT order_id,order_no,last_error,paid_ms FROM orders WHERE status='paid' AND delivered_ms IS NULL ORDER BY paid_ms ASC LIMIT 50").all(),
+      env.DB.prepare("SELECT id,provider,order_no,message,outcome,occurred_ms FROM payment_webhook_logs WHERE outcome IN ('rejected','error') AND occurred_ms>? ORDER BY occurred_ms DESC LIMIT 50").bind(since).all(),
+      env.DB.prepare("SELECT r.refund_id,r.refund_no,r.status,r.last_error,r.updated_ms,o.order_no FROM refunds r JOIN orders o ON o.order_id=r.order_id WHERE r.status IN ('manual_review','abnormal') OR (r.status='processing' AND r.updated_ms<?) ORDER BY r.updated_ms ASC LIMIT 50").bind(Date.now()-15*60*1000).all()
+    ]);
+    const alerts=[
+      ...(deliveries.results||[]).map(x=>({type:"发货失败",severity:"high",id:x.order_id,detail:x.last_error||"自动发货失败",occurred_ms:x.created_ms})),
+      ...(undelivered.results||[]).map(x=>({type:"已付款未发货",severity:"high",id:x.order_no,detail:x.last_error||"订单已付款但授权未完成",occurred_ms:x.paid_ms})),
+      ...(webhooks.results||[]).map(x=>({type:"支付回调异常",severity:"medium",id:x.order_no||x.id,detail:x.provider+"："+x.message,occurred_ms:x.occurred_ms})),
+      ...(refunds.results||[]).map(x=>({type:"退款需关注",severity:"high",id:x.order_no,detail:x.status+"："+(x.last_error||x.refund_no),occurred_ms:x.updated_ms}))
+    ].sort((a,b)=>b.occurred_ms-a.occurred_ms).slice(0,150);
+    return json({alerts});
+  }
   if(path==="/v1/admin/overview") {
     await closeStaleOrders(env);
     const [cards,apps,orders,products]=await Promise.all([
@@ -844,8 +969,11 @@ async function adminOps(req, env, path, helpers) {
     return json({ok:true,delivered:true});
   }
   if(path==="/v1/admin/audit/list") {
-    const result=await env.DB.prepare("SELECT id,event,card_id,occurred_ms FROM admin_audit ORDER BY occurred_ms DESC LIMIT 200").all();
-    return json({events:result.results||[]});
+    const [result,activity]=await Promise.all([
+      env.DB.prepare("SELECT id,event,card_id,occurred_ms FROM admin_audit ORDER BY occurred_ms DESC LIMIT 200").all(),
+      env.DB.prepare("SELECT id,actor_name,actor_role,action,target_type,target_id,detail,occurred_ms FROM admin_activity ORDER BY occurred_ms DESC LIMIT 200").all()
+    ]);
+    return json({events:result.results||[],activity:activity.results||[]});
   }
   if(path==="/v1/admin/payments/health") {
     const since=Date.now()-24*60*60*1000;
@@ -946,6 +1074,7 @@ export async function handleOpsRequest(request, env, path, helpers) {
     return checkoutPage(request,env,id);
   }
   if(path==="/payment/return"&&request.method==="GET") return paymentReturnPage(request,env);
+  if(path==="/v1/payments/wechat/refund-notify"&&request.method==="POST") return handleWechatRefundNotify(request,env,helpers);
   if(path==="/v1/payments/wechat/notify"&&request.method==="POST") return handleWechatNotify(request,env,helpers);
   if(path==="/v1/payments/alipay/notify"&&request.method==="POST") return handleAlipayNotify(request,env,helpers);
   if(path==="/v1/application/create"&&request.method==="POST") {
