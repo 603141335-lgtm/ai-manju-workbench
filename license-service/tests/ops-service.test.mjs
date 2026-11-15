@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams} from '../src/ops-service.mjs';
+import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,runScheduledReconciliation} from '../src/ops-service.mjs';
 import {generateKeyPairSync} from 'node:crypto';
 
 test('manifest normalizer keeps public content only and rejects duplicate tutorial ids',()=>{
@@ -84,4 +84,16 @@ test('payment readiness requires every official merchant secret including Alipay
   assert.equal(paymentReady(wechat,'wechat'),true);
   delete wechat.WECHATPAY_PLATFORM_SERIAL;
   assert.equal(paymentReady(wechat,'wechat'),false);
+});
+
+test('Alipay gateway accepts only the official production or sandbox host',()=>{
+  assert.equal(alipayGateway({}),'https://openapi.alipay.com/gateway.do');
+  assert.equal(alipayGateway({ALIPAY_GATEWAY_URL:'https://openapi-sandbox.dl.alipaydev.com/gateway.do'}),'https://openapi-sandbox.dl.alipaydev.com/gateway.do');
+  assert.throws(()=>alipayGateway({ALIPAY_GATEWAY_URL:'https://evil.example/gateway.do'}),/不在允许列表/);
+});
+
+test('scheduled reconciliation is safe when there are no pending or undelivered orders',async()=>{
+  const db={prepare(){return {bind(){return this},async all(){return {results:[]}}}}};
+  const result=await runScheduledReconciliation({DB:db},{});
+  assert.deepEqual(result,{checked:0,paid:0,failed:0,deliveryRecovered:0});
 });
