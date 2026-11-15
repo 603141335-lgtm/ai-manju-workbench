@@ -29,7 +29,7 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <nav class="nav">
 <button class="active" data-tab="overview">▦ 总览</button><button data-tab="cards">▣ 卡密管理</button>
 <button data-tab="applications">✉ 免费申请</button><button data-tab="products">◇ 商品管理</button>
-<button data-tab="orders">▤ 订单管理</button><button data-tab="content">▧ 公告与教程</button>
+<button data-tab="orders">▤ 订单管理</button><button data-tab="monitor">◉ 支付监控</button><button data-tab="content">▧ 公告与教程</button>
 <button data-tab="payments">￥ 支付配置</button><button data-tab="audit">◷ 操作日志</button>
 </nav>
 <div class="auth"><label>管理员令牌<input id="token" type="password" autocomplete="off" placeholder="粘贴管理员令牌"></label><div class="row"><button id="connect">连接后台</button><button class="secondary" id="clearToken">清空</button></div><p class="help">令牌仅保存在当前页面内存；关闭页面即清除。建议 Cloudflare Access + 双因素验证。</p></div>
@@ -60,6 +60,26 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <section class="panel" id="tab-orders"><h2>订单管理</h2><div class="row"><button id="loadOrders">刷新订单</button><span class="help">支付成功后自动生成永久授权并绑定购买设备。</span></div>
 <div class="tablewrap"><table><thead><tr><th>订单号</th><th>商品</th><th>金额</th><th>渠道</th><th>订单状态</th><th>发货状态</th><th>时间</th><th>操作</th></tr></thead><tbody id="ordersBody"></tbody></table></div></section>
 
+<section class="panel" id="tab-monitor"><h2>支付与自动发货监控</h2>
+<div class="row"><button id="refreshPaymentMonitor">刷新监控</button><button id="runPaymentReconcile" class="secondary">立即执行一次补偿</button><span class="help">手动补偿最短间隔60秒；系统仍会按5分钟定时任务自动执行。</span></div>
+<div class="grid" style="margin-top:14px">
+<div class="stat"><small>待付款订单</small><strong id="monPending">—</strong></div>
+<div class="stat"><small>已付款待发货</small><strong id="monUndelivered">—</strong></div>
+<div class="stat"><small>发货队列异常</small><strong id="monFailedDeliveries">—</strong></div>
+<div class="stat"><small>近24小时回调异常</small><strong id="monFailedWebhooks">—</strong></div>
+</div>
+<div class="grid" style="margin-top:12px">
+<div class="stat"><small>微信最近回调</small><strong id="monWechatLast" style="font-size:14px">—</strong><div class="help" id="monWechatTime"></div></div>
+<div class="stat"><small>支付宝最近回调</small><strong id="monAlipayLast" style="font-size:14px">—</strong><div class="help" id="monAlipayTime"></div></div>
+<div class="stat"><small>最近自动查单</small><strong id="monReconcileTime" style="font-size:14px">—</strong><div class="help" id="monReconcileAttempts"></div></div>
+<div class="stat"><small>近24小时回调总量</small><strong id="monWebhookTotal">—</strong><div class="help">按支付渠道和处理结果统计</div></div>
+</div>
+<div class="notice">回调日志仅保存事件编号、订单号、结果、简要原因和请求摘要，不保存原始回调内容、支付密钥或用户支付凭据。</div>
+<h3>最近支付回调</h3><div class="tablewrap"><table><thead><tr><th>时间</th><th>渠道</th><th>事件编号</th><th>订单号</th><th>结果</th><th>处理说明</th><th>请求摘要</th></tr></thead><tbody id="paymentEventsBody"></tbody></table></div>
+<h3 style="margin-top:22px">自动发货队列</h3><div class="tablewrap"><table><thead><tr><th>时间</th><th>订单号</th><th>商品</th><th>状态</th><th>尝试次数</th><th>失败原因</th><th>操作</th></tr></thead><tbody id="deliveriesBody"></tbody></table></div>
+</section>
+
+
 <section class="panel" id="tab-content"><h2>公告、社群与教程</h2><p class="help">修改后发布到授权 Worker 的 /manifest.json；新版本工作台从该地址读取。教程图片请先上传到可信 HTTPS 图床，再填写图片地址。</p>
 <div class="formgrid">
 <label class="field">宣传标题<input id="cHeadline"></label><label class="field">副标题<input id="cSubtitle"></label>
@@ -77,21 +97,22 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <section class="panel" id="tab-payments"><h2>官方支付配置</h2><p class="help">密钥只通过 Cloudflare Worker Secrets 配置，不在网页显示，也不进入 GitHub 源码或桌面安装包。</p>
 <div class="grid"><div class="stat"><small>微信支付</small><strong id="wechatStatus">未检测</strong><div class="help" id="wechatFields"></div></div><div class="stat"><small>支付宝</small><strong id="alipayStatus">未检测</strong><div class="help" id="alipayFields"></div></div></div>
 <div class="notice">请在 license-service 目录执行 wrangler secret put，按下方变量名逐项配置。配置后点击“重新检测”。</div>
-<div class="code" id="secretGuide">微信支付：WECHATPAY_MCHID、WECHATPAY_APPID、WECHATPAY_SERIAL_NO、WECHATPAY_PRIVATE_KEY_PEM、WECHATPAY_API_V3_KEY、WECHATPAY_PLATFORM_PUBLIC_KEY_PEM、WECHATPAY_PLATFORM_SERIAL
-支付宝：ALIPAY_APP_ID、ALIPAY_PRIVATE_KEY_PEM、ALIPAY_PUBLIC_KEY_PEM
-可选：ALIPAY_SELLER_ID、WECHATPAY_NOTIFY_URL、ALIPAY_NOTIFY_URL、ALIPAY_RETURN_URL</div>
-<button id="loadPaymentStatus">重新检测支付配置</button></section>
+<div class="code" id="secretGuide">微信支付（必需）：WECHATPAY_MCHID、WECHATPAY_APPID、WECHATPAY_SERIAL_NO、WECHATPAY_PRIVATE_KEY_PEM、WECHATPAY_API_V3_KEY、WECHATPAY_PLATFORM_PUBLIC_KEY_PEM、WECHATPAY_PLATFORM_SERIAL
+支付宝（必需）：ALIPAY_APP_ID、ALIPAY_PRIVATE_KEY_PEM、ALIPAY_PUBLIC_KEY_PEM、ALIPAY_SELLER_ID
+可选：WECHATPAY_NOTIFY_URL、ALIPAY_NOTIFY_URL、ALIPAY_RETURN_URL</div>
+<div class="row"><button id="loadPaymentStatus">重新检测支付配置</button><button id="runPaymentSelfTest" class="secondary">运行本地密钥自检</button></div>
+<div class="notice" id="paymentSelfTestResult">本地自检只检查密钥能否正确导入与签名，不会创建订单、扣款或证明商户平台在线。</div></section>
 </main></div>
 <script>
 const $=id=>document.getElementById(id);let latestCodes=[],currentManifest=null,connected=false;
-const titles={overview:"运营总览",cards:"卡密管理",applications:"免费申请审批",products:"商品管理",orders:"订单管理",content:"公告与教程",payments:"支付配置",audit:"管理员操作日志"};
+const titles={overview:"运营总览",cards:"卡密管理",applications:"免费申请审批",products:"商品管理",orders:"订单管理",monitor:"支付与发货监控",content:"公告与教程",payments:"支付配置",audit:"管理员操作日志"};
 function say(text,bad){$("status").textContent=text;$("status").style.color=bad?"#ff9da8":"#9edfc8"}
 function token(){return $("token").value.trim()}
 async function api(path,data){if(!token())throw Error("请先输入管理员令牌");const r=await fetch(path,{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+token()},body:JSON.stringify(data||{})});const v=await r.json().catch(()=>({}));if(!r.ok)throw Error(v.error||("HTTP "+r.status));return v}
 function cell(tr,value){const td=document.createElement("td");td.textContent=value==null?"":String(value);tr.append(td);return td}
 function button(text,fn,kind){const b=document.createElement("button");b.textContent=text;if(kind)b.className=kind;b.addEventListener("click",()=>safe(fn));return b}
 function showTab(name){document.querySelectorAll(".panel").forEach(x=>x.classList.toggle("active",x.id==="tab-"+name));document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===name));$("pageTitle").textContent=titles[name]||"运营管理";if(connected)loadTab(name).catch(e=>say(e.message,true))}
-async function loadTab(name){if(name==="overview")return loadOverview();if(name==="cards")return loadCards();if(name==="applications")return loadApplications();if(name==="products")return loadProducts();if(name==="orders")return loadOrders();if(name==="content")return loadContent();if(name==="payments")return loadPaymentStatus();if(name==="audit")return loadAudit()}
+async function loadTab(name){if(name==="overview")return loadOverview();if(name==="cards")return loadCards();if(name==="applications")return loadApplications();if(name==="products")return loadProducts();if(name==="orders")return loadOrders();if(name==="monitor")return loadPaymentMonitor();if(name==="content")return loadContent();if(name==="payments")return loadPaymentStatus();if(name==="audit")return loadAudit()}
 async function loadOverview(){const v=await api("/v1/admin/overview");$("statCards").textContent=v.cards;$("statApps").textContent=v.pendingApplications;$("statOrders").textContent=v.paidOrders;$("statProducts").textContent=v.activeProducts}
 async function loadCards(){const v=await api("/v1/admin/cards/list");const root=$("cardsBody");root.replaceChildren();v.cards.forEach(x=>{const tr=document.createElement("tr");cell(tr,x.id);cell(tr,x.last_four);cell(tr,new Date(x.issued_ms).toLocaleString());cell(tr,x.bound?"已绑定":"未绑定");cell(tr,x.revoked_ms?"已停用":(x.bound?"已激活":"未激活"));const td=document.createElement("td");td.append(button("复制ID",()=>navigator.clipboard.writeText(x.id)),button("停用",()=>cardAction("revoke",x.id),"danger"),button("解绑",()=>cardAction("transfer",x.id),"secondary"));tr.append(td);root.append(tr)})}
 async function cardAction(action,id){if(!confirm(action==="revoke"?"确认停用这张卡？":"确认解绑设备？"))return;await api("/v1/admin/cards/"+action,{cardId:id});say("卡密操作完成");loadCards()}
@@ -107,6 +128,68 @@ async function loadHistory(){const v=await api("/v1/admin/content/history");cons
 async function rollbackContent(){if(!$("historySelect").value)throw Error("请先选择历史版本");if(!confirm("确认回滚所选公告版本？"))return;await api("/v1/admin/content/rollback",{historyId:$("historySelect").value});say("公告已回滚");await loadContent()}
 async function loadAudit(){const v=await api("/v1/admin/audit/list");const root=$("auditBody");root.replaceChildren();v.events.forEach(x=>{const tr=document.createElement("tr");cell(tr,new Date(x.occurred_ms).toLocaleString());cell(tr,x.event);cell(tr,x.card_id||"—");root.append(tr)})}
 async function loadPaymentStatus(){const v=await api("/v1/admin/payments/status");$("wechatStatus").textContent=v.wechat.configured?"已配置":"未配置";$("wechatStatus").style.color=v.wechat.configured?"#7ce0ba":"#f2c47f";$("wechatFields").textContent=v.wechat.configured?"必需密钥均已检测到": "缺少："+v.wechat.required.join("、");$("alipayStatus").textContent=v.alipay.configured?"已配置":"未配置";$("alipayStatus").style.color=v.alipay.configured?"#7ce0ba":"#f2c47f";$("alipayFields").textContent=v.alipay.configured?"必需密钥均已检测到":"缺少："+v.alipay.required.join("、")}
+function formatDate(ms){return ms?new Date(ms).toLocaleString():"暂无记录"}
+function outcomeText(value){return ({accepted:"成功",ignored:"已接收（非成功交易）",rejected:"验签拒绝",error:"处理异常"})[value]||value||"—"}
+async function loadPaymentMonitor(){
+ const [health,events,deliveries]=await Promise.all([
+  api("/v1/admin/payments/health"),api("/v1/admin/payments/events/list"),api("/v1/admin/deliveries/list")
+ ]);
+ $("monPending").textContent=health.pendingOrders;
+ $("monUndelivered").textContent=health.paidUndelivered;
+ $("monFailedDeliveries").textContent=health.failedDeliveries;
+ $("monFailedWebhooks").textContent=health.failedWebhooks24h;
+ const wechat=health.lastWebhook.wechat,alipay=health.lastWebhook.alipay;
+ $("monWechatLast").textContent=wechat?outcomeText(wechat.outcome):"暂无回调";
+ $("monWechatTime").textContent=wechat?formatDate(wechat.occurred_ms):"尚未收到回调";
+ $("monAlipayLast").textContent=alipay?outcomeText(alipay.outcome):"暂无回调";
+ $("monAlipayTime").textContent=alipay?formatDate(alipay.occurred_ms):"尚未收到回调";
+ $("monReconcileTime").textContent=formatDate(health.reconciliation.lastCheckedMs);
+ $("monReconcileAttempts").textContent="累计查单 "+(health.reconciliation.totalAttempts||0)+" 次";
+ $("monWebhookTotal").textContent=(health.webhookCounts24h||[]).reduce((sum,x)=>sum+Number(x.n||0),0);
+ const eventRoot=$("paymentEventsBody");eventRoot.replaceChildren();
+ (events.events||[]).forEach(x=>{
+  const tr=document.createElement("tr");
+  cell(tr,formatDate(x.occurred_ms));cell(tr,x.provider==="wechat"?"微信支付":"支付宝");
+  cell(tr,x.event_id||"—");cell(tr,x.order_no||"—");cell(tr,outcomeText(x.outcome));
+  cell(tr,x.message||"—");cell(tr,String(x.payload_sha256||"").slice(0,16)+"…");
+  eventRoot.append(tr);
+ });
+ if(!(events.events||[]).length){const tr=document.createElement("tr");cell(tr,"暂无回调记录");eventRoot.append(tr)}
+ const deliveryRoot=$("deliveriesBody");deliveryRoot.replaceChildren();
+ (deliveries.deliveries||[]).forEach(x=>{
+  const tr=document.createElement("tr");
+  cell(tr,formatDate(x.created_ms));cell(tr,x.order_no||x.order_id);cell(tr,x.product_name||"—");
+  cell(tr,x.status==="delivered"?"已发放":x.status==="failed"?"发放失败":"等待发放");
+  cell(tr,x.attempts||0);cell(tr,x.last_error||"—");
+  const action=cell(tr,"—");
+  if(x.order_status==="paid"&&x.status!=="delivered"){
+   action.replaceChildren(button("重试发货",async()=>{
+    if(!confirm("确认重新发放该订单的授权？"))return;
+    await api("/v1/admin/orders/resend",{orderId:x.order_id});
+    say("授权补发完成");await loadPaymentMonitor();await loadOrders();
+   },"secondary"));
+  }
+  deliveryRoot.append(tr);
+ });
+ if(!(deliveries.deliveries||[]).length){const tr=document.createElement("tr");cell(tr,"暂无发货队列记录");deliveryRoot.append(tr)}
+ say("支付监控数据已刷新");
+}
+async function runPaymentReconcile(){
+ if(!confirm("立即检查近期未完成订单，并重试已付款但未发货的订单？此操作不会创建新订单或扣款。"))return;
+ const btn=$("runPaymentReconcile");btn.disabled=true;
+ try{
+  const v=await api("/v1/admin/payments/reconcile/run");
+  say("补偿完成：查单 "+v.checked+"，确认到账 "+v.paid+"，发货恢复 "+v.deliveryRecovered+"，异常 "+v.failed);
+  await loadPaymentMonitor();await loadOrders();
+ }finally{btn.disabled=false}
+}
+async function runPaymentSelfTest(){
+ const result=$("paymentSelfTestResult");result.textContent="正在执行本地密钥自检…";
+ const v=await api("/v1/admin/payments/self-test");
+ const lines=["微信支付："+(v.wechat.ok?"通过":"未通过")+"；"+(v.wechat.message||v.wechat.note||""),"支付宝："+(v.alipay.ok?"通过":"未通过")+"；"+(v.alipay.message||v.alipay.note||""),v.note||""];
+ result.textContent=lines.join("\\n");
+ say("本地密钥自检已完成",!v.wechat.ok||!v.alipay.ok);
+}
 async function connect(){await loadOverview();connected=true;say("已连接运营后台");await loadTab(document.querySelector("[data-tab].active")?.dataset.tab||"overview")}
 async function safe(fn){try{await fn()}catch(e){say(e.message,true)}}
 document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset.tab)));
@@ -117,5 +200,5 @@ $("loadCards").onclick=()=>safe(loadCards);$("loadApplications").onclick=()=>saf
 $("issueCards").onclick=()=>safe(async()=>{const n=Number($("cardCount").value);const v=await api("/v1/admin/cards/issue",{count:n});latestCodes=v.codes||[];$("issuedCodes").textContent=latestCodes.join("\n")||"没有生成卡密";say("已生成 "+latestCodes.length+" 张卡密");await loadCards()});
 $("copyCards").onclick=()=>safe(async()=>{if(!latestCodes.length)throw Error("本次没有可复制的卡密");await navigator.clipboard.writeText(latestCodes.join("\n"));say("卡密已复制")});
 $("saveProduct").onclick=()=>safe(saveProduct);$("resetProduct").onclick=resetProduct;
-$("loadContent").onclick=()=>safe(loadContent);$("publishContent").onclick=()=>safe(publishContent);$("loadHistory").onclick=()=>safe(loadHistory);$("rollbackContent").onclick=()=>safe(rollbackContent);$("loadPaymentStatus").onclick=()=>safe(loadPaymentStatus);$("loadAudit").onclick=()=>safe(loadAudit);
+$("loadContent").onclick=()=>safe(loadContent);$("publishContent").onclick=()=>safe(publishContent);$("loadHistory").onclick=()=>safe(loadHistory);$("rollbackContent").onclick=()=>safe(rollbackContent);$("loadPaymentStatus").onclick=()=>safe(loadPaymentStatus);$("runPaymentSelfTest").onclick=()=>safe(runPaymentSelfTest);$("refreshPaymentMonitor").onclick=()=>safe(loadPaymentMonitor);$("runPaymentReconcile").onclick=()=>safe(runPaymentReconcile);$("loadAudit").onclick=()=>safe(loadAudit);
 </script></body></html>`;
