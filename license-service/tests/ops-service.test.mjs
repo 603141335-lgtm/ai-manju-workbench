@@ -185,6 +185,28 @@ test('admin payment monitoring endpoints return health, webhook history and deli
   db.close();
 });
 
+
+test('payment health reports the effective configured callback URLs',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const env={
+    DB:makeD1(db),
+    WECHATPAY_NOTIFY_URL:'https://hooks.example/pay/wechat',
+    WECHATPAY_REFUND_NOTIFY_URL:'https://hooks.example/refund/wechat',
+    ALIPAY_NOTIFY_URL:'https://hooks.example/pay/alipay'
+  };
+  const helpers={adminAuth:async()=>true};
+  const req=new Request('https://dudu.example/v1/admin/payments/health',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+  const response=await handleOpsRequest(req,env,'/v1/admin/payments/health',helpers);
+  const health=await response.json();
+  assert.deepEqual(health.callbacks,{
+    wechat:'https://hooks.example/pay/wechat',
+    wechatRefund:'https://hooks.example/refund/wechat',
+    alipay:'https://hooks.example/pay/alipay'
+  });
+  db.close();
+});
+
 test('manual payment recovery endpoint runs once and enforces its 60-second cooldown',async()=>{
   const db=new DatabaseSync(':memory:');
   db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
