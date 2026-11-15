@@ -1,51 +1,83 @@
 # 独独AI运营管理中心 V1.3 部署说明
 
-## 1. 先保护现有授权数据和密钥
+## 0. 当前部署边界
 
-本版本只对 license-service/schema.sql 执行 CREATE TABLE IF NOT EXISTS 增量迁移，不删除现有 devices、license_cards、request_nonces、admin_audit 数据。
+V1.3 已合并到开发分支 `feature/dudu-ai-v1.2.0-license`。本指南面向已经运行 V1.2 的现有 Cloudflare Worker / D1 环境，不是首次建站流程。
 
-**必须继续使用原来部署授权服务时的本机工作目录**，保留：
+**当前不要直接部署生产 Worker。** 先完成本地密钥与 D1 全量备份，再安排隔离测试/沙箱验收。未经确认，不会自动覆盖现有生产 Worker 或生产数据。
 
-- license-service/.private/owner-keys.json
-- license-service/.private/deployment-public.json（如果存在）
-- license-service/wrangler.local.toml（可重新生成，但不要手工换 D1 ID）
+## 1. 保留原授权身份
 
-不要删除 .private，不要重新生成一套签名密钥，也不要把这些文件提交到 GitHub。
+必须使用原来部署授权服务时的工作目录，保留：
 
-## 2. 拉取新开发分支
+- `license-service/.private/owner-keys.json`：原签名私钥、设备 HMAC、卡密 HMAC、管理员令牌
+- `license-service/.private/deployment-public.json`：原 Worker 地址、公钥和 D1 ID（如果原部署有此文件）
+- `license-service/wrangler.local.toml`：原 D1 绑定 ID（如果原部署有此文件）
 
-在 GitHub Desktop：
-1. 点击 Fetch origin。
-2. 左上角 Current branch 选择 feature/ops-center-v1.0。
-3. 点击 Pull origin。
-4. 在资源管理器中打开仓库的 license-service 目录。
+不要删除 `.private`，不要运行 `npm run keys` 重新生成密钥，不要把这些文件上传 GitHub、发到聊天或截图。
 
-## 3. 本机检查并部署
+V1.3 部署预检要求：至少从原 `wrangler.local.toml` 或 `deployment-public.json` 中找到一份有效的原 D1 ID。两份记录都缺失时会停止，不会猜测数据库，也不会创建同名空库。
 
-在 license-service 文件夹地址栏输入 cmd 回车，然后逐条执行：
+## 2. 先做离线备份（必须）
+
+在原项目的 `license-service` 目录打开 PowerShell：
 
 ~~~powershell
 npm install
+npx wrangler login
 npm run check
 npm test
-npm run deploy:setup
+npm run deploy:backup -- --confirm-export
 ~~~
 
-deploy:setup 会复用已有的 dudu-license D1 数据库，执行增量表结构，再部署更新后的 dudu-ai-license Worker。部署后检查：
+备份脚本会：
 
-- https://你的Worker域名.workers.dev/health 返回 status: ok
-- https://你的Worker域名.workers.dev/manifest.json 返回公开公告 JSON
-- https://你的Worker域名.workers.dev/admin 打开新版运营管理中心
+1. 检查原 `owner-keys.json` 完整性，不生成替代密钥。
+2. 登录原 Cloudflare 账户并查找现有 `dudu-license`。
+3. 比对 Cloudflare D1 ID 与原本地部署记录。
+4. 将 D1 的结构和数据导出为 SQL。
+5. 将原授权密钥、部署记录和本地 Wrangler 配置复制到 `.private/backups/`。
+6. 生成包含 D1 ID、文件大小和 SQL SHA-256 的备份清单。
 
-管理员令牌仍使用原来 .private/owner-keys.json 中的 DUDU_ADMIN_TOKEN。不要把令牌粘贴到 GitHub Actions Variables。
+备份完成后，把对应的整个 `.private/backups/v1.3-before-...` 文件夹另存到加密离线介质。不要上传 GitHub 或发送给任何人。远程 D1 导出期间可能暂时阻塞数据库请求，请选择低流量时段执行。
 
-如果你之前已经部署公告 Worker，且 GitHub Actions Variables 中存在 DUDU_CONTENT_URL，请先把它复制到 Cloudflare Worker 的可选变量，便于自动迁移原公告：
+如果脚本提示缺少原密钥或原 D1 身份记录，先停止，不要重新生成密钥，也不要创建新数据库；从原部署电脑恢复文件后再继续。
+
+## 3. 部署前检查与生产部署入口
+
+先在 `license-service` 目录执行：
+
+~~~powershell
+npm run check
+npm test
+~~~
+
+本地命令 `npm run deploy:setup` 会把增量表结构应用到现有 D1，并更新原 Worker，属于**生产部署**，必须在备份完成及沙箱/测试商户验收通过后才执行。
+
+也可以使用 GitHub Actions 的手动工作流 `Deploy Dudu AI License Service (manual, protected)`：
+
+- 从 `feature/dudu-ai-v1.2.0-license` 分支运行。
+- GitHub Environment `production-license` 必须配置原 Cloudflare API Token 和 Account ID。
+- GitHub Variables `DUDU_D1_DATABASE_ID` 必须填写原 `dudu-license` 的真实 UUID。
+- 手动运行时必须勾选已完成备份，并输入 `DEPLOY_PRODUCTION_V1_3`。
+- 工作流会再次查询 Cloudflare D1 列表，核对数据库名称和 UUID；任何不一致都会停止。
+- 工作流先运行测试，再执行增量 schema，最后部署 Worker；不会重新生成或轮换原授权签名密钥。
+
+部署后检查：
+
+- `https://你的Worker域名.workers.dev/health` 返回 `status: ok`
+- `https://你的Worker域名.workers.dev/manifest.json` 返回公开公告 JSON
+- `https://你的Worker域名.workers.dev/admin` 打开新版运营管理中心
+
+管理员令牌仍使用原 `.private/owner-keys.json` 中的 `DUDU_ADMIN_TOKEN`。不要把令牌粘贴到 GitHub Actions Variables。
+
+如果你之前已经部署公告 Worker，且 GitHub Actions Variables 中存在 `DUDU_CONTENT_URL`，请先把它复制到 Cloudflare Worker 的可选变量，便于自动迁移原公告：
 
 ~~~powershell
 npx wrangler secret put DUDU_LEGACY_CONTENT_URL --config wrangler.local.toml
 ~~~
 
-按提示粘贴旧的 DUDU_CONTENT_URL。新 Worker 第一次读取 /manifest.json 或后台打开「公告与教程」时，会尝试读取旧清单并写入新的 D1；迁移成功后后续读取都使用新 D1。没有旧公告服务则跳过这一步。
+按提示粘贴旧的 `DUDU_CONTENT_URL`。新 Worker 第一次读取 `/manifest.json` 或后台打开「公告与教程」时，会尝试读取旧清单并写入新的 D1；迁移成功后后续读取都使用新 D1。没有旧公告服务则跳过这一步。
 
 ## 4. 官方支付商户配置
 
