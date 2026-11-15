@@ -69,13 +69,14 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <div class="stat"><small>近24小时回调异常</small><strong id="monFailedWebhooks">—</strong></div>
 </div>
 <div class="grid" style="margin-top:12px">
-<div class="stat"><small>微信最近回调</small><strong id="monWechatLast" style="font-size:14px">—</strong><div class="help" id="monWechatTime"></div></div>
-<div class="stat"><small>支付宝最近回调</small><strong id="monAlipayLast" style="font-size:14px">—</strong><div class="help" id="monAlipayTime"></div></div>
+<div class="stat"><small>微信最近支付回调</small><strong id="monWechatLast" style="font-size:14px">—</strong><div class="help" id="monWechatTime"></div></div>
+<div class="stat"><small>微信最近退款回调</small><strong id="monWechatRefundLast" style="font-size:14px">—</strong><div class="help" id="monWechatRefundTime"></div></div>
+<div class="stat"><small>支付宝最近支付回调</small><strong id="monAlipayLast" style="font-size:14px">—</strong><div class="help" id="monAlipayTime"></div></div>
 <div class="stat"><small>最近自动查单</small><strong id="monReconcileTime" style="font-size:14px">—</strong><div class="help" id="monReconcileAttempts"></div></div>
 <div class="stat"><small>近24小时回调总量</small><strong id="monWebhookTotal">—</strong><div class="help">按支付渠道和处理结果统计</div></div>
 </div>
 <div class="notice">回调日志仅保存事件编号、订单号、结果、简要原因和请求摘要，不保存原始回调内容、支付密钥或用户支付凭据。</div>
-<div class="code" id="monCallbackUrls">刷新监控后显示微信支付与支付宝回调地址。</div>
+<div class="code" id="monCallbackUrls">刷新监控后显示实际支付及退款回调地址。</div>
 <h3>最近支付回调</h3><div class="tablewrap"><table><thead><tr><th>时间</th><th>渠道</th><th>事件编号</th><th>订单号</th><th>结果</th><th>处理说明</th><th>请求摘要</th></tr></thead><tbody id="paymentEventsBody"></tbody></table></div>
 <h3 style="margin-top:22px">自动发货队列</h3><div class="tablewrap"><table><thead><tr><th>时间</th><th>订单号</th><th>商品</th><th>状态</th><th>尝试次数</th><th>失败原因</th><th>操作</th></tr></thead><tbody id="deliveriesBody"></tbody></table></div>
 </section>
@@ -124,7 +125,7 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <div class="notice">请在 license-service 目录执行 wrangler secret put，按下方变量名逐项配置。配置后点击“重新检测”。</div>
 <div class="code" id="secretGuide">微信支付（必需）：WECHATPAY_MCHID、WECHATPAY_APPID、WECHATPAY_SERIAL_NO、WECHATPAY_PRIVATE_KEY_PEM、WECHATPAY_API_V3_KEY、WECHATPAY_PLATFORM_PUBLIC_KEY_PEM、WECHATPAY_PLATFORM_SERIAL
 支付宝（必需）：ALIPAY_APP_ID、ALIPAY_PRIVATE_KEY_PEM、ALIPAY_PUBLIC_KEY_PEM、ALIPAY_SELLER_ID
-可选：WECHATPAY_NOTIFY_URL、ALIPAY_NOTIFY_URL、ALIPAY_RETURN_URL</div>
+可选：WECHATPAY_NOTIFY_URL、WECHATPAY_REFUND_NOTIFY_URL、ALIPAY_NOTIFY_URL、ALIPAY_RETURN_URL</div>
 <div class="row"><button id="loadPaymentStatus">重新检测支付配置</button><button id="runPaymentSelfTest" class="secondary">运行本地密钥自检</button></div>
 <div class="notice" id="paymentSelfTestResult">本地自检只检查密钥能否正确导入与签名，不会创建订单、扣款或证明商户平台在线。</div></section>
 </main></div>
@@ -239,12 +240,14 @@ async function loadPaymentMonitor(){
  $("monUndelivered").textContent=health.paidUndelivered;
  $("monFailedDeliveries").textContent=health.failedDeliveries;
  $("monFailedWebhooks").textContent=health.failedWebhooks24h;
- const wechat=health.lastWebhook.wechat,alipay=health.lastWebhook.alipay;
+ const wechat=health.lastWebhook.wechat,refund=health.lastWebhook.wechatRefund,alipay=health.lastWebhook.alipay;
  $("monWechatLast").textContent=(health.providers.wechat?"配置已就绪":"未配置")+" · "+(wechat?outcomeText(wechat.outcome):"暂无回调");
- $("monWechatTime").textContent=wechat?formatDate(wechat.occurred_ms):"尚未收到回调";
+ $("monWechatTime").textContent=wechat?formatDate(wechat.occurred_ms):"尚未收到支付回调";
+ $("monWechatRefundLast").textContent=(health.providers.wechat?"配置已就绪":"未配置")+" · "+(refund?outcomeText(refund.outcome):"暂无退款回调");
+ $("monWechatRefundTime").textContent=refund?formatDate(refund.occurred_ms):"尚未收到退款回调";
  $("monAlipayLast").textContent=(health.providers.alipay?"配置已就绪":"未配置")+" · "+(alipay?outcomeText(alipay.outcome):"暂无回调");
- $("monAlipayTime").textContent=alipay?formatDate(alipay.occurred_ms):"尚未收到回调";
- $("monCallbackUrls").textContent="微信支付回调："+health.callbacks.wechat+"\n支付宝回调："+health.callbacks.alipay;
+ $("monAlipayTime").textContent=alipay?formatDate(alipay.occurred_ms):"尚未收到支付回调";
+ $("monCallbackUrls").textContent="微信支付回调："+health.callbacks.wechat+"\n微信退款回调："+health.callbacks.wechatRefund+"\n支付宝支付回调："+health.callbacks.alipay;
  $("monReconcileTime").textContent=formatDate(health.reconciliation.lastCheckedMs);
  $("monReconcileAttempts").textContent="累计查单 "+(health.reconciliation.totalAttempts||0)+" 次";
  $("monWebhookTotal").textContent=(health.webhookCounts24h||[]).reduce((sum,x)=>sum+Number(x.n||0),0);
