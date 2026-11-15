@@ -621,7 +621,7 @@ async function alipayApiCall(env,method,bizContent) {
   params.sign=await rsaSign(env.ALIPAY_PRIVATE_KEY_PEM,alipaySignContent(params));
   const res=await fetch(alipayGateway(env),{method:"POST",headers:{Accept:"application/json","Content-Type":"application/x-www-form-urlencoded;charset=utf-8"},body:new URLSearchParams(params).toString()});
   const raw=await res.text();let envelope={};try{envelope=JSON.parse(raw)}catch{}
-  const responseKey=method+"_response",data=envelope[responseKey];
+  const responseKey=method.replaceAll(".","_")+"_response",data=envelope[responseKey];
   if(!res.ok||!data||!envelope.sign||!await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,alipaySignContent(data),envelope.sign))
     throw Error("支付宝"+method+"响应验签失败或网关不可用");
   return data;
@@ -739,6 +739,8 @@ async function handleWechatRefundNotify(request,env,helpers) {
   if(!verified)return json({code:"FAIL",message:"签名验证失败"},401);
   try {
     const trade=await decryptWechatResource(notice.resource,env);
+    const eventStatus=({"REFUND.SUCCESS":"SUCCESS","REFUND.CLOSED":"CLOSED","REFUND.ABNORMAL":"ABNORMAL"})[notice.event_type];
+    if(!eventStatus||trade.refund_status!==eventStatus)throw Error("微信退款通知事件类型与退款状态不匹配");
     const refund=await env.DB.prepare("SELECT * FROM refunds WHERE refund_no=? AND provider='wechat'").bind(clean(trade.out_refund_no,80)).first();
     if(!refund)return json({code:"FAIL",message:"退款单不存在"},404);
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(refund.order_id).first();
