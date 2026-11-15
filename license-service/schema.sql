@@ -94,6 +94,22 @@ CREATE TABLE IF NOT EXISTS payment_events (
 );
 CREATE INDEX IF NOT EXISTS idx_payment_events_order ON payment_events(order_no, created_ms DESC);
 
+-- Store only callback metadata and a payload hash; never persist raw payment payloads or secrets.
+CREATE TABLE IF NOT EXISTS payment_webhook_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL CHECK(provider IN ('wechat','alipay')),
+  event_id TEXT NOT NULL DEFAULT '',
+  order_no TEXT NOT NULL DEFAULT '',
+  outcome TEXT NOT NULL CHECK(outcome IN ('accepted','ignored','rejected','error')),
+  message TEXT NOT NULL DEFAULT '',
+  payload_sha256 TEXT NOT NULL,
+  occurred_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_payment_webhook_provider_time
+  ON payment_webhook_logs(provider, occurred_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_webhook_outcome_time
+  ON payment_webhook_logs(outcome, occurred_ms DESC);
+
 -- Throttle scheduled/manual reconciliation so provider APIs are not polled on every client refresh.
 CREATE TABLE IF NOT EXISTS payment_reconcile_state (
   order_id TEXT PRIMARY KEY,
