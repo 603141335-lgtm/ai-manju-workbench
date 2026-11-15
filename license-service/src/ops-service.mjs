@@ -683,6 +683,7 @@ async function submitRefund(env,refund,order,origin,actor) {
         return {status:"failed",message:clean(data.message||data.code||"微信退款申请失败",180)};
       }
       if(data.out_refund_no!==refund.refund_no||data.out_trade_no!==order.order_no)throw Error("微信退款响应订单号不匹配");
+      if(Number(data.amount?.refund)!==Number(refund.amount_cents)||Number(data.amount?.total)!==Number(order.amount_cents))throw Error("微信退款响应金额不匹配，转入人工核对");
       await updateRefundStatus(env,refund,"processing",clean(data.status||"PROCESSING",40),data.refund_id||"","微信支付已受理退款申请，等待最终退款状态",actor);
       return {status:"processing",message:"微信支付已受理退款，最终到账以退款查询结果为准"};
     }
@@ -725,6 +726,7 @@ async function syncRefund(env,refund,order,actor) {
   });
   if(data.out_trade_no!==order.order_no||data.out_request_no!==refund.refund_no)throw Error("支付宝退款查询订单号不匹配");
   if(data.code!=="10000")throw Error("支付宝退款查询失败："+clean(data.sub_msg||data.msg||data.sub_code||"接口异常",120));
+  if(data.total_amount!=null&&Math.round(Number(data.total_amount)*100)!==Number(order.amount_cents))throw Error("支付宝退款查询原订单金额不匹配");
   if(data.refund_status==="REFUND_SUCCESS") {
     if(Math.round(Number(data.refund_amount)*100)!==Number(refund.amount_cents))throw Error("支付宝退款查询金额不匹配");
     return await finalizeRefundSuccess(env,refund,"REFUND_SUCCESS",data.trade_no||order.provider_trade_no||"",actor);
