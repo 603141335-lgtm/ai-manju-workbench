@@ -151,7 +151,7 @@ function alipayGateway(env) {
   if(target.hostname!=="openapi.alipay.com"&&target.hostname!=="openapi-sandbox.dl.alipaydev.com") throw Error("支付宝网关地址不在允许列表");
   return target.toString();
 }
-export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic, paymentReady, wechatOrderQueryPath, wechatRequestMessage, buildAlipayQueryParams };
+export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic, paymentReady, wechatOrderQueryPath, wechatRequestMessage, buildAlipayQueryParams, runScheduledReconciliation };
 
 function paymentReady(env, method) {
   if(method==="wechat") return !!(env.WECHATPAY_MCHID&&env.WECHATPAY_APPID&&env.WECHATPAY_SERIAL_NO&&env.WECHATPAY_PRIVATE_KEY_PEM&&env.WECHATPAY_API_V3_KEY&&env.WECHATPAY_PLATFORM_PUBLIC_KEY_PEM&&env.WECHATPAY_PLATFORM_SERIAL);
@@ -242,6 +242,43 @@ async function queryAlipayPayment(env,order,helpers) {
     return {status:"closed",tradeState:data.trade_status,message:"支付宝订单已关闭"};
   }
   return {status:"pending",tradeState:clean(data.trade_status,40),message:data.trade_status==="WAIT_BUYER_PAY"?"支付宝订单等待付款":"支付宝订单尚未完成"};
+}
+async function recordReconcileAttempt(env,orderId,error="") {
+  const now=Date.now();
+  await env.DB.prepare("INSERT INTO payment_reconcile_state(order_id,last_checked_ms,attempts,last_error) VALUES(?,?,1,?) ON CONFLICT(order_id) DO UPDATE SET last_checked_ms=excluded.last_checked_ms,attempts=payment_reconcile_state.attempts+1,last_error=excluded.last_error")
+    .bind(orderId,now,clean(error,240)).run();
+}
+async function runScheduledReconciliation(env,helpers) {
+  const now=Date.now(),minCreated=now-3*60*60*1000,cutoff=now-5*60*1000;
+  const pending=await env.DB.prepare("SELECT o.* FROM orders o LEFT JOIN payment_reconcile_state r ON r.order_id=o.order_id WHERE o.status IN ('pending','closed') AND o.created_ms>? AND (r.last_checked_ms IS NULL OR r.last_checked_ms<?) ORDER BY o.created_ms ASC LIMIT 10")
+    .bind(minCreated,cutoff).all();
+  const undelivered=await env.DB.prepare("SELECT * FROM orders WHERE status='paid' AND delivered_ms IS NULL ORDER BY paid_ms ASC LIMIT 10").all();
+  let checked=0,paid=0,failed=0,deliveryRecovered=0;
+  for(const order of pending.results||[]) {
+    if(!paymentReady(env,order.payment_method)) continue;
+    try {
+      const result=order.payment_method==="wechat"?await queryWechatPayment(env,order,helpers):await queryAlipayPayment(env,order,helpers);
+      await recordReconcileAttempt(env,order.order_id,result.status==="paid"?"":result.message||"");
+      checked++;
+      if(result.status==="paid") paid++;
+    } catch(error) {
+      await recordReconcileAttempt(env,order.order_id,error.message||"查单失败");
+      await env.DB.prepare("UPDATE orders SET last_error=?,updated_ms=? WHERE order_id=?").bind(clean(error.message,240),Date.now(),order.order_id).run();
+      checked++;failed++;
+    }
+  }
+  for(const order of undelivered.results||[]) {
+    try {
+      await markOrderPaid(env,order,order.provider_trade_no,"scheduled-delivery-"+randomHex(8),"delivery-retry",helpers);
+      await recordReconcileAttempt(env,order.order_id,"");
+      deliveryRecovered++;
+    } catch(error) {
+      await recordReconcileAttempt(env,order.order_id,error.message||"自动发货失败");
+      await env.DB.prepare("UPDATE orders SET last_error=?,updated_ms=? WHERE order_id=?").bind(clean(error.message,240),Date.now(),order.order_id).run();
+      failed++;
+    }
+  }
+  return {checked,paid,failed,deliveryRecovered};
 }
 async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, helpers) {
   const orderRow=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(order.order_no).first();
@@ -388,6 +425,7 @@ async function reconcileUserOrder(request,env,body,helpers) {
   }
   if(!paymentReady(env,order.payment_method)) throw Error("对应支付商户密钥尚未完整配置");
   const result=order.payment_method==="wechat"?await queryWechatPayment(env,order,helpers):await queryAlipayPayment(env,order,helpers);
+  await recordReconcileAttempt(env,order.order_id,result.status==="paid"?"":result.message||"");
   return json({...result,orderId:order.order_id});
 }
 async function applicationCreate(request, env, body, helpers) {
@@ -526,6 +564,7 @@ async function adminOps(req, env, path, helpers) {
     }
     if(!paymentReady(env,order.payment_method)) throw Error("对应支付商户密钥尚未完整配置");
     const result=order.payment_method==="wechat"?await queryWechatPayment(env,order,helpers):await queryAlipayPayment(env,order,helpers);
+    await recordReconcileAttempt(env,order.order_id,result.status==="paid"?"":result.message||"");
     await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES(?,?)").bind("payment_reconcile_"+result.status,Date.now()).run();
     if(result.status!=="paid"&&result.message) await env.DB.prepare("UPDATE orders SET last_error=?,updated_ms=? WHERE order_id=?").bind(clean(result.message,240),Date.now(),order.order_id).run();
     return json({...result,orderId:id});
