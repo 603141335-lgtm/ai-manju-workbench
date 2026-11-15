@@ -10,7 +10,9 @@ const enc=s=>Buffer.from(String(s),'utf8');
 const b64u=b=>Buffer.from(b).toString('base64url');
 const cleanCode=s=>String(s||'').toUpperCase().replace(/[\s]/g,'').slice(0,45);
 function deviceMessage(op,request){
- return JSON.stringify({op,deviceId:request.deviceId,publicKey:request.publicKey,ts:request.ts,nonce:request.nonce,code:request.code||''});
+ const message={op,deviceId:request.deviceId,publicKey:request.publicKey,ts:request.ts,nonce:request.nonce,code:request.code||''};
+ for(const key of ['contact','reason','productId','paymentMethod','orderId'])if(typeof request[key]==='string')message[key]=request[key];
+ return JSON.stringify(message);
 }
 function winMachineGuid(){
  if(process.platform!=='win32')return '';
@@ -33,6 +35,17 @@ function post(service,endpoint,data){
   });
   req.on('timeout',()=>req.destroy(Error('授权服务连接超时')));
   req.on('error',reject);req.end(body);
+ });
+}
+function getJson(service,endpoint){
+ return new Promise((resolve,reject)=>{
+  const url=new URL(endpoint,service);
+  const req=https.get(url,{timeout:9000,headers:{'accept':'application/json'}},res=>{
+   const chunks=[];let len=0;
+   res.on('data',b=>{len+=b.length;if(len>MAX_RESPONSE)req.destroy(Error('授权响应过大'));else chunks.push(b)});
+   res.on('end',()=>{try{const value=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(res.statusCode<200||res.statusCode>=300)return reject(Error(String(value.error||'授权服务异常').slice(0,200)));resolve(value)}catch(e){reject(e)}});
+  });
+  req.on('timeout',()=>req.destroy(Error('授权服务连接超时')));req.on('error',reject);
  });
 }
 function verifyTokenJS(token,publicKey,deviceId,now=Date.now()){
@@ -97,9 +110,10 @@ class LicenseClient{
   return {...state,configured:!!(this.service&&this.publicKey),secureStorageAvailable:this.secure(),serviceOnline:!this.lastError,error:this.lastError||'',deviceLabel:this.identity?.deviceId?.slice(0,8)||''};
  }
  requireValid(){const s=this.status();if(!s.valid)throw Error('试用已结束或尚未激活；请打开「授权中心」领取免费永久卡密。'+(s.reason||''));return true}
- request(op,code=''){
+ request(op,code='',extra={}){
   if(!this.service||!this.publicKey)throw Error('授权服务尚未部署，当前仅提供开发预览与本地项目导出');
   const i=this.identityReady(),r={deviceId:i.deviceId,publicKey:i.publicKey,ts:this.clock(),nonce:crypto.randomBytes(16).toString('hex'),code:cleanCode(code)};
+  for(const key of ['contact','reason','productId','paymentMethod','orderId'])if(typeof extra[key]==='string')r[key]=String(extra[key]).trim().slice(0,500);
   r.signature=b64u(crypto.sign(null,enc(deviceMessage(op,r)),crypto.createPrivateKey({key:Buffer.from(i.privateKey,'base64'),format:'der',type:'pkcs8'})));
   return r;
  }
@@ -120,6 +134,43 @@ class LicenseClient{
   if(!/^DUDU(?:-[A-Z2-9]{5}){4}$/.test(cleanCode(code)))throw Error('卡密格式应为DUDU-XXXXX-XXXXX-XXXXX-XXXXX');
   return this.call('activate','/v1/license/activate',code);
  }
- async refresh(){if(!this.service||!this.publicKey||!this.token)return this.status();try{return await this.call('refresh','/v1/license/refresh')}catch{return this.status()}}
+ async refresh(){if(!this.service||!this.publicKey)return this.status();try{return await this.call('refresh','/v1/license/refresh')}catch{return this.status()}}
+ async signedCall(op,endpoint,extra={}) {
+  if(!this.service||!this.publicKey)throw Error('授权服务尚未配置');
+  const payload=this.request(op,'',extra);
+  const result=await this.transport(this.service,endpoint,payload);
+  this.lastError='';return result;
+ }
+ applyFreeLicense(contact,reason='') {
+  const c=String(contact||'').trim(),r=String(reason||'').trim();
+  if(c.length<2)throw Error('请填写微信号或联系方式');
+  return this.signedCall('apply','/v1/application/create',{contact:c,reason:r});
+ }
+ applicationStatus(){return this.signedCall('application-status','/v1/application/status')}
+ async getProducts(){
+  if(!this.service)return [];
+  const result=await getJson(this.service,'/v1/products');
+  return Array.isArray(result.products)?result.products:[];
+ }
+ async createOrder(productId,paymentMethod){
+  if(!/^[a-z0-9_-]{2,80}$/i.test(String(productId||'')))throw Error('请选择有效商品');
+  if(!['wechat','alipay'].includes(paymentMethod))throw Error('请选择支付方式');
+  const result=await this.signedCall('order-create','/v1/orders/create',{productId:String(productId),paymentMethod});
+  const checkout=new URL(result.checkoutUrl);
+  if(checkout.origin!==this.service)throw Error('支付地址与授权服务器不一致，已阻止打开');
+  return result;
+ }
+ orderStatus(orderId){
+  if(!/^[0-9a-f-]{36}$/i.test(String(orderId||'')))throw Error('订单编号无效');
+  return this.signedCall('order-status','/v1/orders/status',{orderId:String(orderId)});
+ }
+ async getOrders(){
+  const result=await this.signedCall('order-list','/v1/orders/list');
+  return Array.isArray(result.orders)?result.orders:[];
+ }
+ reconcileOrder(orderId){
+  if(!/^[0-9a-f-]{36}$/i.test(String(orderId||'')))throw Error('订单编号无效');
+  return this.signedCall('order-reconcile','/v1/orders/reconcile',{orderId:String(orderId)});
+ }
 }
 module.exports={LicenseClient,deviceMessage,verifyTokenJS,validServiceUrl,cleanCode};

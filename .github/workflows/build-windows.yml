@@ -92,6 +92,7 @@ jobs:
         run: node --test tests/v090.test.js
       - name: Configure optional public HTTPS tutorial and community content service
         env:
+          DUDU_LICENSE_URL: ${{ vars.DUDU_LICENSE_URL }}
           DUDU_CONTENT_URL: ${{ vars.DUDU_CONTENT_URL }}
           DOUBAO_NOTICE_URL: ${{ vars.DOUBAO_NOTICE_URL }}
         run: node scripts/prepare-public-notice.js

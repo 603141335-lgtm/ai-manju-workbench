@@ -1,4 +1,5 @@
 import {adminHtml} from './admin-ui.mjs';
+import {handleOpsRequest,runScheduledReconciliation} from './ops-service.mjs';
 
 // Only public license proof data is accepted. No Doubao credentials, cookies,
 // projects or files are read or uploaded. Signing private key stays in Worker secrets.
@@ -9,7 +10,11 @@ const response=(body,status=200,extra={})=>new Response(JSON.stringify(body),{st
 const b64u=b=>{let s='';for(const x of new Uint8Array(b))s+=String.fromCharCode(x);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'')};
 const un64u=t=>{const s=t.replace(/-/g,'+').replace(/_/g,'/');return Uint8Array.from(atob(s+'='.repeat((4-s.length%4)%4)),c=>c.charCodeAt(0))};
 const b64=b=>Uint8Array.from(atob(b),c=>c.charCodeAt(0));
-export function deviceMessage(op,req){return JSON.stringify({op,deviceId:req.deviceId,publicKey:req.publicKey,ts:req.ts,nonce:req.nonce,code:req.code||''})}
+export function deviceMessage(op,req){
+ const message={op,deviceId:req.deviceId,publicKey:req.publicKey,ts:req.ts,nonce:req.nonce,code:req.code||''};
+ for(const key of ['contact','reason','productId','paymentMethod','orderId'])if(typeof req[key]==='string')message[key]=req[key];
+ return JSON.stringify(message);
+}
 const sha=async bytes=>b64u(await crypto.subtle.digest('SHA-256',bytes));
 const hmac=async(key,value)=>{if(!key||key.length<32)throw Error('服务器HMAC秘密未配置');const k=await crypto.subtle.importKey('raw',enc.encode(key),{name:'HMAC',hash:'SHA-256'},false,['sign']);return b64u(await crypto.subtle.sign('HMAC',k,enc.encode(value)))};
 const validDeviceId=x=>typeof x==='string'&&/^[0-9a-f]{64}$/i.test(x);
@@ -130,6 +135,8 @@ export default {async fetch(request,env){
   try{return await attestSigningKey(env)}catch{return response({error:'服务器签名服务尚未正确配置'},503)}
  }
  if(path==='/admin'&&request.method==='GET')return new Response(adminHtml,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','content-security-policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'}});
+ const opsResponse=await handleOpsRequest(request,env,path,{adminAuth,hmac,newCode,verifyDevice,registerDevice:(hash,pub)=>registerDevice(env,hash,pub)});
+ if(opsResponse)return opsResponse;
  if(request.method!=='POST'||!path.startsWith('/v1/'))return response({error:'Not found'},404);
  if(Number(request.headers.get('content-length')||0)>8192)return response({error:'请求过大'},413);
  if(!(request.headers.get('content-type')||'').startsWith('application/json'))return response({error:'请求必须为JSON'},415);
@@ -139,4 +146,11 @@ export default {async fetch(request,env){
   if(!op)return response({error:'Not found'},404);
   return await licenseRequest(request,env,op);
  }catch(e){return safeError(e)}
-}};
+},
+ async scheduled(_controller,env,ctx){
+  const task=runScheduledReconciliation(env,{hmac,newCode})
+   .then(result=>console.log('dudu-payment-reconcile',JSON.stringify(result)))
+   .catch(error=>console.error('dudu-payment-reconcile-failed',String(error?.message||error)));
+  ctx.waitUntil(task);
+ }
+};

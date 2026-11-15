@@ -12,3 +12,6 @@ PRODUCT_ID = "dudu-ai-workbench"
 
 [secrets]
 required = ["DUDU_SIGNING_PRIVATE_PKCS8_B64", "DUDU_DEVICE_HMAC_KEY", "DUDU_CARD_HMAC_KEY", "DUDU_ADMIN_TOKEN_SHA256"]
+
+[triggers]
+crons = ["*/5 * * * *"]

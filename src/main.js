@@ -273,6 +273,39 @@ function registerHandlers(){
   ipcMain.handle('license:trial',async()=>{const r=await licenseClient.startTrial();if(r.valid&&activeId)selectAccount(activeId);tell('license:updated',r);return r;});
   ipcMain.handle('license:activate',async(_event,code)=>{const r=await licenseClient.activate(code);if(r.valid&&activeId)selectAccount(activeId);tell('license:updated',r);return r;});
   ipcMain.handle('license:refresh',()=>licenseClient.refresh());
+  ipcMain.handle('license:apply',(_event,contact,reason)=>licenseClient.applyFreeLicense(contact,reason));
+  ipcMain.handle('license:applicationStatus',async()=>{
+    const result=await licenseClient.applicationStatus();
+    if(result.application?.status==='approved'){
+      const state=await licenseClient.refresh();tell('license:updated',state);
+      return {...result,license:state};
+    }
+    return result;
+  });
+  ipcMain.handle('license:products',()=>licenseClient.getProducts());
+  ipcMain.handle('license:createOrder',(_event,productId,paymentMethod)=>licenseClient.createOrder(productId,paymentMethod));
+  ipcMain.handle('license:orders',()=>licenseClient.getOrders());
+  ipcMain.handle('license:reconcileOrder',async(_event,orderId)=>{
+    const result=await licenseClient.reconcileOrder(orderId);
+    if(result.status==='paid'){
+      const state=await licenseClient.refresh();tell('license:updated',state);
+      return {...result,license:state};
+    }
+    return result;
+  });
+  ipcMain.handle('license:orderStatus',async(_event,orderId)=>{
+    const order=await licenseClient.orderStatus(orderId);
+    if(order.status==='paid'){
+      const state=await licenseClient.refresh();tell('license:updated',state);
+      return {...order,license:state};
+    }
+    return order;
+  });
+  ipcMain.handle('license:openCheckout',async(_event,url)=>{
+    const target=safeHttps(url);
+    if(!target||new URL(target).origin!==licenseClient.service)throw Error('支付地址无效，已阻止打开');
+    await shell.openExternal(target);return true;
+  });
   ipcMain.handle('cfg:get',()=>cfg);
   ipcMain.handle('api:get',()=>apiSettings.snapshot());
   ipcMain.handle('api:save',(_event,settings)=>apiSettings.save(settings));
