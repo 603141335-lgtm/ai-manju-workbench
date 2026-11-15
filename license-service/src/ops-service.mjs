@@ -738,6 +738,7 @@ async function handleWechatRefundNotify(request,env,helpers) {
   let verified=false;try{verified=await verifyWechatCallback(request,env,raw)}catch{}
   if(!verified)return json({code:"FAIL",message:"签名验证失败"},401);
   try {
+    if(notice.resource_type!=="encrypt-resource"||notice.resource?.original_type!=="refund")throw Error("微信退款通知资源类型不匹配");
     const trade=await decryptWechatResource(notice.resource,env);
     const eventStatus=({"REFUND.SUCCESS":"SUCCESS","REFUND.CLOSED":"CLOSED","REFUND.ABNORMAL":"ABNORMAL"})[notice.event_type];
     if(!eventStatus||trade.refund_status!==eventStatus)throw Error("微信退款通知事件类型与退款状态不匹配");
@@ -776,7 +777,7 @@ async function adminOps(req, env, path, helpers) {
     return json({fromMs,toMs,orders:Number(sales?.orders||0),grossCents:gross,refundCount:Number(refunds?.count||0),refundedCents:refunded,netCents:gross-refunded,pendingRefunds:Number(pendingRefunds?.n||0),channels:channels.results||[],products:products.results||[],daily:daily.results||[]});
   }
   if(path==="/v1/admin/customers/list") {
-    const result=await env.DB.prepare("SELECT d.device_hash,d.created_ms,d.trial_started_ms,d.trial_ends_ms,dc.blocked_ms,dc.block_reason,(SELECT contact FROM license_applications a WHERE a.device_hash=d.device_hash ORDER BY a.created_ms DESC LIMIT 1) AS contact,(SELECT COUNT(*) FROM orders o WHERE o.device_hash=d.device_hash) AS order_count,(SELECT COUNT(*) FROM orders o WHERE o.device_hash=d.device_hash AND o.status IN ('paid','refunded')) AS paid_orders,(SELECT COALESCE(SUM(amount_cents),0) FROM orders o WHERE o.device_hash=d.device_hash AND o.status IN ('paid','refunded')) AS gross_cents,(SELECT MAX(COALESCE(paid_ms,created_ms)) FROM orders o WHERE o.device_hash=d.device_hash) AS last_order_ms,(SELECT COUNT(*) FROM license_cards c WHERE c.bound_device_hash=d.device_hash AND c.revoked_ms IS NULL) AS active_cards FROM devices d LEFT JOIN device_controls dc ON dc.device_hash=d.device_hash ORDER BY COALESCE(last_order_ms,d.created_ms) DESC LIMIT 300").all();
+    const result=await env.DB.prepare("SELECT d.device_hash,d.created_ms,d.trial_started_ms,d.trial_ends_ms,dc.blocked_ms,dc.block_reason,(SELECT contact FROM license_applications a WHERE a.device_hash=d.device_hash ORDER BY a.created_ms DESC LIMIT 1) AS contact,(SELECT COUNT(*) FROM orders o WHERE o.device_hash=d.device_hash) AS order_count,(SELECT COUNT(*) FROM orders o WHERE o.device_hash=d.device_hash AND o.status IN ('paid','refunded')) AS paid_orders,(SELECT COALESCE(SUM(amount_cents),0) FROM orders o WHERE o.device_hash=d.device_hash AND o.status IN ('paid','refunded')) AS gross_cents,(SELECT MAX(COALESCE(paid_ms,created_ms)) FROM orders o WHERE o.device_hash=d.device_hash) AS last_order_ms,(SELECT COUNT(*) FROM license_cards c WHERE c.bound_device_hash=d.device_hash AND c.revoked_ms IS NULL) AS active_cards FROM devices d LEFT JOIN device_controls dc ON dc.device_hash=d.device_hash ORDER BY (SELECT MAX(COALESCE(o2.paid_ms,o2.created_ms)) FROM orders o2 WHERE o2.device_hash=d.device_hash) DESC,d.created_ms DESC LIMIT 300").all();
     return json({customers:(result.results||[]).map(x=>({...x,contact:maskContact(x.contact)}))});
   }
   if(path==="/v1/admin/customers/detail") {
@@ -817,6 +818,7 @@ async function adminOps(req, env, path, helpers) {
     const orderId=clean(body.orderId,80),reason=clean(body.reason,80);
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(orderId).first();
     if(!order||order.status!=="paid")return json({error:"只有已支付且未退款的订单可以申请退款"},400);
+    if(order.payment_method==="wechat"&&enc.encode(reason).length>80)return json({error:"微信退款原因最多80个UTF-8字节，请缩短文字"},400);
     const existing=await env.DB.prepare("SELECT refund_id,status,refund_no FROM refunds WHERE order_id=?").bind(orderId).first();
     if(existing)return json({error:"该订单已有退款记录，请查看现有退款状态",refund:existing},409);
     const now=Date.now(),refundId=crypto.randomUUID(),refundNo="RF"+now.toString(36).toUpperCase()+randomHex(6).toUpperCase();
