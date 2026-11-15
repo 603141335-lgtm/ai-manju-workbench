@@ -179,7 +179,8 @@ test('admin payment monitoring endpoints return health, webhook history and deli
   assert.equal(health.lastWebhook.wechatRefund.outcome,'accepted');
   assert.equal(health.lastWebhook.wechatRefund.event_id,'refund-event-1');
   const events=await (await handleOpsRequest(request('/v1/admin/payments/events/list'),env,'/v1/admin/payments/events/list',helpers)).json();
-  assert.deepEqual(events.events,[]);
+  assert.equal(events.events.length,1);
+  assert.equal(events.events[0].event_id,'refund-event-1');
   const deliveries=await (await handleOpsRequest(request('/v1/admin/deliveries/list'),env,'/v1/admin/deliveries/list',helpers)).json();
   assert.deepEqual(deliveries.deliveries,[]);
   db.close();
