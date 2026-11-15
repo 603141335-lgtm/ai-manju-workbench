@@ -134,9 +134,24 @@ async function rsaVerify(pem, text, signature) {
 }
 function alipaySignContent(params) {
   return Object.keys(params).filter(k=>k!=="sign"&&k!=="sign_type"&&params[k]!==undefined&&params[k]!==null&&params[k]!=="")
-    .sort().map(k=>k+"="+params[k]).join("&");
+    .sort().map(k=>k+"="+(typeof params[k]==="object"?JSON.stringify(params[k]):String(params[k]))).join("&");
 }
-export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic };
+function wechatOrderQueryPath(outTradeNo,mchid) {
+  return "/v3/pay/transactions/out-trade-no/"+encodeURIComponent(outTradeNo)+"?mchid="+encodeURIComponent(mchid);
+}
+function wechatRequestMessage(method,path,timestamp,nonce,body="") {
+  return method+"\n"+path+"\n"+timestamp+"\n"+nonce+"\n"+body+"\n";
+}
+function buildAlipayQueryParams(env,orderNo,timestamp) {
+  return {app_id:env.ALIPAY_APP_ID,method:"alipay.trade.query",format:"JSON",charset:"utf-8",sign_type:"RSA2",timestamp,version:"1.0",biz_content:JSON.stringify({out_trade_no:orderNo})};
+}
+function alipayGateway(env) {
+  const gateway=safeHttps(env.ALIPAY_GATEWAY_URL)||"https://openapi.alipay.com/gateway.do";
+  const target=new URL(gateway);
+  if(target.hostname!=="openapi.alipay.com"&&target.hostname!=="openapi-sandbox.dl.alipaydev.com") throw Error("支付宝网关地址不在允许列表");
+  return target.toString();
+}
+export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic, paymentReady, wechatOrderQueryPath, wechatRequestMessage, buildAlipayQueryParams };
 
 function paymentReady(env, method) {
   if(method==="wechat") return !!(env.WECHATPAY_MCHID&&env.WECHATPAY_APPID&&env.WECHATPAY_SERIAL_NO&&env.WECHATPAY_PRIVATE_KEY_PEM&&env.WECHATPAY_API_V3_KEY&&env.WECHATPAY_PLATFORM_PUBLIC_KEY_PEM&&env.WECHATPAY_PLATFORM_SERIAL);
@@ -155,7 +170,7 @@ async function createWechatOrder(env, order, origin) {
   const message="POST\n"+path+"\n"+timestamp+"\n"+nonce+"\n"+body+"\n";
   const signature=await rsaSign(env.WECHATPAY_PRIVATE_KEY_PEM,message);
   const authorization='WECHATPAY2-SHA256-RSA2048 mchid="'+env.WECHATPAY_MCHID+'",nonce_str="'+nonce+'",timestamp="'+timestamp+'",serial_no="'+env.WECHATPAY_SERIAL_NO+'",signature="'+signature+'"';
-  const res=await fetch("https://api.mch.weixin.qq.com"+path,{method:"POST",headers:{"Authorization":authorization,"Accept":"application/json","Content-Type":"application/json"},body});
+  const res=await fetch("https://api.mch.weixin.qq.com"+path,{method:"POST",headers:{"Authorization":authorization,"Wechatpay-Serial":env.WECHATPAY_PLATFORM_SERIAL,"Accept":"application/json","Content-Type":"application/json"},body});
   const raw=await res.text();
   if(!await verifyWechatHeaders(res.headers,env,raw)) throw Error("微信支付下单响应验签失败");
   let data={};try{data=JSON.parse(raw)}catch{}
@@ -175,8 +190,58 @@ async function createAlipayOrder(env, order, origin) {
     })
   };
   params.sign=await rsaSign(env.ALIPAY_PRIVATE_KEY_PEM,alipaySignContent(params));
-  const gateway=safeHttps(env.ALIPAY_GATEWAY_URL)||"https://openapi.alipay.com/gateway.do";
+  const gateway=alipayGateway(env);
   return {gateway,pay_params:params};
+}
+async function queryWechatPayment(env,order,helpers) {
+  const path=wechatOrderQueryPath(order.order_no,env.WECHATPAY_MCHID);
+  const timestamp=String(Math.floor(Date.now()/1000)),nonce=randomHex(16);
+  const signature=await rsaSign(env.WECHATPAY_PRIVATE_KEY_PEM,wechatRequestMessage("GET",path,timestamp,nonce,""));
+  const authorization='WECHATPAY2-SHA256-RSA2048 mchid="'+env.WECHATPAY_MCHID+'",nonce_str="'+nonce+'",timestamp="'+timestamp+'",serial_no="'+env.WECHATPAY_SERIAL_NO+'",signature="'+signature+'"';
+  const res=await fetch("https://api.mch.weixin.qq.com"+path,{method:"GET",headers:{"Authorization":authorization,"Wechatpay-Serial":env.WECHATPAY_PLATFORM_SERIAL,"Accept":"application/json"}});
+  const raw=await res.text();
+  if(!await verifyWechatHeaders(res.headers,env,raw)) throw Error("微信支付查单响应验签失败");
+  let data={};try{data=JSON.parse(raw)}catch{}
+  if(res.status===404) return {status:"not_found",tradeState:"NOT_FOUND",message:"微信支付平台暂未查到该订单"};
+  if(!res.ok) throw Error("微信支付查单失败："+clean(data.message||data.code||"接口异常",120));
+  if(data.out_trade_no!==order.order_no||data.mchid!==env.WECHATPAY_MCHID||data.appid!==env.WECHATPAY_APPID) throw Error("微信支付查单返回的订单或商户信息不匹配");
+  if(data.trade_state==="SUCCESS") {
+    if(data.amount?.currency!=="CNY"||Number(data.amount?.total)!==Number(order.amount_cents)||!data.transaction_id) throw Error("微信支付查单金额、币种或交易号不匹配");
+    const hash=hex(await crypto.subtle.digest("SHA-256",enc.encode(raw)));
+    await markOrderPaid(env,order,data.transaction_id,"reconcile-wechat-"+data.transaction_id,hash,helpers);
+    return {status:"paid",tradeState:data.trade_state,delivered:true,message:"微信支付已确认到账，授权已自动发放"};
+  }
+  if(data.trade_state==="CLOSED") {
+    await env.DB.prepare("UPDATE orders SET status='closed',updated_ms=? WHERE order_id=? AND status='pending'").bind(Date.now(),order.order_id).run();
+    return {status:"closed",tradeState:data.trade_state,message:data.trade_state_desc||"微信订单已关闭"};
+  }
+  return {status:"pending",tradeState:clean(data.trade_state,40),message:clean(data.trade_state_desc||"微信支付尚未完成",160)};
+}
+async function queryAlipayPayment(env,order,helpers) {
+  const timestamp=new Date().toISOString().replace("T"," ").slice(0,19);
+  const params=buildAlipayQueryParams(env,order.order_no,timestamp);
+  params.sign=await rsaSign(env.ALIPAY_PRIVATE_KEY_PEM,alipaySignContent(params));
+  const body=new URLSearchParams(params).toString();
+  const res=await fetch(alipayGateway(env),{method:"POST",headers:{"Accept":"application/json","Content-Type":"application/x-www-form-urlencoded;charset=utf-8"},body});
+  const raw=await res.text();
+  let envelope={};try{envelope=JSON.parse(raw)}catch{}
+  const data=envelope.alipay_trade_query_response;
+  if(!data||!envelope.sign||!await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,alipaySignContent(data),envelope.sign)) throw Error("支付宝查单响应验签失败");
+  if(data.code!=="10000") {
+    if(data.sub_code==="ACQ.TRADE_NOT_EXIST") return {status:"not_found",tradeState:"NOT_FOUND",message:"支付宝平台暂未查到该订单"};
+    throw Error("支付宝查单失败："+clean(data.sub_msg||data.msg||data.sub_code||"接口异常",160));
+  }
+  if(data.out_trade_no!==order.order_no||Math.round(Number(data.total_amount)*100)!==Number(order.amount_cents)||!data.trade_no) throw Error("支付宝查单订单号、金额或交易号不匹配");
+  if(["TRADE_SUCCESS","TRADE_FINISHED"].includes(data.trade_status)) {
+    const hash=hex(await crypto.subtle.digest("SHA-256",enc.encode(raw)));
+    await markOrderPaid(env,order,data.trade_no,"reconcile-alipay-"+data.trade_no,hash,helpers);
+    return {status:"paid",tradeState:data.trade_status,delivered:true,message:"支付宝已确认到账，授权已自动发放"};
+  }
+  if(data.trade_status==="TRADE_CLOSED") {
+    await env.DB.prepare("UPDATE orders SET status='closed',updated_ms=? WHERE order_id=? AND status='pending'").bind(Date.now(),order.order_id).run();
+    return {status:"closed",tradeState:data.trade_status,message:"支付宝订单已关闭"};
+  }
+  return {status:"pending",tradeState:clean(data.trade_status,40),message:data.trade_status==="WAIT_BUYER_PAY"?"支付宝订单等待付款":"支付宝订单尚未完成"};
 }
 async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, helpers) {
   const orderRow=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(order.order_no).first();
@@ -325,6 +390,17 @@ async function applicationStatus(request, env, body, helpers) {
     .bind(deviceHash).first();
   return json({application:app||null});
 }
+async function paymentReturnPage(request,env) {
+  const id=new URL(request.url).searchParams.get("order")||"";
+  if(!/^[0-9a-f-]{36}$/i.test(id)) return new Response("订单编号无效",{status:400});
+  const order=await env.DB.prepare("SELECT order_no,status FROM orders WHERE order_id=?").bind(id).first();
+  if(!order) return new Response("订单不存在",{status:404});
+  const paid=order.status==="paid";
+  const title=paid?"付款已确认":"已返回支付页面";
+  const message=paid?"系统已收到支付平台确认，授权已自动发放。":"如果你已经完成付款，请稍候返回独独AI工作台，系统会自动核对到账结果。请不要重复付款。";
+  const page='<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+html(title)+'</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1525;color:#edf4ff;font:16px Microsoft Yahei"><main style="max-width:520px;margin:20px;padding:30px;background:#172943;border:1px solid #345174;border-radius:16px;text-align:center"><h2>'+html(title)+'</h2><p>'+html(message)+'</p><p>订单号：'+html(order.order_no)+'</p><p>请关闭此页面并返回独独AI工作台。</p></main></body></html>';
+  return new Response(page,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'","x-content-type-options":"nosniff"}});
+}
 async function checkoutPage(request, env, orderId) {
   const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(orderId).first();
   if(!order) return new Response("订单不存在",{status:404});
@@ -416,6 +492,21 @@ async function adminOps(req, env, path, helpers) {
     const result=await env.DB.prepare("SELECT o.order_id,o.order_no,o.product_name,o.amount_cents,o.payment_method,o.status,o.created_ms,o.paid_ms,o.delivered_ms,o.last_error,d.status AS delivery_status FROM orders o LEFT JOIN delivery_outbox d ON d.order_id=o.order_id ORDER BY o.created_ms DESC LIMIT 300").all();
     return json({orders:result.results||[]});
   }
+  if(path==="/v1/admin/orders/reconcile") {
+    const id=clean(body.orderId,80);
+    const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(id).first();
+    if(!order) return json({error:"订单不存在"},404);
+    if(order.status==="refunded") return json({status:"refunded",message:"订单已退款，不能自动发放授权"});
+    if(order.status==="paid") {
+      if(!order.delivered_ms) await markOrderPaid(env,order,order.provider_trade_no,"admin-reconcile-"+randomHex(8),"manual",helpers);
+      return json({status:"paid",delivered:true,message:"订单已确认付款"});
+    }
+    if(!paymentReady(env,order.payment_method)) throw Error("对应支付商户密钥尚未完整配置");
+    const result=order.payment_method==="wechat"?await queryWechatPayment(env,order,helpers):await queryAlipayPayment(env,order,helpers);
+    await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES(?,?)").bind("payment_reconcile_"+result.status,Date.now()).run();
+    if(result.status!=="paid"&&result.message) await env.DB.prepare("UPDATE orders SET last_error=?,updated_ms=? WHERE order_id=?").bind(clean(result.message,240),Date.now(),order.order_id).run();
+    return json({...result,orderId:id});
+  }
   if(path==="/v1/admin/orders/resend") {
     const id=clean(body.orderId,80);
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(id).first();
@@ -428,7 +519,7 @@ async function adminOps(req, env, path, helpers) {
     return json({events:result.results||[]});
   }
   if(path==="/v1/admin/payments/status") {
-    return json({wechat:{configured:paymentReady(env,"wechat"),required:["WECHATPAY_MCHID","WECHATPAY_APPID","WECHATPAY_SERIAL_NO","WECHATPAY_PRIVATE_KEY_PEM","WECHATPAY_API_V3_KEY","WECHATPAY_PLATFORM_PUBLIC_KEY_PEM","WECHATPAY_PLATFORM_SERIAL"]},alipay:{configured:paymentReady(env,"alipay"),required:["ALIPAY_APP_ID","ALIPAY_PRIVATE_KEY_PEM","ALIPAY_PUBLIC_KEY_PEM"]}});
+    return json({wechat:{configured:paymentReady(env,"wechat"),required:["WECHATPAY_MCHID","WECHATPAY_APPID","WECHATPAY_SERIAL_NO","WECHATPAY_PRIVATE_KEY_PEM","WECHATPAY_API_V3_KEY","WECHATPAY_PLATFORM_PUBLIC_KEY_PEM","WECHATPAY_PLATFORM_SERIAL"]},alipay:{configured:paymentReady(env,"alipay"),required:["ALIPAY_APP_ID","ALIPAY_PRIVATE_KEY_PEM","ALIPAY_PUBLIC_KEY_PEM","ALIPAY_SELLER_ID"]}});
   }
   if(path==="/v1/admin/content/get") {
     const manifest=await loadCurrentManifest(env);
@@ -477,6 +568,7 @@ export async function handleOpsRequest(request, env, path, helpers) {
     if(!/^[0-9a-f-]{36}$/i.test(id)) return new Response("订单不存在",{status:404});
     return checkoutPage(request,env,id);
   }
+  if(path==="/payment/return"&&request.method==="GET") return paymentReturnPage(request,env);
   if(path==="/v1/payments/wechat/notify"&&request.method==="POST") return handleWechatNotify(request,env,helpers);
   if(path==="/v1/payments/alipay/notify"&&request.method==="POST") return handleAlipayNotify(request,env,helpers);
   if(path==="/v1/application/create"&&request.method==="POST") {
