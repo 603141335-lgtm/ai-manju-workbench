@@ -316,7 +316,10 @@ function registerHandlers(){
     await shell.openExternal(target);return true;
   });
   ipcMain.handle('license:openCheckout',async(_event,url)=>{
-    const target=safeHttps(url);
+    let target=safeHttps(url);
+    if(!target&&licenseClient.localTestMode){
+      try{const local=new URL(String(url));if(local.origin===licenseClient.service&&local.protocol==='http:'&&local.hostname==='127.0.0.1'&&local.port==='8788')target=local.toString()}catch{}
+    }
     if(!target||new URL(target).origin!==licenseClient.service)throw Error('支付地址无效，已阻止打开');
     await shell.openExternal(target);return true;
   });
