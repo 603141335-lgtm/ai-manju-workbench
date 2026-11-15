@@ -197,6 +197,7 @@ test('manual payment recovery endpoint runs once and enforces its 60-second cool
 
 function seedPaidOrder(db,{orderId='order-1',orderNo='DU-ORDER-1',provider='alipay',amount=1200,cardId='card-1'}={}){
   const now=Date.now();
+  db.prepare("INSERT OR IGNORE INTO products(product_id,name,description,price_cents,entitlement_type,enabled,sort_order,created_ms,updated_ms) VALUES('prod-1','独独AI年卡','',29900,'permanent',1,0,?,?)").run(now,now);
   db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,provider_trade_no,created_ms,paid_ms,updated_ms) VALUES(?,?,?,?,?,?,?,'paid',?,?,?,?)")
     .run(orderId,orderNo,'device-hash','prod-1','独独AI年卡',amount,provider,provider==='wechat'?'wx-trade-1':'ali-trade-1',now-60000,now-30000,now);
   db.prepare("INSERT INTO license_cards(id,code_hash,last_four,issued_ms,bound_device_hash,activated_ms) VALUES(?,?,?,?,?,?)")
