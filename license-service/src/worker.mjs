@@ -134,6 +134,8 @@ async function adminRequest(req,env,path){
    await env.DB.prepare('INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES (?,?,?)').bind('issue',id,Date.now()).run();
    codes.push(code);
   }
+  await env.DB.prepare('INSERT INTO admin_activity(actor_id,actor_name,actor_role,action,target_type,target_id,detail,occurred_ms) VALUES(?,?,?,?,?,?,?,?)')
+   .bind(principal.id,principal.name,principal.role,'card_issue','cards','', '批量生成卡密：'+count+'张',Date.now()).run();
   return response({codes});
  }
  if(path.endsWith('/list')){
@@ -149,6 +151,8 @@ async function adminRequest(req,env,path){
     :await env.DB.prepare('UPDATE license_cards SET bound_device_hash=NULL,activated_ms=NULL WHERE id=? AND revoked_ms IS NULL').bind(cardId).run();
   if(!result.meta?.changes)return response({error:'卡密不存在或已停用'},404);
   await env.DB.prepare('INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES (?,?,?)').bind(action,cardId,Date.now()).run();
+  await env.DB.prepare('INSERT INTO admin_activity(actor_id,actor_name,actor_role,action,target_type,target_id,detail,occurred_ms) VALUES(?,?,?,?,?,?,?,?)')
+   .bind(principal.id,principal.name,principal.role,'card_'+action,'card',cardId,action==='revoke'?'管理员停用卡密':'管理员解绑设备',Date.now()).run();
   return response({ok:true,action});
  }
  return response({error:'未知管理员操作'},404);
