@@ -52,4 +52,5 @@ test('local production deploy validates backup D1 identity, SQL digest and uncha
   assert.throws(()=>assertVerifiedBackup({...valid,sqlSha256:'c'.repeat(64)}),/SHA-256/);
   assert.throws(()=>assertVerifiedBackup({...valid,backupKeysSha256:'c'.repeat(64)}),/密钥与当前部署密钥不一致/);
   assert.throws(()=>assertVerifiedBackup({...valid,manifest:{...manifest,backedUpFiles:[]}}),/缺少原授权密钥文件/);
+  assert.throws(()=>assertVerifiedBackup({...valid,manifest:{...manifest,sqlFile:'../escape.sql'}}),/文件名不符合预期/);
 });
