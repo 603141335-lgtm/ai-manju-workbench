@@ -27,7 +27,7 @@ test('upgrade refuses a different previously recorded deployment D1 identity',()
 });
 
 test('upgrade accepts matching D1 identities and does not invent a replacement',()=>{
-  assert.doesNotThrow(()=>assertExistingDeploymentIdentity({databaseId:id,localConfig:\`database_id = "\${id}"\`,deploymentInfo:{d1Id:id}}));
+  assert.doesNotThrow(()=>assertExistingDeploymentIdentity({databaseId:id,localConfig:'database_id = "'+id+'"',deploymentInfo:{d1Id:id}}));
   assert.doesNotThrow(()=>assertExistingDeploymentIdentity({databaseId:id,localConfig:'',deploymentInfo:{d1Id:id}}));
 });
 
