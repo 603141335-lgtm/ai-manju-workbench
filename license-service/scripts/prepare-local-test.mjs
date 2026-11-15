@@ -34,7 +34,7 @@ function writeWorkbenchLocalConfig(keys){
     if(current.localTestMode!==true)throw Error('检测到非本机测试授权配置；未覆盖。请先确认 license-config.local.json 的用途');
   }
   const config={serviceUrl:'http://127.0.0.1:8788',publicKey:keys.DUDU_LICENSE_PUBLIC_KEY_B64,localTestMode:true};
-  writeFileSync(file,JSON.stringify(config,null,2)+'\\n',{mode:0o600});
+  writeFileSync(file,JSON.stringify(config,null,2)+'\n',{mode:0o600});
   return file;
 }
 
