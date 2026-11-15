@@ -75,6 +75,7 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <div class="stat"><small>近24小时回调总量</small><strong id="monWebhookTotal">—</strong><div class="help">按支付渠道和处理结果统计</div></div>
 </div>
 <div class="notice">回调日志仅保存事件编号、订单号、结果、简要原因和请求摘要，不保存原始回调内容、支付密钥或用户支付凭据。</div>
+<div class="code" id="monCallbackUrls">刷新监控后显示微信支付与支付宝回调地址。</div>
 <h3>最近支付回调</h3><div class="tablewrap"><table><thead><tr><th>时间</th><th>渠道</th><th>事件编号</th><th>订单号</th><th>结果</th><th>处理说明</th><th>请求摘要</th></tr></thead><tbody id="paymentEventsBody"></tbody></table></div>
 <h3 style="margin-top:22px">自动发货队列</h3><div class="tablewrap"><table><thead><tr><th>时间</th><th>订单号</th><th>商品</th><th>状态</th><th>尝试次数</th><th>失败原因</th><th>操作</th></tr></thead><tbody id="deliveriesBody"></tbody></table></div>
 </section>
@@ -139,10 +140,11 @@ async function loadPaymentMonitor(){
  $("monFailedDeliveries").textContent=health.failedDeliveries;
  $("monFailedWebhooks").textContent=health.failedWebhooks24h;
  const wechat=health.lastWebhook.wechat,alipay=health.lastWebhook.alipay;
- $("monWechatLast").textContent=wechat?outcomeText(wechat.outcome):"暂无回调";
+ $("monWechatLast").textContent=(health.providers.wechat?"配置已就绪":"未配置")+" · "+(wechat?outcomeText(wechat.outcome):"暂无回调");
  $("monWechatTime").textContent=wechat?formatDate(wechat.occurred_ms):"尚未收到回调";
- $("monAlipayLast").textContent=alipay?outcomeText(alipay.outcome):"暂无回调";
+ $("monAlipayLast").textContent=(health.providers.alipay?"配置已就绪":"未配置")+" · "+(alipay?outcomeText(alipay.outcome):"暂无回调");
  $("monAlipayTime").textContent=alipay?formatDate(alipay.occurred_ms):"尚未收到回调";
+ $("monCallbackUrls").textContent="微信支付回调："+health.callbacks.wechat+"\n支付宝回调："+health.callbacks.alipay;
  $("monReconcileTime").textContent=formatDate(health.reconciliation.lastCheckedMs);
  $("monReconcileAttempts").textContent="累计查单 "+(health.reconciliation.totalAttempts||0)+" 次";
  $("monWebhookTotal").textContent=(health.webhookCounts24h||[]).reduce((sum,x)=>sum+Number(x.n||0),0);
