@@ -12,7 +12,7 @@ test('D1 schema is repeatable and preserves existing license rows',()=>{
   db.exec(schema);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM devices').get().n,1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM license_cards').get().n,1);
-  for(const table of ['license_applications','products','orders','payment_events','payment_reconcile_state','delivery_outbox','public_content','public_content_history']){
+  for(const table of ['license_applications','products','orders','payment_events','payment_webhook_logs','payment_reconcile_state','delivery_outbox','public_content','public_content_history']){
     const found=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table);
     assert.ok(found,table+' table exists');
   }
