@@ -176,6 +176,7 @@ test('admin payment monitoring endpoints return health, webhook history and deli
   assert.equal(health.callbacks.wechat,'https://dudu.example/v1/payments/wechat/notify');
   assert.equal(health.callbacks.wechatRefund,'https://dudu.example/v1/payments/wechat/refund-notify');
   assert.equal(health.callbacks.alipay,'https://dudu.example/v1/payments/alipay/notify');
+  assert.equal(health.lastWebhook.wechat,null);
   assert.equal(health.lastWebhook.wechatRefund.outcome,'accepted');
   assert.equal(health.lastWebhook.wechatRefund.event_id,'refund-event-1');
   const events=await (await handleOpsRequest(request('/v1/admin/payments/events/list'),env,'/v1/admin/payments/events/list',helpers)).json();
