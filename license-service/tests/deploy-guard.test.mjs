@@ -14,6 +14,10 @@ test('local Wrangler config is rendered only from the explicit D1 placeholder',(
   assert.throws(()=>renderLocalConfig('database_id = "old"',id),/占位符/);
 });
 
+test('upgrade refuses missing original D1 identity records',()=>{
+  assert.throws(()=>assertExistingDeploymentIdentity({databaseId:id,localConfig:'',deploymentInfo:null}),/缺少原部署D1身份记录/);
+});
+
 test('upgrade refuses a different local D1 identity',()=>{
   assert.throws(()=>assertExistingDeploymentIdentity({databaseId:id,localConfig:'database_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"'}),/D1 ID与Cloudflare同名数据库不一致/);
 });
@@ -24,4 +28,5 @@ test('upgrade refuses a different previously recorded deployment D1 identity',()
 
 test('upgrade accepts matching D1 identities and does not invent a replacement',()=>{
   assert.doesNotThrow(()=>assertExistingDeploymentIdentity({databaseId:id,localConfig:`database_id = "${id}"`,deploymentInfo:{d1Id:id}}));
+  assert.doesNotThrow(()=>assertExistingDeploymentIdentity({databaseId:id,localConfig:'',deploymentInfo:{d1Id:id}}));
 });
