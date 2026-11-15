@@ -63,8 +63,9 @@ function main(){
  const backupDir=join(privateDir,'backups',backupFolderName(new Date()));
  mkdirSync(backupDir,{recursive:true,mode:0o700});
  const sqlPath=join(backupDir,'dudu-license-full.sql');
+ const sqlOutputPath=relative(root,sqlPath);
  process.stdout.write('即将导出原 D1 全量数据。导出期间 D1 请求可能暂时受阻，请确保处于低流量时段。\n');
- cmd(['d1','export','dudu-license','--remote','--skip-confirmation','--output',sqlPath,'--config','wrangler.local.toml']);
+ cmd(['d1','export','dudu-license','--remote','--skip-confirmation','--output',sqlOutputPath,'--config','wrangler.local.toml']);
  if(!existsSync(sqlPath))throw Error('Wrangler未生成D1 SQL备份文件');
  const sqlBytes=statSync(sqlPath).size;
  if(sqlBytes<=0)throw Error('D1 SQL备份文件为空，已停止');
