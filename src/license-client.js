@@ -164,5 +164,13 @@ class LicenseClient{
   if(!/^[0-9a-f-]{36}$/i.test(String(orderId||'')))throw Error('订单编号无效');
   return this.signedCall('order-status','/v1/orders/status',{orderId:String(orderId)});
  }
+ async getOrders(){
+  const result=await this.signedCall('order-list','/v1/orders/list');
+  return Array.isArray(result.orders)?result.orders:[];
+ }
+ reconcileOrder(orderId){
+  if(!/^[0-9a-f-]{36}$/i.test(String(orderId||'')))throw Error('订单编号无效');
+  return this.signedCall('order-reconcile','/v1/orders/reconcile',{orderId:String(orderId)});
+ }
 }
 module.exports={LicenseClient,deviceMessage,verifyTokenJS,validServiceUrl,cleanCode};
