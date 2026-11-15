@@ -896,7 +896,7 @@ async function adminOps(req, env, path, helpers) {
       env.DB.prepare("SELECT COUNT(*) AS n FROM delivery_outbox WHERE status IN ('pending','failed')").first(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM payment_webhook_logs WHERE outcome IN ('rejected','error') AND occurred_ms>?").bind(since).first(),
       env.DB.prepare("SELECT provider,outcome,COUNT(*) AS n FROM payment_webhook_logs WHERE occurred_ms>? GROUP BY provider,outcome").bind(since).all(),
-      env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' ORDER BY occurred_ms DESC LIMIT 1").first(),
+      env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' AND message NOT LIKE '%退款回调%' ORDER BY occurred_ms DESC LIMIT 1").first(),
       env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='alipay' ORDER BY occurred_ms DESC LIMIT 1").first(),
       env.DB.prepare("SELECT MAX(last_checked_ms) AS checked_ms, SUM(attempts) AS attempts FROM payment_reconcile_state").first(),
       env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' AND message LIKE '%退款回调%' ORDER BY occurred_ms DESC LIMIT 1").first()
