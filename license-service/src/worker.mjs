@@ -1,5 +1,5 @@
 import {adminHtml} from './admin-ui.mjs';
-import {handleOpsRequest} from './ops-service.mjs';
+import {handleOpsRequest,runScheduledReconciliation} from './ops-service.mjs';
 
 // Only public license proof data is accepted. No Doubao credentials, cookies,
 // projects or files are read or uploaded. Signing private key stays in Worker secrets.
@@ -146,4 +146,11 @@ export default {async fetch(request,env){
   if(!op)return response({error:'Not found'},404);
   return await licenseRequest(request,env,op);
  }catch(e){return safeError(e)}
-}};
+},
+ async scheduled(_controller,env,ctx){
+  const task=runScheduledReconciliation(env,{hmac,newCode})
+   .then(result=>console.log('dudu-payment-reconcile',JSON.stringify(result)))
+   .catch(error=>console.error('dudu-payment-reconcile-failed',String(error?.message||error)));
+  ctx.waitUntil(task);
+ }
+};
