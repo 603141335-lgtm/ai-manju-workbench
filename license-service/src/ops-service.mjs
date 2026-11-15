@@ -323,25 +323,36 @@ async function runScheduledReconciliation(env,helpers) {
 async function deliverPaidOrder(env,paid,helpers) {
   if(!paid||paid.status!=="paid") throw Error("只有已确认付款的订单可以发放授权");
   if(paid.delivered_ms) return {ok:true,orderId:paid.order_id,delivered:true,alreadyDelivered:true};
-  let delivery=await env.DB.prepare("SELECT * FROM delivery_outbox WHERE order_id=?").bind(paid.order_id).first();
-  if(!delivery){
-    const code=helpers.newCode(),cardId=crypto.randomUUID(),codeHash=await helpers.hmac(env.DUDU_CARD_HMAC_KEY,code);
-    await env.DB.prepare("INSERT OR IGNORE INTO delivery_outbox(delivery_id,order_id,card_id,code_hash,last_four,status,created_ms) VALUES(?,?,?,?,?,'pending',?)")
-      .bind(crypto.randomUUID(),paid.order_id,cardId,codeHash,code.slice(-4),Date.now()).run();
-    delivery=await env.DB.prepare("SELECT * FROM delivery_outbox WHERE order_id=?").bind(paid.order_id).first();
+  try {
+    let delivery=await env.DB.prepare("SELECT * FROM delivery_outbox WHERE order_id=?").bind(paid.order_id).first();
+    if(!delivery){
+      const code=helpers.newCode(),cardId=crypto.randomUUID(),codeHash=await helpers.hmac(env.DUDU_CARD_HMAC_KEY,code);
+      await env.DB.prepare("INSERT OR IGNORE INTO delivery_outbox(delivery_id,order_id,card_id,code_hash,last_four,status,created_ms) VALUES(?,?,?,?,?,'pending',?)")
+        .bind(crypto.randomUUID(),paid.order_id,cardId,codeHash,code.slice(-4),Date.now()).run();
+      delivery=await env.DB.prepare("SELECT * FROM delivery_outbox WHERE order_id=?").bind(paid.order_id).first();
+    }
+    if(!delivery) throw Error("自动发货队列创建失败");
+    await env.DB.prepare("INSERT OR IGNORE INTO license_cards(id,code_hash,last_four,issued_ms,bound_device_hash,activated_ms) SELECT ?,?,?,?,device_hash,? FROM orders WHERE order_id=? AND status='paid'")
+      .bind(delivery.card_id,delivery.code_hash,delivery.last_four,delivery.created_ms,delivery.created_ms,paid.order_id).run();
+    const card=await env.DB.prepare("SELECT id FROM license_cards WHERE id=? AND revoked_ms IS NULL").bind(delivery.card_id).first();
+    if(!card) throw Error("授权卡密写入失败，订单保留待补发");
+    await env.DB.prepare("UPDATE delivery_outbox SET status='delivered',attempts=attempts+1,delivered_ms=COALESCE(delivered_ms,?),last_error='' WHERE order_id=?")
+      .bind(Date.now(),paid.order_id).run();
+    await env.DB.prepare("UPDATE orders SET delivered_ms=COALESCE(delivered_ms,?),updated_ms=?,last_error='' WHERE order_id=?")
+      .bind(Date.now(),Date.now(),paid.order_id).run();
+    await env.DB.prepare("INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES('auto_deliver',?,?)")
+      .bind(delivery.card_id,Date.now()).run();
+    return {ok:true,orderId:paid.order_id,delivered:true};
+  } catch(error) {
+    const message=clean(error?.message||"自动发货失败",240);
+    try {
+      await env.DB.prepare("UPDATE delivery_outbox SET status='failed',attempts=attempts+1,last_error=? WHERE order_id=?")
+        .bind(message,paid.order_id).run();
+      await env.DB.prepare("UPDATE orders SET last_error=?,updated_ms=? WHERE order_id=?")
+        .bind(message,Date.now(),paid.order_id).run();
+    } catch {}
+    throw error;
   }
-  if(!delivery) throw Error("自动发货队列创建失败");
-  await env.DB.prepare("INSERT OR IGNORE INTO license_cards(id,code_hash,last_four,issued_ms,bound_device_hash,activated_ms) SELECT ?,?,?,?,device_hash,? FROM orders WHERE order_id=? AND status='paid'")
-    .bind(delivery.card_id,delivery.code_hash,delivery.last_four,delivery.created_ms,delivery.created_ms,paid.order_id).run();
-  const card=await env.DB.prepare("SELECT id FROM license_cards WHERE id=? AND revoked_ms IS NULL").bind(delivery.card_id).first();
-  if(!card) throw Error("授权卡密写入失败，订单保留待补发");
-  await env.DB.prepare("UPDATE delivery_outbox SET status='delivered',attempts=attempts+1,delivered_ms=COALESCE(delivered_ms,?),last_error='' WHERE order_id=?")
-    .bind(Date.now(),paid.order_id).run();
-  await env.DB.prepare("UPDATE orders SET delivered_ms=COALESCE(delivered_ms,?),updated_ms=?,last_error='' WHERE order_id=?")
-    .bind(Date.now(),Date.now(),paid.order_id).run();
-  await env.DB.prepare("INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES('auto_deliver',?,?)")
-    .bind(delivery.card_id,Date.now()).run();
-  return {ok:true,orderId:paid.order_id,delivered:true};
 }
 async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, helpers) {
   const orderRow=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(order.order_no).first();
@@ -689,7 +700,7 @@ async function adminOps(req, env, path, helpers) {
     return json({events:result.results||[]});
   }
   if(path==="/v1/admin/deliveries/list") {
-    const result=await env.DB.prepare("SELECT d.delivery_id,d.order_id,d.card_id,d.last_four,d.status,d.attempts,d.created_ms,d.delivered_ms,d.last_error,o.order_no,o.product_name,o.amount_cents,o.status AS order_status FROM delivery_outbox d LEFT JOIN orders o ON o.order_id=d.order_id ORDER BY CASE WHEN d.status IN ('failed','pending') THEN 0 ELSE 1 END,d.created_ms DESC LIMIT 200").all();
+    const result=await env.DB.prepare("SELECT d.delivery_id,o.order_id,d.card_id,d.last_four,COALESCE(d.status,'pending') AS status,COALESCE(d.attempts,0) AS attempts,COALESCE(d.created_ms,o.paid_ms) AS created_ms,d.delivered_ms,COALESCE(d.last_error,o.last_error,'') AS last_error,o.order_no,o.product_name,o.amount_cents,o.status AS order_status FROM orders o LEFT JOIN delivery_outbox d ON d.order_id=o.order_id WHERE (o.status='paid' AND o.delivered_ms IS NULL) OR d.status IN ('pending','failed') ORDER BY CASE WHEN COALESCE(d.status,'pending') IN ('failed','pending') THEN 0 ELSE 1 END,COALESCE(d.created_ms,o.paid_ms) DESC LIMIT 200").all();
     return json({deliveries:result.results||[]});
   }
   if(path==="/v1/admin/payments/self-test") {
