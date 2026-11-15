@@ -3,7 +3,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {readFileSync,writeFileSync,existsSync,mkdirSync,unlinkSync,readdirSync,statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {dirname,resolve,join,basename} from 'node:path';
+import {dirname,resolve,join} from 'node:path';
 import {ensureOwnerKeys} from './generate-keys.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const privateDir=join(root,'.private'),database='dudu-license';
@@ -66,7 +66,7 @@ function verifyLatestBackup(databaseId){
  const keysPath=join(backupDir,'owner-keys.json');
  if(!existsSync(manifestPath)||!existsSync(keysPath))throw Error('最新备份缺少 backup-manifest.json 或 owner-keys.json；停止部署');
  const manifest=JSON.parse(readFileSync(manifestPath,'utf8'));
- if(typeof manifest.sqlFile!=='string'||basename(manifest.sqlFile)!==manifest.sqlFile)throw Error('备份清单SQL文件路径不安全');
+ if(manifest.sqlFile!=='dudu-license-full.sql')throw Error('备份清单SQL文件名不符合预期，停止部署');
  const sqlPath=join(backupDir,manifest.sqlFile);
  if(!existsSync(sqlPath))throw Error('最新备份缺少D1 SQL导出文件；停止部署');
  const sql=readFileSync(sqlPath);
