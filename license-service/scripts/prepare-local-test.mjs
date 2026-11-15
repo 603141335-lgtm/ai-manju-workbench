@@ -42,17 +42,19 @@ export function ensureLocalTestSecrets(){
     };
     writeFileSync(keysPath,JSON.stringify(keys,null,2)+'\n',{flag:'wx',mode:0o600});
   }
-  if(existsSync(devVarsPath)&&!readFileSync(devVarsPath,'utf8').startsWith(marker)){
-    throw Error('检测到已有非本机测试脚本生成的 .dev.vars；为避免覆盖现有开发配置，请先自行备份并改名后重试');
-  }
   const vars=[marker,
     'DUDU_SIGNING_PRIVATE_PKCS8_B64='+keys.DUDU_SIGNING_PRIVATE_PKCS8_B64,
     'DUDU_DEVICE_HMAC_KEY='+keys.DUDU_DEVICE_HMAC_KEY,
     'DUDU_CARD_HMAC_KEY='+keys.DUDU_CARD_HMAC_KEY,
     'DUDU_ADMIN_TOKEN_SHA256='+keys.DUDU_ADMIN_TOKEN_SHA256,
     'DUDU_LICENSE_PUBLIC_KEY_B64='+keys.DUDU_LICENSE_PUBLIC_KEY_B64
-  ].join('\n')+'\n';
-  writeFileSync(devVarsPath,vars,{mode:0o600});
+  ].join('\\n')+'\\n';
+  if(existsSync(devVarsPath)){
+    const existing=readFileSync(devVarsPath,'utf8');
+    if(existing!==vars) throw Error('现有 .dev.vars 与本机测试密钥不一致；为避免覆盖任何开发配置，已停止。请先自行备份并检查该文件');
+  }else{
+    writeFileSync(devVarsPath,vars,{flag:'wx',mode:0o600});
+  }
   return {keys,keysPath,devVarsPath};
 }
 
