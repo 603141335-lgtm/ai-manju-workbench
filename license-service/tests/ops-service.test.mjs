@@ -189,7 +189,7 @@ test('finance report uses paid time for sales and confirmed refund time for refu
   db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
   db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,created_ms,paid_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
     .run('order-a','DU-A','a'.repeat(64),'p1','工作台永久授权',1000,'wechat','paid',1500,2000,2000);
-  db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,created_ms,paid_ms,refunded_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+  db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,created_ms,paid_ms,refunded_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
     .run('order-b','DU-B','b'.repeat(64),'p1','工作台永久授权',500,'alipay','refunded',1500,3000,4500,4500);
   db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,status,created_ms,updated_ms,completed_ms) VALUES(?,?,?,?,?,'succeeded',?,?,?)")
     .run('refund-b','order-b','RF-B','alipay',300,3500,4000,4000);
