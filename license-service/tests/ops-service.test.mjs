@@ -527,7 +527,9 @@ test('local-only simulated payment and successful refund update finance and revo
   assert.equal(completed.status,200);assert.equal((await completed.json()).status,'succeeded');
   assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(order.orderId).status,'refunded');
   assert.ok(db.prepare("SELECT revoked_ms FROM license_cards WHERE id=?").get(card.id).revoked_ms);
-  const finance=await (await call('/v1/admin/finance/summary',{startMs:0,endMs:Date.now()+10000})).json();
+  const financeResponse=await call('/v1/admin/finance/summary',{startMs:now-10*60*1000,endMs:Date.now()+10000});
+  const finance=await financeResponse.json();
+  assert.equal(financeResponse.status,200,JSON.stringify(finance));
   assert.equal(finance.grossCents,990);assert.equal(finance.refundsCents,990);assert.equal(finance.netCents,0);
   db.close();
 });
