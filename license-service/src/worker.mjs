@@ -45,7 +45,21 @@ async function attestSigningKey(env){
  return response({payload:b64u(payload),signature:b64u(signature)});
 }
 const newCode=()=>{const bytes=crypto.getRandomValues(new Uint8Array(20));let out='';for(const b of bytes)out+=alphabet[b%alphabet.length];return 'DUDU-'+out.match(/.{1,5}/g).join('-')};
-const adminAuth=async(req,env)=>{const raw=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');if(raw.length<32||!env.DUDU_ADMIN_TOKEN_SHA256)return false;const h=await crypto.subtle.digest('SHA-256',enc.encode(raw));return boolSafeEq(Array.from(new Uint8Array(h),v=>v.toString(16).padStart(2,'0')).join(''),env.DUDU_ADMIN_TOKEN_SHA256.toLowerCase())};
+const adminPrincipal=async(req,env)=>{
+ const raw=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'').trim();
+ if(raw.length<32)return null;
+ const digest=await crypto.subtle.digest('SHA-256',enc.encode(raw));
+ const tokenHash=Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,'0')).join('');
+ if(env.DUDU_ADMIN_TOKEN_SHA256&&boolSafeEq(tokenHash,env.DUDU_ADMIN_TOKEN_SHA256.toLowerCase()))
+  return {id:'owner',name:'超级管理员',role:'super_admin'};
+ const operator=await env.DB.prepare('SELECT operator_id,display_name,role FROM admin_operators WHERE token_sha256=? AND enabled=1').bind(tokenHash).first();
+ if(!operator)return null;
+ const now=Date.now();
+ await env.DB.prepare('UPDATE admin_operators SET last_login_ms=? WHERE operator_id=? AND (last_login_ms IS NULL OR last_login_ms<?)')
+  .bind(now,operator.operator_id,now-300000).run();
+ return {id:operator.operator_id,name:operator.display_name,role:operator.role};
+};
+const adminAuth=async(req,env)=>!!(await adminPrincipal(req,env));
 const row=async(env,id)=>env.DB.prepare('SELECT * FROM devices WHERE device_hash=?').bind(id).first();
 async function registerDevice(env,hash,pub){
  const old=await row(env,hash);
@@ -56,6 +70,8 @@ async function registerDevice(env,hash,pub){
  return fresh;
 }
 async function stateFor(env,hash,deviceId){
+ const control=await env.DB.prepare('SELECT blocked_ms FROM device_controls WHERE device_hash=?').bind(hash).first();
+ if(control?.blocked_ms)return response({valid:false,reason:'device_blocked'},403);
  const card=await env.DB.prepare('SELECT id FROM license_cards WHERE bound_device_hash=? AND revoked_ms IS NULL ORDER BY activated_ms DESC LIMIT 1').bind(hash).first();
  if(card)return signPermit(env,deviceId,'permanent',null);
  const d=await row(env,hash);
@@ -65,6 +81,8 @@ async function stateFor(env,hash,deviceId){
 async function licenseRequest(request,env,op){
  const body=await request.json();await verifyDevice(op,body);
  const hash=await hmac(env.DUDU_DEVICE_HMAC_KEY,body.deviceId);
+ const control=await env.DB.prepare('SELECT blocked_ms FROM device_controls WHERE device_hash=?').bind(hash).first();
+ if(control?.blocked_ms)return response({valid:false,reason:'device_blocked'},403);
  // A valid signature is necessary but never sufficient to replay the same request.
  // Atomic D1 primary key prevents duplicate nonces even during concurrent requests.
  const seen=await env.DB.prepare('INSERT OR IGNORE INTO request_nonces(device_hash,nonce,created_ms) VALUES(?,?,?)').bind(hash,body.nonce.toLowerCase(),Date.now()).run();
@@ -98,7 +116,14 @@ async function licenseRequest(request,env,op){
  return stateFor(env,hash,body.deviceId);
 }
 async function adminRequest(req,env,path){
- if(!await adminAuth(req,env))return response({error:'管理员身份验证失败'},401);
+ const principal=await adminPrincipal(req,env);
+ if(!principal)return response({error:'管理员身份验证失败'},401);
+ const action=path.endsWith('/issue')?'issue':path.endsWith('/revoke')?'revoke':path.endsWith('/transfer')?'transfer':'list';
+ const allowed=principal.role==='super_admin'
+  ||(action==='issue'&&principal.role==='operations')
+  ||(action==='list'&&['operations','support'].includes(principal.role))
+  ||(['revoke','transfer'].includes(action)&&principal.role==='support');
+ if(!allowed)return response({error:'当前管理员角色没有此操作权限'},403);
  const body=await req.json();
  if(path.endsWith('/issue')){
   const count=Number(body.count);if(!Number.isInteger(count)||count<1||count>50)return response({error:'一次生成1到50张'},400);
@@ -109,6 +134,8 @@ async function adminRequest(req,env,path){
    await env.DB.prepare('INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES (?,?,?)').bind('issue',id,Date.now()).run();
    codes.push(code);
   }
+  await env.DB.prepare('INSERT INTO admin_activity(actor_id,actor_name,actor_role,action,target_type,target_id,detail,occurred_ms) VALUES(?,?,?,?,?,?,?,?)')
+   .bind(principal.id,principal.name,principal.role,'card_issue','cards','', '批量生成卡密：'+count+'张',Date.now()).run();
   return response({codes});
  }
  if(path.endsWith('/list')){
@@ -124,6 +151,8 @@ async function adminRequest(req,env,path){
     :await env.DB.prepare('UPDATE license_cards SET bound_device_hash=NULL,activated_ms=NULL WHERE id=? AND revoked_ms IS NULL').bind(cardId).run();
   if(!result.meta?.changes)return response({error:'卡密不存在或已停用'},404);
   await env.DB.prepare('INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES (?,?,?)').bind(action,cardId,Date.now()).run();
+  await env.DB.prepare('INSERT INTO admin_activity(actor_id,actor_name,actor_role,action,target_type,target_id,detail,occurred_ms) VALUES(?,?,?,?,?,?,?,?)')
+   .bind(principal.id,principal.name,principal.role,'card_'+action,'card',cardId,action==='revoke'?'管理员停用卡密':'管理员解绑设备',Date.now()).run();
   return response({ok:true,action});
  }
  return response({error:'未知管理员操作'},404);
@@ -135,7 +164,7 @@ export default {async fetch(request,env){
   try{return await attestSigningKey(env)}catch{return response({error:'服务器签名服务尚未正确配置'},503)}
  }
  if(path==='/admin'&&request.method==='GET')return new Response(adminHtml,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','content-security-policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'}});
- const opsResponse=await handleOpsRequest(request,env,path,{adminAuth,hmac,newCode,verifyDevice,registerDevice:(hash,pub)=>registerDevice(env,hash,pub)});
+ const opsResponse=await handleOpsRequest(request,env,path,{adminAuth,adminPrincipal,hmac,newCode,verifyDevice,registerDevice:(hash,pub)=>registerDevice(env,hash,pub)});
  if(opsResponse)return opsResponse;
  if(request.method!=='POST'||!path.startsWith('/v1/'))return response({error:'Not found'},404);
  if(Number(request.headers.get('content-length')||0)>8192)return response({error:'请求过大'},413);

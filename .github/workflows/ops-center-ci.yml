@@ -1,7 +1,7 @@
 name: Operations Center CI
 on:
   push:
-    branches: [feature/ops-center-v1.0]
+    branches: [feature/ops-center-v1.0, feature/ops-center-v1.3]
   pull_request:
     branches: [feature/dudu-ai-v1.2.0-license, feature/ops-center-v1.0]
 permissions:
