@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,paymentSelfTest,logPaymentWebhook,runScheduledReconciliation,handleOpsRequest} from '../src/ops-service.mjs';
-import {generateKeyPairSync} from 'node:crypto';
+import {generateKeyPairSync,sign as nodeSign} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 
@@ -138,16 +138,27 @@ test('payment webhook log stores only metadata and a SHA-256 digest, never the r
 });
 
 function makeD1(db){
-  return {prepare(sql){
-    const statement=db.prepare(sql);let values=[];
+  const wrap=sql=>{
+    let values=[];
     const api={
+      sql,get values(){return values},
       bind(...args){values=args;return api},
-      async first(){return statement.get(...values)||null},
-      async all(){return {results:statement.all(...values)}},
-      async run(){const result=statement.run(...values);return {meta:{changes:Number(result.changes)}}}
+      async first(){return db.prepare(sql).get(...values)||null},
+      async all(){return {results:db.prepare(sql).all(...values)}},
+      async run(){const result=db.prepare(sql).run(...values);return {meta:{changes:Number(result.changes)}}}
     };
     return api;
-  }};
+  };
+  return {
+    prepare:wrap,
+    async batch(statements){
+      db.exec('BEGIN');
+      try{
+        const results=statements.map(x=>{const r=db.prepare(x.sql).run(...x.values);return {meta:{changes:Number(r.changes)}}});
+        db.exec('COMMIT');return results;
+      }catch(error){db.exec('ROLLBACK');throw error}
+    }
+  };
 }
 
 test('admin payment monitoring endpoints return health, webhook history and delivery queue',async()=>{
@@ -182,4 +193,152 @@ test('manual payment recovery endpoint runs once and enforces its 60-second cool
   const second=await handleOpsRequest(req(),env,'/v1/admin/payments/reconcile/run',helpers);
   assert.equal(second.status,429);
   db.close();
+});
+
+function seedPaidOrder(db,{orderId='order-1',orderNo='DU-ORDER-1',provider='alipay',amount=1200,cardId='card-1'}={}){
+  const now=Date.now();
+  db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,provider_trade_no,created_ms,paid_ms,updated_ms) VALUES(?,?,?,?,?,?,?,'paid',?,?,?,?)")
+    .run(orderId,orderNo,'device-hash','prod-1','独独AI年卡',amount,provider,provider==='wechat'?'wx-trade-1':'ali-trade-1',now-60000,now-30000,now);
+  db.prepare("INSERT INTO license_cards(id,code_hash,last_four,issued_ms,bound_device_hash,activated_ms) VALUES(?,?,?,?,?,?)")
+    .run(cardId,'hmac-card-code','1234',now-20000,'device-hash',now-20000);
+  db.prepare("INSERT INTO delivery_outbox(delivery_id,order_id,card_id,code_hash,last_four,status,attempts,created_ms,delivered_ms) VALUES(?,?,?,?,?,'delivered',1,?,?)")
+    .run('delivery-'+orderId,orderId,cardId,'hmac-card-code','1234',now-20000,now-10000);
+  return {now,orderId,orderNo,cardId};
+}
+function signedAlipayEnvelope(data,privateKey){
+  return JSON.stringify({alipay_trade_refund_response:data,sign:nodeSign('RSA-SHA256',Buffer.from(alipaySignContent(data)),privateKey).toString('base64')});
+}
+function signedWechatResponse(data,privateKey,serial='platform-serial'){
+  const raw=JSON.stringify(data),timestamp=String(Math.floor(Date.now()/1000)),nonce='response-nonce';
+  const signature=nodeSign('RSA-SHA256',Buffer.from(timestamp+'\\n'+nonce+'\\n'+raw+'\\n'),privateKey).toString('base64');
+  return new Response(raw,{status:200,headers:{
+    'content-type':'application/json',
+    'Wechatpay-Serial':serial,'Wechatpay-Timestamp':timestamp,'Wechatpay-Nonce':nonce,'Wechatpay-Signature':signature
+  }});
+}
+async function signedWechatRefundNotify(data,env,privateKey){
+  const nonce='123456789012',associated='';
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.WECHATPAY_API_V3_KEY),{name:'AES-GCM'},false,['encrypt']);
+  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv:new TextEncoder().encode(nonce),additionalData:new TextEncoder().encode(associated),tagLength:128},key,new TextEncoder().encode(JSON.stringify(data)));
+  const notice={id:'refund-event-1',event_type:'REFUND.SUCCESS',resource:{original_type:'refund',algorithm:'AEAD_AES_256_GCM',ciphertext:Buffer.from(encrypted).toString('base64'),associated_data:associated,nonce}};
+  const raw=JSON.stringify(notice),timestamp=String(Math.floor(Date.now()/1000)),sigNonce='callback-nonce';
+  const signature=nodeSign('RSA-SHA256',Buffer.from(timestamp+'\\n'+sigNonce+'\\n'+raw+'\\n'),privateKey).toString('base64');
+  return new Request('https://dudu.example/v1/payments/wechat/refund-notify',{method:'POST',headers:{
+    'content-type':'application/json','Wechatpay-Serial':env.WECHATPAY_PLATFORM_SERIAL,
+    'Wechatpay-Timestamp':timestamp,'Wechatpay-Nonce':sigNonce,'Wechatpay-Signature':signature
+  },body:raw});
+}
+
+test('finance summary reports gross sales, completed refunds, net cash flow and channel totals',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  seedPaidOrder(db,{orderId:'order-paid',orderNo:'DU-PAID',provider:'wechat',amount:1500,cardId:'card-paid'});
+  seedPaidOrder(db,{orderId:'order-refunded',orderNo:'DU-REFUNDED',provider:'alipay',amount:2500,cardId:'card-refunded'});
+  db.prepare("UPDATE orders SET status='refunded',refunded_ms=? WHERE order_id='order-refunded'").run(Date.now()-1000);
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,succeeded_ms) VALUES('refund-1','order-refunded','RF-1','alipay',2500,'用户申请','succeeded',?,?,?)")
+    .run(Date.now()-2000,Date.now()-1000,Date.now()-1000);
+  const env={DB:makeD1(db)},helpers={adminAuth:async()=>true};
+  const req=new Request('https://dudu.example/v1/admin/finance/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startMs:0,endMs:Date.now()+10000})});
+  const response=await handleOpsRequest(req,env,'/v1/admin/finance/summary',helpers);
+  assert.equal(response.status,200);
+  const v=await response.json();
+  assert.equal(v.grossCents,4000);assert.equal(v.refundsCents,2500);assert.equal(v.netCents,1500);
+  assert.equal(v.paidOrders,2);assert.equal(v.refundCount,1);
+  assert.deepEqual(v.channels.map(x=>x.provider).sort(),['alipay','wechat']);
+  db.close();
+});
+
+test('Alipay full refund is verified before order is marked refunded and purchased license is revoked',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const seeded=seedPaidOrder(db,{provider:'alipay',amount:1200});
+  const pair=generateKeyPairSync('rsa',{modulusLength:2048});
+  const env={DB:makeD1(db),ALIPAY_APP_ID:'app-test',ALIPAY_SELLER_ID:'seller-test',
+    ALIPAY_PRIVATE_KEY_PEM:pair.privateKey.export({type:'pkcs8',format:'pem'}),
+    ALIPAY_PUBLIC_KEY_PEM:pair.publicKey.export({type:'spki',format:'pem'})};
+  const originalFetch=globalThis.fetch;let calls=0;
+  globalThis.fetch=async(_url,options)=>{
+    calls++;
+    const params=Object.fromEntries(new URLSearchParams(options.body).entries()),biz=JSON.parse(params.biz_content);
+    assert.equal(params.method,'alipay.trade.refund');assert.equal(biz.out_trade_no,seeded.orderNo);
+    assert.equal(biz.refund_amount,'12.00');assert.ok(biz.out_request_no);
+    const data={code:'10000',msg:'Success',out_trade_no:seeded.orderNo,out_request_no:biz.out_request_no,trade_no:'ali-trade-1',refund_fee:'12.00',fund_change:'Y'};
+    return new Response(signedAlipayEnvelope(data,pair.privateKey),{status:200,headers:{'content-type':'application/json'}});
+  };
+  try{
+    const req=new Request('https://dudu.example/v1/admin/refunds/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({orderId:seeded.orderId,reason:'用户申请退款',confirmFullRefund:true})});
+    const response=await handleOpsRequest(req,env,'/v1/admin/refunds/create',{adminAuth:async()=>true});
+    assert.equal(response.status,200);
+    const result=await response.json();assert.equal(result.status,'succeeded');assert.equal(calls,1);
+    assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(seeded.orderId).status,'refunded');
+    assert.ok(db.prepare("SELECT revoked_ms FROM license_cards WHERE id=?").get(seeded.cardId).revoked_ms);
+    assert.equal(db.prepare("SELECT status FROM refunds WHERE order_id=?").get(seeded.orderId).status,'succeeded');
+    const duplicate=await handleOpsRequest(new Request('https://dudu.example/v1/admin/refunds/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({orderId:seeded.orderId,reason:'再次退款',confirmFullRefund:true})}),env,'/v1/admin/refunds/create',{adminAuth:async()=>true});
+    assert.equal(duplicate.status,409);assert.equal(calls,1);
+  }finally{globalThis.fetch=originalFetch;db.close()}
+});
+
+test('WeChat refund stays processing until a verified encrypted refund notification revokes the purchased license',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const seeded=seedPaidOrder(db,{provider:'wechat',amount:1200});
+  const pair=generateKeyPairSync('rsa',{modulusLength:2048});
+  const privatePem=pair.privateKey.export({type:'pkcs8',format:'pem'}),publicPem=pair.publicKey.export({type:'spki',format:'pem'});
+  const env={DB:makeD1(db),WECHATPAY_MCHID:'1900000109',WECHATPAY_APPID:'wx-test',WECHATPAY_SERIAL_NO:'merchant-serial',
+    WECHATPAY_PRIVATE_KEY_PEM:privatePem,WECHATPAY_API_V3_KEY:'12345678901234567890123456789012',
+    WECHATPAY_PLATFORM_PUBLIC_KEY_PEM:publicPem,WECHATPAY_PLATFORM_SERIAL:'platform-serial'};
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async(url,options)=>{
+    assert.equal(url,'https://api.mch.weixin.qq.com/v3/refund/domestic/refunds');
+    const body=JSON.parse(options.body);assert.equal(body.out_trade_no,seeded.orderNo);
+    assert.equal(body.amount.refund,1200);assert.equal(body.amount.total,1200);
+    return signedWechatResponse({out_trade_no:seeded.orderNo,out_refund_no:body.out_refund_no,refund_id:'wx-refund-1',status:'PROCESSING',amount:{total:1200,refund:1200}},pair.privateKey);
+  };
+  try{
+    const create=await handleOpsRequest(new Request('https://dudu.example/v1/admin/refunds/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({orderId:seeded.orderId,reason:'用户申请退款',confirmFullRefund:true})}),env,'/v1/admin/refunds/create',{adminAuth:async()=>true});
+    assert.equal(create.status,202);
+    const created=await create.json();assert.equal(created.status,'processing');
+    assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(seeded.orderId).status,'paid');
+    assert.equal(db.prepare("SELECT revoked_ms FROM license_cards WHERE id=?").get(seeded.cardId).revoked_ms,null);
+    const refund=db.prepare("SELECT refund_no FROM refunds WHERE order_id=?").get(seeded.orderId);
+    const notify=await signedWechatRefundNotify({mchid:env.WECHATPAY_MCHID,out_trade_no:seeded.orderNo,out_refund_no:refund.refund_no,refund_id:'wx-refund-1',refund_status:'SUCCESS',amount:{total:1200,refund:1200}},env,pair.privateKey);
+    const response=await handleOpsRequest(notify,env,'/v1/payments/wechat/refund-notify',{});
+    assert.equal(response.status,200);assert.equal((await response.json()).code,'SUCCESS');
+    assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(seeded.orderId).status,'refunded');
+    assert.ok(db.prepare("SELECT revoked_ms FROM license_cards WHERE id=?").get(seeded.cardId).revoked_ms);
+    assert.equal(db.prepare("SELECT status FROM refunds WHERE order_id=?").get(seeded.orderId).status,'succeeded');
+  }finally{globalThis.fetch=originalFetch;db.close()}
+});
+
+test('a pending refund blocks manual re-delivery of an already-paid order',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const seeded=seedPaidOrder(db,{provider:'alipay'});
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms) VALUES('refund-pending',?,'RF-PENDING','alipay',1200,'待核验','processing',?,?)")
+    .run(seeded.orderId,Date.now(),Date.now());
+  const env={DB:makeD1(db)},helpers={adminAuth:async()=>true};
+  const response=await handleOpsRequest(new Request('https://dudu.example/v1/admin/orders/resend',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({orderId:seeded.orderId})}),env,'/v1/admin/orders/resend',helpers);
+  assert.equal(response.status,400);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM license_cards WHERE bound_device_hash='device-hash'").get().n,1);
+  db.close();
+});
+
+test('Alipay refund query does not mark a refund successful without REFUND_SUCCESS',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const seeded=seedPaidOrder(db,{provider:'alipay',amount:1200});
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms) VALUES('refund-query',?,'RF-QUERY','alipay',1200,'用户申请','processing',?,?)")
+    .run(seeded.orderId,Date.now()-15000,Date.now()-15000);
+  const pair=generateKeyPairSync('rsa',{modulusLength:2048});
+  const env={DB:makeD1(db),ALIPAY_APP_ID:'app-test',ALIPAY_SELLER_ID:'seller-test',
+    ALIPAY_PRIVATE_KEY_PEM:pair.privateKey.export({type:'pkcs8',format:'pem'}),
+    ALIPAY_PUBLIC_KEY_PEM:pair.publicKey.export({type:'spki',format:'pem'})};
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async(_url,options)=>{
+    const params=Object.fromEntries(new URLSearchParams(options.body).entries());
+    assert.equal(params.method,'alipay.trade.fastpay.refund.query');
+    const data={code:'10000',msg:'Success',out_trade_no:seeded.orderNo,out_request_no:'RF-QUERY',total_amount:'12.00',refund_amount:'12.00'};
+    return new Response(JSON.stringify({alipay_trade_fastpay_refund_query_response:data,sign:nodeSign('RSA-SHA256',Buffer.from(alipaySignContent(data)),pair.privateKey).toString('base64')}),{status:200});
+  };
+  try{
+    const response=await handleOpsRequest(new Request('https://dudu.example/v1/admin/refunds/reconcile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({refundId:'refund-query'})}),env,'/v1/admin/refunds/reconcile',{adminAuth:async()=>true});
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).status,'processing');
+    assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(seeded.orderId).status,'paid');
+  }finally{globalThis.fetch=originalFetch;db.close()}
 });
