@@ -160,7 +160,7 @@ function paymentReady(env, method) {
 }
 async function paymentSelfTest(env,method) {
   const checks=[];
-  if(!paymentReady(env,method)) return {ok:false,method,checks:[{name:"必需配置",ok:false,message:"仍有必需密钥或商户参数未配置"}]};
+  if(!paymentReady(env,method)) return {ok:false,method,message:"仍有必需密钥或商户参数未配置",checks:[{name:"必需配置",ok:false,message:"仍有必需密钥或商户参数未配置"}]};
   try {
     if(method==="wechat") {
       if(enc.encode(env.WECHATPAY_API_V3_KEY).length!==32) throw Error("微信支付APIv3密钥必须为32字节");
@@ -387,8 +387,10 @@ async function handleWechatNotify(request, env, helpers) {
     await logPaymentWebhook(env,{provider:"wechat",eventId,outcome:"rejected",message:"回调请求超过64KB",raw});
     return json({code:"FAIL",message:"请求过大"},413);
   }
-  if(!await verifyWechatCallback(request,env,raw)) {
-    await logPaymentWebhook(env,{provider:"wechat",eventId,outcome:"rejected",message:"微信支付回调验签失败",raw});
+  let verified=false;
+  try { verified=await verifyWechatCallback(request,env,raw); } catch { verified=false; }
+  if(!verified) {
+    await logPaymentWebhook(env,{provider:"wechat",eventId,outcome:"rejected",message:"微信支付回调验签失败或验签密钥不可用",raw});
     return json({code:"FAIL",message:"签名验证失败"},401);
   }
   let orderNo="";
@@ -418,8 +420,10 @@ async function handleAlipayNotify(request, env, helpers) {
     await logPaymentWebhook(env,{provider:"alipay",eventId,orderNo,outcome:"rejected",message:"回调请求超过64KB",raw});
     return new Response("failure",{status:413});
   }
-  if(!params.sign||!await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,alipaySignContent(params),params.sign)) {
-    await logPaymentWebhook(env,{provider:"alipay",eventId,orderNo,outcome:"rejected",message:"支付宝回调验签失败",raw});
+  let verified=false;
+  try { verified=!!params.sign&&await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,alipaySignContent(params),params.sign); } catch { verified=false; }
+  if(!verified) {
+    await logPaymentWebhook(env,{provider:"alipay",eventId,orderNo,outcome:"rejected",message:"支付宝回调验签失败或验签密钥不可用",raw});
     return new Response("failure",{status:401});
   }
   try {
