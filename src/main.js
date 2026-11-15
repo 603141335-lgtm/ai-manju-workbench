@@ -284,6 +284,15 @@ function registerHandlers(){
   });
   ipcMain.handle('license:products',()=>licenseClient.getProducts());
   ipcMain.handle('license:createOrder',(_event,productId,paymentMethod)=>licenseClient.createOrder(productId,paymentMethod));
+  ipcMain.handle('license:orders',()=>licenseClient.getOrders());
+  ipcMain.handle('license:reconcileOrder',async(_event,orderId)=>{
+    const result=await licenseClient.reconcileOrder(orderId);
+    if(result.status==='paid'){
+      const state=await licenseClient.refresh();tell('license:updated',state);
+      return {...result,license:state};
+    }
+    return result;
+  });
   ipcMain.handle('license:orderStatus',async(_event,orderId)=>{
     const order=await licenseClient.orderStatus(orderId);
     if(order.status==='paid'){
