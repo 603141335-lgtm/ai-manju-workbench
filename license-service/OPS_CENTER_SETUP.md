@@ -127,6 +127,7 @@ npx wrangler secret put ALIPAY_SELLER_ID --config wrangler.local.toml
 - 待付款订单可重新打开收银台
 - 用户可点击「已付款？核对到账」，由授权设备签名请求支付平台查单；核验成功后自动发放并刷新授权
 - 付款后轮询订单状态并自动刷新授权
+- Worker 每5分钟自动核对近期未完成订单，回调丢失时按支付平台真实状态补记到账；已付款但授权未完成的订单会自动重试发货
 - 公开公告从 DUDU_LICENSE_URL/manifest.json 读取
 
 GitHub Actions Variables 保留：
