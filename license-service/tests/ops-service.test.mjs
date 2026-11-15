@@ -494,6 +494,8 @@ test('local test console and simulator routes are unavailable off loopback or wi
   assert.equal(remotePage.status,404);
   const remoteApi=await handleOpsRequest(new Request('https://dudu.example/v1/admin/test/orders/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({paymentMethod:'wechat'})}),env,'/v1/admin/test/orders/create',helpers);
   assert.equal(remoteApi.status,404);
+  const unauthorized=await handleOpsRequest(new Request('http://127.0.0.1:8788/v1/admin/test/orders/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({paymentMethod:'wechat'})}),env,'/v1/admin/test/orders/create',{adminAuth:async()=>false});
+  assert.equal(unauthorized.status,401);
   const localPage=await handleOpsRequest(new Request('http://127.0.0.1:8788/__test'),env,'/__test',helpers);
   assert.equal(localPage.status,200);
   assert.match(await localPage.text(),/不发生真实扣款或退款/);
