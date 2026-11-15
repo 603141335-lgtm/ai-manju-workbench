@@ -1,6 +1,7 @@
 // Owner-only deployment assistant. Cloudflare credentials and private keys stay local.
 import {spawnSync} from 'node:child_process';
-import {readFileSync,writeFileSync,existsSync,mkdirSync,unlinkSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {readFileSync,writeFileSync,existsSync,mkdirSync,unlinkSync,readdirSync,statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname,resolve,join} from 'node:path';
 import {ensureOwnerKeys} from './generate-keys.mjs';
@@ -10,6 +11,8 @@ const ownerKeysPath=join(privateDir,'owner-keys.json');
 const localConfigPath=join(root,'wrangler.local.toml');
 const deploymentInfoPath=join(privateDir,'deployment-public.json');
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const productionConfirmation='--confirm-production=DEPLOY_PRODUCTION_V1_3';
+
 export function parseDatabaseList(output){
  const s=String(output),i=s.indexOf('['),j=s.lastIndexOf(']');
  if(i<0||j<i)throw Error('Wrangler没有返回数据库列表；为避免重复创建已停止');
@@ -31,6 +34,50 @@ export function assertExistingDeploymentIdentity({databaseId,localConfig='',depl
  if(hasLocal&&configured!==databaseId)throw Error('检测到本机 wrangler.local.toml 的D1 ID与Cloudflare同名数据库不一致；为保护原授权数据，已停止部署');
  if(hasRecorded&&recorded!==databaseId)throw Error('deployment-public.json记录的D1 ID与当前数据库不一致；为保护原授权数据，已停止部署');
 }
+export function assertDeploymentConfirmations(args){
+ const flags=new Set(args);
+ const missing=[];
+ if(!flags.has('--confirm-backup-copied'))missing.push('备份已复制到加密离线介质（--confirm-backup-copied）');
+ if(!flags.has('--confirm-sandbox-passed'))missing.push('微信/支付宝沙箱支付、退款及授权撤销验收已通过（--confirm-sandbox-passed）');
+ if(!flags.has(productionConfirmation))missing.push('明确生产部署确认（'+productionConfirmation+'）');
+ if(missing.length)throw Error('生产部署已阻止，缺少以下明确确认：'+missing.join('；'));
+ return true;
+}
+export function assertVerifiedBackup({manifest,databaseId,sqlBytes,sqlSha256,backupKeysSha256,currentKeysSha256}){
+ if(!manifest||manifest.version!=='1.3-predeploy')throw Error('备份清单缺失或版本不正确');
+ if(manifest.d1DatabaseId!==databaseId)throw Error('备份中的D1 ID与当前Cloudflare原数据库不一致');
+ if(manifest.sqlFile!=='dudu-license-full.sql')throw Error('备份SQL文件名不符合预期');
+ if(!Number.isInteger(sqlBytes)||sqlBytes<=0||manifest.sqlBytes!==sqlBytes)throw Error('备份SQL文件大小与清单不一致');
+ if(!/^[a-f0-9]{64}$/i.test(sqlSha256||'')||manifest.sqlSha256!==sqlSha256)throw Error('备份SQL SHA-256校验失败');
+ if(!Array.isArray(manifest.backedUpFiles)||!manifest.backedUpFiles.includes('owner-keys.json'))throw Error('备份中缺少原授权密钥文件');
+ if(!backupKeysSha256||backupKeysSha256!==currentKeysSha256)throw Error('备份密钥与当前部署密钥不一致');
+ return true;
+}
+function sha256(value){return createHash('sha256').update(value).digest('hex')}
+function verifyLatestBackup(databaseId){
+ const backupsRoot=join(privateDir,'backups');
+ if(!existsSync(backupsRoot))throw Error('未找到 V1.3 备份目录；请先执行 npm run deploy:backup -- --confirm-export');
+ const candidates=readdirSync(backupsRoot,{withFileTypes:true})
+  .filter(x=>x.isDirectory()&&x.name.startsWith('v1.3-before-'))
+  .map(x=>x.name).sort().reverse();
+ if(!candidates.length)throw Error('未找到 V1.3 备份目录；请先执行 npm run deploy:backup -- --confirm-export');
+ const backupDir=join(backupsRoot,candidates[0]);
+ const manifestPath=join(backupDir,'backup-manifest.json');
+ const keysPath=join(backupDir,'owner-keys.json');
+ if(!existsSync(manifestPath)||!existsSync(keysPath))throw Error('最新备份缺少 backup-manifest.json 或 owner-keys.json；停止部署');
+ const manifest=JSON.parse(readFileSync(manifestPath,'utf8'));
+ if(manifest.sqlFile!=='dudu-license-full.sql')throw Error('备份清单SQL文件名不符合预期，停止部署');
+ const sqlPath=join(backupDir,manifest.sqlFile);
+ if(!existsSync(sqlPath))throw Error('最新备份缺少D1 SQL导出文件；停止部署');
+ const sql=readFileSync(sqlPath);
+ const backupKeys=readFileSync(keysPath);
+ const currentKeys=readFileSync(ownerKeysPath);
+ assertVerifiedBackup({
+  manifest,databaseId,sqlBytes:statSync(sqlPath).size,sqlSha256:sha256(sql),
+  backupKeysSha256:sha256(backupKeys),currentKeysSha256:sha256(currentKeys)
+ });
+ return {backupDir,manifest};
+}
 function cmd(args,{input}={}){
  const win=process.platform==='win32';
  const exe=win?'cmd.exe':'npx';
@@ -41,8 +88,11 @@ function cmd(args,{input}={}){
 }
 async function main(){
  if(!process.argv.includes('--apply')){
-  console.log('执行前请在license-service目录运行 npx wrangler login，再运行 npm run deploy:setup');return;
+  console.log('预览模式：生产部署必须通过 npm run deploy:setup -- --confirm-backup-copied --confirm-sandbox-passed '+productionConfirmation);
+  return;
  }
+ // Stop before network calls or file writes unless the owner explicitly confirms all production prerequisites.
+ assertDeploymentConfirmations(process.argv.slice(2));
  if(!existsSync(ownerKeysPath))throw Error('缺少原部署密钥文件 .private/owner-keys.json。为避免更换签名密钥并导致既有授权失效，部署已停止；请先从原部署电脑恢复该文件。');
  const {data,path:keyPath,created}=ensureOwnerKeys();
  if(created)throw Error('检测到部署密钥意外新建，已停止部署；不得用新密钥覆盖既有授权服务。');
@@ -59,6 +109,8 @@ async function main(){
  const localConfig=existsSync(localConfigPath)?readFileSync(localConfigPath,'utf8'):'';
  const deploymentInfo=existsSync(deploymentInfoPath)?JSON.parse(readFileSync(deploymentInfoPath,'utf8')):null;
  assertExistingDeploymentIdentity({databaseId:found.id,localConfig,deploymentInfo});
+ const backup=verifyLatestBackup(found.id);
+ console.log('已验证原D1备份与密钥校验：'+backup.backupDir);
  writeFileSync(localConfigPath,renderLocalConfig(readFileSync(join(root,'wrangler.toml'),'utf8'),found.id));
  const cfg=['--config','wrangler.local.toml'];
  console.log('初始化远程D1增量表结构（保留既有授权数据）');
