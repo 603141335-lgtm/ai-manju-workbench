@@ -46,7 +46,7 @@ async function attestSigningKey(env){
 }
 const newCode=()=>{const bytes=crypto.getRandomValues(new Uint8Array(20));let out='';for(const b of bytes)out+=alphabet[b%alphabet.length];return 'DUDU-'+out.match(/.{1,5}/g).join('-')};
 const adminPrincipal=async(req,env)=>{
- const raw=(req.headers.get('Authorization')||'').replace(/^Bearer\\s+/i,'').trim();
+ const raw=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'').trim();
  if(raw.length<32)return null;
  const digest=await crypto.subtle.digest('SHA-256',enc.encode(raw));
  const tokenHash=Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,'0')).join('');
