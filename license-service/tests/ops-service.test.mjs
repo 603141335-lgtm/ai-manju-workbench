@@ -385,7 +385,12 @@ test('refund reconciliation applies one-minute WeChat and ten-second Alipay quer
     .run(wx.orderId,now-120000,now-120000,now-30000);
   db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,last_checked_ms) VALUES('refund-ali-cd',?,'RF-ALI-CD','alipay',1200,'test','processing',?,?,?)")
     .run(ali.orderId,now-120000,now-120000,now-5000);
-  const env={DB:makeD1(db)},helpers={adminAuth:async()=>true};
+  const env={DB:makeD1(db),
+    WECHATPAY_MCHID:'1900000109',WECHATPAY_APPID:'wx-test',WECHATPAY_SERIAL_NO:'merchant-serial',
+    WECHATPAY_PRIVATE_KEY_PEM:'invalid-private-key',WECHATPAY_API_V3_KEY:'12345678901234567890123456789012',
+    WECHATPAY_PLATFORM_PUBLIC_KEY_PEM:'invalid-public-key',WECHATPAY_PLATFORM_SERIAL:'platform-serial',
+    ALIPAY_APP_ID:'app-test',ALIPAY_SELLER_ID:'seller-test',ALIPAY_PRIVATE_KEY_PEM:'invalid-private-key',ALIPAY_PUBLIC_KEY_PEM:'invalid-public-key'
+  },helpers={adminAuth:async()=>true};
   const reconcile=refundId=>handleOpsRequest(new Request('https://dudu.example/v1/admin/refunds/reconcile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({refundId})}),env,'/v1/admin/refunds/reconcile',helpers);
   try{
     const wxTooSoon=await reconcile('refund-wx-cd');
@@ -396,7 +401,9 @@ test('refund reconciliation applies one-minute WeChat and ten-second Alipay quer
     assert.match((await aliTooSoon.json()).error,/10秒/);
     db.prepare("UPDATE refunds SET last_checked_ms=? WHERE refund_id='refund-wx-cd'").run(now-61000);
     db.prepare("UPDATE refunds SET last_checked_ms=? WHERE refund_id='refund-ali-cd'").run(now-11000);
-    assert.equal((await reconcile('refund-wx-cd')).status,400);
-    assert.equal((await reconcile('refund-ali-cd')).status,400);
+    assert.equal((await reconcile('refund-wx-cd')).status,202);
+    assert.equal((await reconcile('refund-ali-cd')).status,202);
+    assert.equal((await reconcile('refund-wx-cd')).status,429);
+    assert.equal((await reconcile('refund-ali-cd')).status,429);
   }finally{db.close()}
 });
