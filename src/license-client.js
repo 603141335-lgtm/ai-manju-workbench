@@ -2,7 +2,7 @@
 // v1.2.0 desktop license client. No owner signing secrets in the application.
 // Device signing private key and license cache are encrypted by Windows DPAPI
 // through Electron safeStorage. MachineGuid is hashed before leaving this PC.
-const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),https=require('node:https');
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),https=require('node:https'),http=require('node:http');
 const {execFileSync}=require('node:child_process');
 const licenseConfig=require('./license-config.json');
 const MAX_RESPONSE=32768;
