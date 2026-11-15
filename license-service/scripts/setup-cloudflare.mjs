@@ -27,7 +27,7 @@ export function assertExistingDeploymentIdentity({databaseId,localConfig='',depl
  const configured=localConfig.match(/^database_id\s*=\s*"([^"]+)"/m)?.[1]||'';
  const recorded=typeof deploymentInfo?.d1Id==='string'?deploymentInfo.d1Id:'';
  const hasLocal=uuid.test(configured),hasRecorded=uuid.test(recorded);
- if(!hasLocal&&!hasRecorded)throw Error('缺少原部署D1身份记录；请恢复原 wrangler.local.toml 或 deployment-public.json，禁止猜测数据库');
+ if(!hasLocal&&!hasRecorded)throw Error('无法确认这是原有D1数据库：缺少原部署D1身份记录；请恢复原 wrangler.local.toml 或 deployment-public.json，禁止猜测数据库');
  if(hasLocal&&configured!==databaseId)throw Error('检测到本机 wrangler.local.toml 的D1 ID与Cloudflare同名数据库不一致；为保护原授权数据，已停止部署');
  if(hasRecorded&&recorded!==databaseId)throw Error('deployment-public.json记录的D1 ID与当前数据库不一致；为保护原授权数据，已停止部署');
 }
