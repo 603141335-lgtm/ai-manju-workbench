@@ -29,7 +29,7 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <nav class="nav">
 <button class="active" data-tab="overview">▦ 总览</button><button data-tab="cards">▣ 卡密管理</button>
 <button data-tab="applications">✉ 免费申请</button><button data-tab="products">◇ 商品管理</button>
-<button data-tab="orders">▤ 订单管理</button><button data-tab="monitor">◉ 支付监控</button><button data-tab="content">▧ 公告与教程</button>
+<button data-tab="orders">▤ 订单管理</button><button data-tab="monitor">◉ 支付监控</button><button data-tab="finance">￥ 财务报表</button><button data-tab="refunds">↩ 退款管理</button><button data-tab="content">▧ 公告与教程</button>
 <button data-tab="payments">￥ 支付配置</button><button data-tab="audit">◷ 操作日志</button>
 </nav>
 <div class="auth"><label>管理员令牌<input id="token" type="password" autocomplete="off" placeholder="粘贴管理员令牌"></label><div class="row"><button id="connect">连接后台</button><button class="secondary" id="clearToken">清空</button></div><p class="help">令牌仅保存在当前页面内存；关闭页面即清除。建议 Cloudflare Access + 双因素验证。</p></div>
@@ -39,7 +39,7 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <section class="panel active" id="tab-overview"><h2>运营总览</h2><div class="grid">
 <div class="stat"><small>累计卡密</small><strong id="statCards">—</strong></div><div class="stat"><small>待审批申请</small><strong id="statApps">—</strong></div><div class="stat"><small>已支付订单</small><strong id="statOrders">—</strong></div><div class="stat"><small>上架商品</small><strong id="statProducts">—</strong></div>
 </div><div class="notice">付费订单只有在微信支付 / 支付宝异步通知完成验签、核对订单号和金额后才会自动发货。浏览器跳转不作为付款依据。</div>
-<div class="row"><button data-go="applications">处理免费申请</button><button data-go="products" class="secondary">维护商品</button><button data-go="orders" class="secondary">查看订单</button><button data-go="content" class="secondary">修改公告</button></div></section>
+<div class="row"><button data-go="applications">处理免费申请</button><button data-go="products" class="secondary">维护商品</button><button data-go="orders" class="secondary">查看订单</button><button data-go="finance" class="secondary">查看财务</button><button data-go="refunds" class="secondary">处理退款</button><button data-go="content" class="secondary">修改公告</button></div></section>
 
 <section class="panel" id="tab-cards"><h2>卡密管理</h2><div class="row"><label class="field">生成数量<input id="cardCount" type="number" min="1" max="50" value="5"></label><button id="issueCards">生成永久卡密</button><button id="copyCards" class="secondary">复制本次卡密</button><button id="loadCards" class="secondary">刷新卡密列表</button></div>
 <div class="code" id="issuedCodes">生成的卡密只展示一次；请立即复制保存。</div><div class="tablewrap"><table><thead><tr><th>卡密ID</th><th>尾号</th><th>生成时间</th><th>设备绑定</th><th>状态</th><th>操作</th></tr></thead><tbody id="cardsBody"></tbody></table></div></section>
@@ -57,8 +57,8 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <div class="tablewrap"><table><thead><tr><th>商品</th><th>售价</th><th>授权类型</th><th>状态</th><th>操作</th></tr></thead><tbody id="productsBody"></tbody></table></div>
 <p class="help">当前授权核心只支持永久授权。月卡、季卡、年卡暂不开放，避免商品卖出后授权系统无法按期到期。</p></section>
 
-<section class="panel" id="tab-orders"><h2>订单管理</h2><div class="row"><button id="loadOrders">刷新订单</button><span class="help">支付成功后自动生成永久授权并绑定购买设备。</span></div>
-<div class="tablewrap"><table><thead><tr><th>订单号</th><th>商品</th><th>金额</th><th>渠道</th><th>订单状态</th><th>发货状态</th><th>时间</th><th>操作</th></tr></thead><tbody id="ordersBody"></tbody></table></div></section>
+<section class="panel" id="tab-orders"><h2>订单管理</h2><div class="row"><button id="loadOrders">刷新订单</button><span class="help">支付成功后自动发放永久授权；全额退款成功后自动撤销该订单对应授权。</span></div>
+<div class="tablewrap"><table><thead><tr><th>订单号</th><th>商品</th><th>金额</th><th>渠道</th><th>订单状态</th><th>发货状态</th><th>退款状态</th><th>时间</th><th>操作</th></tr></thead><tbody id="ordersBody"></tbody></table></div></section>
 
 <section class="panel" id="tab-monitor"><h2>支付与自动发货监控</h2>
 <div class="row"><button id="refreshPaymentMonitor">刷新监控</button><button id="runPaymentReconcile" class="secondary">立即执行一次补偿</button><span class="help">手动补偿最短间隔60秒；系统仍会按5分钟定时任务自动执行。</span></div>
@@ -78,6 +78,30 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 <div class="code" id="monCallbackUrls">刷新监控后显示微信支付与支付宝回调地址。</div>
 <h3>最近支付回调</h3><div class="tablewrap"><table><thead><tr><th>时间</th><th>渠道</th><th>事件编号</th><th>订单号</th><th>结果</th><th>处理说明</th><th>请求摘要</th></tr></thead><tbody id="paymentEventsBody"></tbody></table></div>
 <h3 style="margin-top:22px">自动发货队列</h3><div class="tablewrap"><table><thead><tr><th>时间</th><th>订单号</th><th>商品</th><th>状态</th><th>尝试次数</th><th>失败原因</th><th>操作</th></tr></thead><tbody id="deliveriesBody"></tbody></table></div>
+</section>
+
+<section class="panel" id="tab-finance"><h2>财务报表</h2>
+<div class="row">
+<label class="field">开始日期<input id="financeStart" type="date"></label>
+<label class="field">结束日期<input id="financeEnd" type="date"></label>
+<button id="loadFinance">查询统计</button>
+</div>
+<div class="grid" style="margin-top:10px">
+<div class="stat"><small>实收订单金额</small><strong id="financeGross">—</strong></div>
+<div class="stat"><small>已完成退款</small><strong id="financeRefunds">—</strong></div>
+<div class="stat"><small>净现金流</small><strong id="financeNet">—</strong></div>
+<div class="stat"><small>已付款订单数</small><strong id="financeOrders">—</strong></div>
+<div class="stat"><small>待核验退款</small><strong id="financePendingRefunds">—</strong></div>
+</div>
+<div class="notice">统计口径：实收按支付成功时间计入，退款按支付平台确认成功时间计入；净现金流 = 本期实收 - 本期成功退款。日期按当前电脑浏览器本地时区计算。</div>
+<h3>支付渠道统计</h3><div class="tablewrap"><table><thead><tr><th>支付渠道</th><th>付款订单数</th><th>实收金额</th></tr></thead><tbody id="financeChannelsBody"></tbody></table></div>
+<h3 style="margin-top:22px">商品销售排行</h3><div class="tablewrap"><table><thead><tr><th>商品</th><th>付款订单数</th><th>销售金额</th></tr></thead><tbody id="financeProductsBody"></tbody></table></div>
+</section>
+
+<section class="panel" id="tab-refunds"><h2>退款管理</h2>
+<div class="row"><button id="loadRefunds">刷新退款记录</button><span class="help">当前只开放全额原路退款；平台确认退款成功后才撤销对应授权。</span></div>
+<div class="notice">处理中或结果不确定的退款会锁定该订单的重复退款和授权补发。支付宝退款建议等待10秒后查询；微信退款优先接收异步结果通知，也可手动查单。</div>
+<div class="tablewrap"><table><thead><tr><th>创建时间</th><th>退款单号</th><th>原订单</th><th>商品</th><th>渠道</th><th>退款金额</th><th>状态</th><th>平台退款号</th><th>说明/失败原因</th><th>操作</th></tr></thead><tbody id="refundsBody"></tbody></table></div>
 </section>
 
 
@@ -106,14 +130,14 @@ table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;
 </main></div>
 <script>
 const $=id=>document.getElementById(id);let latestCodes=[],currentManifest=null,connected=false;
-const titles={overview:"运营总览",cards:"卡密管理",applications:"免费申请审批",products:"商品管理",orders:"订单管理",monitor:"支付与发货监控",content:"公告与教程",payments:"支付配置",audit:"管理员操作日志"};
+const titles={overview:"运营总览",cards:"卡密管理",applications:"免费申请审批",products:"商品管理",orders:"订单管理",monitor:"支付与发货监控",finance:"财务报表",refunds:"退款管理",content:"公告与教程",payments:"支付配置",audit:"管理员操作日志"};
 function say(text,bad){$("status").textContent=text;$("status").style.color=bad?"#ff9da8":"#9edfc8"}
 function token(){return $("token").value.trim()}
 async function api(path,data){if(!token())throw Error("请先输入管理员令牌");const r=await fetch(path,{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+token()},body:JSON.stringify(data||{})});const v=await r.json().catch(()=>({}));if(!r.ok)throw Error(v.error||("HTTP "+r.status));return v}
 function cell(tr,value){const td=document.createElement("td");td.textContent=value==null?"":String(value);tr.append(td);return td}
 function button(text,fn,kind){const b=document.createElement("button");b.textContent=text;if(kind)b.className=kind;b.addEventListener("click",()=>safe(fn));return b}
 function showTab(name){document.querySelectorAll(".panel").forEach(x=>x.classList.toggle("active",x.id==="tab-"+name));document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===name));$("pageTitle").textContent=titles[name]||"运营管理";if(connected)loadTab(name).catch(e=>say(e.message,true))}
-async function loadTab(name){if(name==="overview")return loadOverview();if(name==="cards")return loadCards();if(name==="applications")return loadApplications();if(name==="products")return loadProducts();if(name==="orders")return loadOrders();if(name==="monitor")return loadPaymentMonitor();if(name==="content")return loadContent();if(name==="payments")return loadPaymentStatus();if(name==="audit")return loadAudit()}
+async function loadTab(name){if(name==="overview")return loadOverview();if(name==="cards")return loadCards();if(name==="applications")return loadApplications();if(name==="products")return loadProducts();if(name==="orders")return loadOrders();if(name==="monitor")return loadPaymentMonitor();if(name==="finance")return loadFinance();if(name==="refunds")return loadRefunds();if(name==="content")return loadContent();if(name==="payments")return loadPaymentStatus();if(name==="audit")return loadAudit()}
 async function loadOverview(){const v=await api("/v1/admin/overview");$("statCards").textContent=v.cards;$("statApps").textContent=v.pendingApplications;$("statOrders").textContent=v.paidOrders;$("statProducts").textContent=v.activeProducts}
 async function loadCards(){const v=await api("/v1/admin/cards/list");const root=$("cardsBody");root.replaceChildren();v.cards.forEach(x=>{const tr=document.createElement("tr");cell(tr,x.id);cell(tr,x.last_four);cell(tr,new Date(x.issued_ms).toLocaleString());cell(tr,x.bound?"已绑定":"未绑定");cell(tr,x.revoked_ms?"已停用":(x.bound?"已激活":"未激活"));const td=document.createElement("td");td.append(button("复制ID",()=>navigator.clipboard.writeText(x.id)),button("停用",()=>cardAction("revoke",x.id),"danger"),button("解绑",()=>cardAction("transfer",x.id),"secondary"));tr.append(td);root.append(tr)})}
 async function cardAction(action,id){if(!confirm(action==="revoke"?"确认停用这张卡？":"确认解绑设备？"))return;await api("/v1/admin/cards/"+action,{cardId:id});say("卡密操作完成");loadCards()}
@@ -121,7 +145,29 @@ async function loadApplications(){const v=await api("/v1/admin/applications/list
 function resetProduct(){["productId","productName","productPrice","productDescription"].forEach(id=>$(id).value="");$("productSort").value="0"}
 async function loadProducts(){const v=await api("/v1/admin/products/list");const root=$("productsBody");root.replaceChildren();v.products.forEach(x=>{const tr=document.createElement("tr");cell(tr,x.name+" ("+x.product_id+")");cell(tr,"¥"+(x.price_cents/100).toFixed(2));cell(tr,"永久授权");cell(tr,x.enabled?"上架":"下架");const td=document.createElement("td");td.append(button("编辑",()=>{$("productId").value=x.product_id;$("productName").value=x.name;$("productPrice").value=(x.price_cents/100).toFixed(2);$("productDescription").value=x.description;$("productSort").value=x.sort_order;window.scrollTo({top:0,behavior:"smooth"})}),button(x.enabled?"下架":"上架",async()=>{await api("/v1/admin/products/toggle",{productId:x.product_id,enabled:!x.enabled});loadProducts()},"secondary"));tr.append(td);root.append(tr)})}
 async function saveProduct(){const yuan=Number($("productPrice").value);if(!Number.isFinite(yuan)||yuan<=0)throw Error("售价必须大于0");const v=await api("/v1/admin/products/save",{productId:$("productId").value.trim(),name:$("productName").value.trim(),description:$("productDescription").value,priceCents:Math.round(yuan*100),sortOrder:Number($("productSort").value)||0});say("商品已保存："+v.productId);await loadProducts();await loadOverview()}
-async function loadOrders(){const v=await api("/v1/admin/orders/list");const root=$("ordersBody");root.replaceChildren();v.orders.forEach(x=>{const tr=document.createElement("tr");cell(tr,x.order_no);cell(tr,x.product_name);cell(tr,"¥"+(x.amount_cents/100).toFixed(2));cell(tr,x.payment_method==="wechat"?"微信支付":"支付宝");cell(tr,x.status==="paid"?"已支付":x.status==="pending"?"待支付":x.status==="refunded"?"已退款":"已关闭");cell(tr,x.delivery_status==="delivered"?"已自动发货":x.status==="paid"?"待补发":"—");cell(tr,new Date(x.created_ms).toLocaleString());const td=document.createElement("td");if((x.status==="pending"||x.status==="closed"))td.append(button("查询支付状态",async()=>{const result=await api("/v1/admin/orders/reconcile",{orderId:x.order_id});say(result.message||("查单结果："+result.status));await loadOrders();await loadOverview()}));if(x.status==="paid"&&x.delivery_status!=="delivered")td.append(button("补发授权",async()=>{await api("/v1/admin/orders/resend",{orderId:x.order_id});say("已补发授权");await loadOrders()},"secondary"));if(!td.childNodes.length)td.textContent=x.status==="paid"?"已完成":"—";tr.append(td);root.append(tr)})}
+async function loadOrders(){
+ const v=await api("/v1/admin/orders/list"),root=$("ordersBody");root.replaceChildren();
+ v.orders.forEach(x=>{
+  const tr=document.createElement("tr"),refundState=x.refund_status||"";
+  cell(tr,x.order_no);cell(tr,x.product_name);cell(tr,"¥"+(x.amount_cents/100).toFixed(2));
+  cell(tr,x.payment_method==="wechat"?"微信支付":"支付宝");
+  cell(tr,x.status==="paid"?"已支付":x.status==="pending"?"待支付":x.status==="refunded"?"已退款":"已关闭");
+  cell(tr,x.status==="refunded"?"授权已撤销":refundState==="processing"||refundState==="manual_review"?"退款处理中，暂停发货":x.delivery_status==="delivered"?"已自动发货":x.status==="paid"?"待补发":"—");
+  cell(tr,refundState?refundStatusText(refundState):"—");
+  cell(tr,new Date(x.created_ms).toLocaleString());
+  const td=document.createElement("td");
+  if(x.status==="pending"||x.status==="closed")td.append(button("查询支付状态",async()=>{
+   const result=await api("/v1/admin/orders/reconcile",{orderId:x.order_id});say(result.message||("查单结果："+result.status));await loadOrders();await loadOverview();
+  }));
+  if(x.status==="paid"&&x.delivery_status!=="delivered"&&!["processing","manual_review","succeeded"].includes(refundState))td.append(button("补发授权",async()=>{
+   await api("/v1/admin/orders/resend",{orderId:x.order_id});say("已补发授权");await loadOrders();
+  },"secondary"));
+  if(x.status==="paid"&&["processing","manual_review"].includes(refundState))td.append(button("查询退款",async()=>reconcileRefund(x.refund_id),"secondary"));
+  if(x.status==="paid"&&!["processing","manual_review","succeeded"].includes(refundState))td.append(button("全额退款",async()=>createRefundFromOrder(x),"danger"));
+  if(!td.childNodes.length)td.textContent=x.status==="paid"?"已完成":"—";
+  tr.append(td);root.append(tr);
+ });
+}
 function setContent(m){currentManifest=m;$("cHeadline").value=m.community?.headline||"";$("cSubtitle").value=m.community?.subtitle||"";$("cWechat").value=m.community?.wechat||"du4du44";$("cBackup").value=m.community?.backupWechat||"du6du66";$("cDescription").value=m.community?.description||"";$("cQrUrl").value=m.community?.qrUrl||"";$("cQrExpiry").value=m.community?.qrExpiresAt||"";$("cTutorialTitle").value=m.tutorial?.title||"";$("cTutorialVersion").value=m.tutorial?.version||"1";$("cSlides").value=JSON.stringify(m.tutorial?.slides||[],null,2);$("cReleaseVersion").value=m.release?.version||"";$("cReleaseUrl").value=m.release?.url||"";$("cReleaseNotes").value=m.release?.notes||"";$("cNoticeTitle").value=m.notice?.title||"";$("cNoticeBody").value=m.notice?.body||""}
 async function loadContent(){const v=await api("/v1/admin/content/get");setContent(v.manifest);say("已读取公告配置")}
 async function publishContent(){let slides;try{slides=JSON.parse($("cSlides").value||"[]")}catch{throw Error("教程步骤 JSON 格式不正确")}const m={schemaVersion:2,community:{...(currentManifest?.community||{}),headline:$("cHeadline").value,subtitle:$("cSubtitle").value,wechat:$("cWechat").value,backupWechat:$("cBackup").value,description:$("cDescription").value,qrUrl:$("cQrUrl").value,qrExpiresAt:$("cQrExpiry").value},tutorial:{...(currentManifest?.tutorial||{}),title:$("cTutorialTitle").value,version:$("cTutorialVersion").value,slides},release:{...(currentManifest?.release||{}),version:$("cReleaseVersion").value,url:$("cReleaseUrl").value,notes:$("cReleaseNotes").value},notice:{id:"notice-"+Date.now(),title:$("cNoticeTitle").value,body:$("cNoticeBody").value,showHint:true}};const v=await api("/v1/admin/content/publish",{manifest:m});say("公告已发布："+v.updatedAt);await loadContent()}
@@ -129,6 +175,60 @@ async function loadHistory(){const v=await api("/v1/admin/content/history");cons
 async function rollbackContent(){if(!$("historySelect").value)throw Error("请先选择历史版本");if(!confirm("确认回滚所选公告版本？"))return;await api("/v1/admin/content/rollback",{historyId:$("historySelect").value});say("公告已回滚");await loadContent()}
 async function loadAudit(){const v=await api("/v1/admin/audit/list");const root=$("auditBody");root.replaceChildren();v.events.forEach(x=>{const tr=document.createElement("tr");cell(tr,new Date(x.occurred_ms).toLocaleString());cell(tr,x.event);cell(tr,x.card_id||"—");root.append(tr)})}
 async function loadPaymentStatus(){const v=await api("/v1/admin/payments/status");$("wechatStatus").textContent=v.wechat.configured?"已配置":"未配置";$("wechatStatus").style.color=v.wechat.configured?"#7ce0ba":"#f2c47f";$("wechatFields").textContent=v.wechat.configured?"必需密钥均已检测到": "缺少："+v.wechat.required.join("、");$("alipayStatus").textContent=v.alipay.configured?"已配置":"未配置";$("alipayStatus").style.color=v.alipay.configured?"#7ce0ba":"#f2c47f";$("alipayFields").textContent=v.alipay.configured?"必需密钥均已检测到":"缺少："+v.alipay.required.join("、")}
+
+function money(cents){return "¥"+(Number(cents||0)/100).toFixed(2)}
+function refundStatusText(status){return ({processing:"处理中",succeeded:"退款成功",failed:"未成功",manual_review:"待人工核对"})[status]||status||"—"}
+function localDateString(date){return date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0")}
+function initFinanceDates(){
+ const now=new Date(),start=new Date(now);start.setDate(start.getDate()-29);
+ if(!$("financeStart").value)$("financeStart").value=localDateString(start);
+ if(!$("financeEnd").value)$("financeEnd").value=localDateString(now);
+}
+async function loadFinance(){
+ initFinanceDates();
+ const start=new Date($("financeStart").value+"T00:00:00").getTime();
+ const end=new Date($("financeEnd").value+"T00:00:00").getTime()+86400000;
+ if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)throw Error("请选择正确的统计日期范围");
+ const v=await api("/v1/admin/finance/summary",{startMs:start,endMs:end});
+ $("financeGross").textContent=money(v.grossCents);$("financeRefunds").textContent=money(v.refundsCents);
+ $("financeNet").textContent=money(v.netCents);$("financeOrders").textContent=v.paidOrders;
+ $("financePendingRefunds").textContent=v.pendingRefunds;
+ const channels=$("financeChannelsBody");channels.replaceChildren();
+ (v.channels||[]).forEach(x=>{const tr=document.createElement("tr");cell(tr,x.provider==="wechat"?"微信支付":"支付宝");cell(tr,x.orders);cell(tr,money(x.gross_cents));channels.append(tr)});
+ if(!(v.channels||[]).length){const tr=document.createElement("tr");cell(tr,"所选日期没有付款记录");channels.append(tr)}
+ const products=$("financeProductsBody");products.replaceChildren();
+ (v.products||[]).forEach(x=>{const tr=document.createElement("tr");cell(tr,x.product_name);cell(tr,x.orders);cell(tr,money(x.gross_cents));products.append(tr)});
+ if(!(v.products||[]).length){const tr=document.createElement("tr");cell(tr,"暂无商品销售记录");products.append(tr)}
+ say("财务报表已更新");
+}
+async function loadRefunds(){
+ const v=await api("/v1/admin/refunds/list"),root=$("refundsBody");root.replaceChildren();
+ (v.refunds||[]).forEach(x=>{
+  const tr=document.createElement("tr");cell(tr,formatDate(x.created_ms));cell(tr,x.refund_no);cell(tr,x.order_no);
+  cell(tr,x.product_name);cell(tr,x.provider==="wechat"?"微信支付":"支付宝");cell(tr,money(x.amount_cents));
+  cell(tr,refundStatusText(x.status));cell(tr,x.provider_refund_id||"—");
+  cell(tr,x.last_error||x.reason||"—");
+  const td=cell(tr,"—");
+  if(x.status==="processing"||x.status==="manual_review")td.replaceChildren(button("查询退款状态",async()=>reconcileRefund(x.refund_id),"secondary"));
+  root.append(tr);
+ });
+ if(!(v.refunds||[]).length){const tr=document.createElement("tr");cell(tr,"暂无退款记录");root.append(tr)}
+ say("退款记录已刷新");
+}
+async function reconcileRefund(refundId){
+ const result=await api("/v1/admin/refunds/reconcile",{refundId});
+ say(result.message||("退款状态："+refundStatusText(result.status)));
+ await Promise.all([loadRefunds(),loadOrders(),loadFinance()]);
+}
+async function createRefundFromOrder(order){
+ const reason=prompt("填写退款原因（将发送给支付平台）","用户申请退款");
+ if(reason===null)return;
+ if(!confirm("确认对订单 "+order.order_no+" 发起全额原路退款 "+money(order.amount_cents)+"？只有支付平台确认退款成功后，系统才会撤销本订单对应授权。该操作会真实退还资金，不能当作测试。"))return;
+ const result=await api("/v1/admin/refunds/create",{orderId:order.order_id,reason,confirmFullRefund:true});
+ say(result.message||("退款状态："+refundStatusText(result.status)),result.status==="manual_review");
+ await Promise.all([loadOrders(),loadRefunds(),loadFinance()]);
+}
+
 function formatDate(ms){return ms?new Date(ms).toLocaleString():"暂无记录"}
 function outcomeText(value){return ({accepted:"成功",ignored:"已接收（非成功交易）",rejected:"验签拒绝",error:"处理异常"})[value]||value||"—"}
 async function loadPaymentMonitor(){
@@ -202,5 +302,5 @@ $("loadCards").onclick=()=>safe(loadCards);$("loadApplications").onclick=()=>saf
 $("issueCards").onclick=()=>safe(async()=>{const n=Number($("cardCount").value);const v=await api("/v1/admin/cards/issue",{count:n});latestCodes=v.codes||[];$("issuedCodes").textContent=latestCodes.join("\n")||"没有生成卡密";say("已生成 "+latestCodes.length+" 张卡密");await loadCards()});
 $("copyCards").onclick=()=>safe(async()=>{if(!latestCodes.length)throw Error("本次没有可复制的卡密");await navigator.clipboard.writeText(latestCodes.join("\n"));say("卡密已复制")});
 $("saveProduct").onclick=()=>safe(saveProduct);$("resetProduct").onclick=resetProduct;
-$("loadContent").onclick=()=>safe(loadContent);$("publishContent").onclick=()=>safe(publishContent);$("loadHistory").onclick=()=>safe(loadHistory);$("rollbackContent").onclick=()=>safe(rollbackContent);$("loadPaymentStatus").onclick=()=>safe(loadPaymentStatus);$("runPaymentSelfTest").onclick=()=>safe(runPaymentSelfTest);$("refreshPaymentMonitor").onclick=()=>safe(loadPaymentMonitor);$("runPaymentReconcile").onclick=()=>safe(runPaymentReconcile);$("loadAudit").onclick=()=>safe(loadAudit);
+$("loadContent").onclick=()=>safe(loadContent);$("publishContent").onclick=()=>safe(publishContent);$("loadHistory").onclick=()=>safe(loadHistory);$("rollbackContent").onclick=()=>safe(rollbackContent);$("loadPaymentStatus").onclick=()=>safe(loadPaymentStatus);$("runPaymentSelfTest").onclick=()=>safe(runPaymentSelfTest);$("refreshPaymentMonitor").onclick=()=>safe(loadPaymentMonitor);$("runPaymentReconcile").onclick=()=>safe(runPaymentReconcile);$("loadFinance").onclick=()=>safe(loadFinance);$("loadRefunds").onclick=()=>safe(loadRefunds);$("loadAudit").onclick=()=>safe(loadAudit);
 </script></body></html>`;
