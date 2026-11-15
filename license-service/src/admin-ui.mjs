@@ -187,7 +187,7 @@ async function runPaymentSelfTest(){
  const result=$("paymentSelfTestResult");result.textContent="正在执行本地密钥自检…";
  const v=await api("/v1/admin/payments/self-test");
  const lines=["微信支付："+(v.wechat.ok?"通过":"未通过")+"；"+(v.wechat.message||v.wechat.note||""),"支付宝："+(v.alipay.ok?"通过":"未通过")+"；"+(v.alipay.message||v.alipay.note||""),v.note||""];
- result.textContent=lines.join("\\n");
+ result.textContent=lines.join("\n");
  say("本地密钥自检已完成",!v.wechat.ok||!v.alipay.ok);
 }
 async function connect(){await loadOverview();connected=true;say("已连接运营后台");await loadTab(document.querySelector("[data-tab].active")?.dataset.tab||"overview")}
