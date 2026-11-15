@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,paymentSelfTest,logPaymentWebhook,runScheduledReconciliation,handleOpsRequest} from '../src/ops-service.mjs';
-import {generateKeyPairSync} from 'node:crypto';
+import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,paymentSelfTest,logPaymentWebhook,runScheduledReconciliation,handleOpsRequest,maskContact,roleCanAccess,refundStatusFromWechat,finalizeRefundSuccess,alipayApiCall} from '../src/ops-service.mjs';
+import {generateKeyPairSync,sign as nodeSign,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 
@@ -147,7 +147,7 @@ function makeD1(db){
       async run(){const result=statement.run(...values);return {meta:{changes:Number(result.changes)}}}
     };
     return api;
-  }};
+  },async batch(statements){return Promise.all(statements.map(statement=>statement.run()))}};
 }
 
 test('admin payment monitoring endpoints return health, webhook history and delivery queue',async()=>{
@@ -182,4 +182,124 @@ test('manual payment recovery endpoint runs once and enforces its 60-second cool
   const second=await handleOpsRequest(req(),env,'/v1/admin/payments/reconcile/run',helpers);
   assert.equal(second.status,429);
   db.close();
+});
+
+test('finance report uses paid time for sales and confirmed refund time for refunds',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,created_ms,paid_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+    .run('order-a','DU-A','a'.repeat(64),'p1','工作台永久授权',1000,'wechat','paid',1500,2000,2000);
+  db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,created_ms,paid_ms,refunded_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run('order-b','DU-B','b'.repeat(64),'p1','工作台永久授权',500,'alipay','refunded',1500,3000,4500,4500);
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,status,created_ms,updated_ms,completed_ms) VALUES(?,?,?,?,?,'succeeded',?,?,?)")
+    .run('refund-b','order-b','RF-B','alipay',300,3500,4000,4000);
+  const env={DB:makeD1(db)};
+  const req=new Request('https://dudu.example/v1/admin/finance/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({fromMs:1000,toMs:5000})});
+  const response=await handleOpsRequest(req,env,'/v1/admin/finance/summary',{adminAuth:async()=>true});
+  assert.equal(response.status,200);
+  const value=await response.json();
+  assert.equal(value.orders,2);
+  assert.equal(value.grossCents,1500);
+  assert.equal(value.refundedCents,300);
+  assert.equal(value.netCents,1200);
+  assert.equal(value.refundCount,1);
+  db.close();
+});
+
+test('customer list masks contact and device block state can be toggled by support',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const deviceHash='c'.repeat(64),now=Date.now();
+  db.prepare("INSERT INTO devices(device_hash,public_key,created_ms) VALUES(?,?,?)").run(deviceHash,'public-key',now);
+  db.prepare("INSERT INTO license_applications(application_id,device_hash,contact,reason,status,created_ms) VALUES(?,?,?,?,?,?)")
+    .run('app-1',deviceHash,'13800138000','申请试用','pending',now);
+  const env={DB:makeD1(db)};
+  const helpers={adminAuth:async()=>true,adminPrincipal:async()=>({id:'support-1',name:'客服',role:'support'})};
+  const req=(path,body={})=>new Request('https://dudu.example'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  const list=await (await handleOpsRequest(req('/v1/admin/customers/list'),env,'/v1/admin/customers/list',helpers)).json();
+  assert.equal(list.customers[0].contact,'138****8000');
+  const block=await handleOpsRequest(req('/v1/admin/devices/block',{deviceHash,reason:'异常设备'}),env,'/v1/admin/devices/block',helpers);
+  assert.equal(block.status,200);
+  assert.ok(db.prepare("SELECT blocked_ms FROM device_controls WHERE device_hash=?").get(deviceHash).blocked_ms);
+  const denied=await handleOpsRequest(req('/v1/admin/finance/summary',{fromMs:1,toMs:2}),env,'/v1/admin/finance/summary',helpers);
+  assert.equal(denied.status,403);
+  const unblock=await handleOpsRequest(req('/v1/admin/devices/unblock',{deviceHash}),env,'/v1/admin/devices/unblock',helpers);
+  assert.equal(unblock.status,200);
+  assert.equal(db.prepare("SELECT blocked_ms FROM device_controls WHERE device_hash=?").get(deviceHash).blocked_ms,null);
+  db.close();
+});
+
+test('confirmed full refund updates order and revokes the purchased license card',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const deviceHash='d'.repeat(64),now=Date.now();
+  db.prepare("INSERT INTO devices(device_hash,public_key,created_ms) VALUES(?,?,?)").run(deviceHash,'public-key',now);
+  db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,provider_trade_no,created_ms,paid_ms,delivered_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run('order-refund','DU-REFUND',deviceHash,'p1','工作台永久授权',9900,'wechat','paid','wx-trade',now,now,now,now);
+  db.prepare("INSERT INTO license_cards(id,code_hash,last_four,issued_ms,bound_device_hash,activated_ms) VALUES(?,?,?,?,?,?)")
+    .run('card-refund','hash-refund','ABCD',now,deviceHash,now);
+  db.prepare("INSERT INTO delivery_outbox(delivery_id,order_id,card_id,code_hash,last_four,status,attempts,created_ms,delivered_ms) VALUES(?,?,?,?,?,'delivered',1,?,?)")
+    .run('delivery-refund','order-refund','card-refund','hash-refund','ABCD',now,now);
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,status,created_ms,updated_ms) VALUES(?,?,?,?,?,'processing',?,?)")
+    .run('refund-1','order-refund','RF-1','wechat',9900,now,now);
+  const env={DB:makeD1(db)};
+  const result=await finalizeRefundSuccess(env,{refund_id:'refund-1',order_id:'order-refund'},'SUCCESS','wx-refund',{id:'finance-1',name:'财务',role:'finance'});
+  assert.equal(result.status,'succeeded');
+  assert.equal(db.prepare("SELECT status FROM orders WHERE order_id='order-refund'").get().status,'refunded');
+  assert.ok(db.prepare("SELECT revoked_ms FROM license_cards WHERE id='card-refund'").get().revoked_ms);
+  assert.equal(db.prepare("SELECT status FROM refunds WHERE refund_id='refund-1'").get().status,'succeeded');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM admin_activity WHERE action='refund_success'").get().n,1);
+  db.close();
+});
+
+test('operator creation stores only token hash and role permissions are enforced',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const env={DB:makeD1(db)};
+  const helpers={adminAuth:async()=>true,adminPrincipal:async()=>({id:'owner',name:'超级管理员',role:'super_admin'})};
+  const req=(path,body={})=>new Request('https://dudu.example'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  const created=await (await handleOpsRequest(req('/v1/admin/operators/create',{displayName:'财务一号',role:'finance'}),env,'/v1/admin/operators/create',helpers)).json();
+  assert.ok(created.token.startsWith('DUDU-OP-'));
+  const tokenHash=createHash('sha256').update(created.token).digest('hex');
+  const row=db.prepare("SELECT token_sha256,role,enabled FROM admin_operators WHERE operator_id=?").get(created.operator.operator_id);
+  assert.equal(row.token_sha256,tokenHash);
+  assert.equal(row.role,'finance');
+  assert.equal(row.enabled,1);
+  const listed=await (await handleOpsRequest(req('/v1/admin/operators/list'),env,'/v1/admin/operators/list',helpers)).json();
+  assert.equal('token_sha256' in listed.operators[0],false);
+  const support={adminAuth:async()=>true,adminPrincipal:async()=>({id:'support-1',name:'客服',role:'support'})};
+  const denied=await handleOpsRequest(req('/v1/admin/operators/list'),env,'/v1/admin/operators/list',support);
+  assert.equal(denied.status,403);
+  db.close();
+});
+
+test('Alipay API wrapper reads the underscored response envelope and verifies its signature',async()=>{
+  const app=generateKeyPairSync('rsa',{modulusLength:2048});
+  const platform=generateKeyPairSync('rsa',{modulusLength:2048});
+  const data={code:'10000',out_trade_no:'DU-ALIPAY',out_request_no:'RF-ALIPAY',fund_change:'Y'};
+  const signature=nodeSign('RSA-SHA256',Buffer.from(alipaySignContent(data)),platform.privateKey).toString('base64');
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async()=>new Response(JSON.stringify({alipay_trade_refund_response:data,sign:signature}),{status:200});
+  try{
+    const result=await alipayApiCall({
+      ALIPAY_APP_ID:'20260001',
+      ALIPAY_PRIVATE_KEY_PEM:app.privateKey.export({type:'pkcs8',format:'pem'}),
+      ALIPAY_PUBLIC_KEY_PEM:platform.publicKey.export({type:'spki',format:'pem'})
+    },'alipay.trade.refund',{out_trade_no:'DU-ALIPAY'});
+    assert.deepEqual(result,data);
+  }finally{globalThis.fetch=originalFetch}
+});
+
+test('refund state and role helper mappings are conservative',()=>{
+  assert.equal(refundStatusFromWechat('SUCCESS'),'succeeded');
+  assert.equal(refundStatusFromWechat('PROCESSING'),'processing');
+  assert.equal(refundStatusFromWechat('ABNORMAL'),'abnormal');
+  assert.equal(refundStatusFromWechat('UNKNOWN'),'manual_review');
+  assert.equal(maskContact('13800138000'),'138****8000');
+  assert.equal(maskContact('abc@example.com'),'ab***@example.com');
+  assert.equal(roleCanAccess('finance','/v1/admin/refunds/list'),true);
+  assert.equal(roleCanAccess('support','/v1/admin/refunds/list'),false);
+  assert.equal(roleCanAccess('support','/v1/admin/customers/list'),true);
+  assert.equal(roleCanAccess('operations','/v1/admin/products/list'),true);
+  assert.equal(roleCanAccess('operations','/v1/admin/operators/list'),false);
 });
