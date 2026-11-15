@@ -25,8 +25,10 @@ export function renderLocalConfig(template,id){
 export function assertExistingDeploymentIdentity({databaseId,localConfig='',deploymentInfo=null}){
  if(!uuid.test(databaseId||''))throw Error('D1数据库ID无效');
  const configured=localConfig.match(/^database_id\s*=\s*"([^"]+)"/m)?.[1]||'';
+ const recorded=typeof deploymentInfo?.d1Id==='string'&&uuid.test(deploymentInfo.d1Id)?deploymentInfo.d1Id:'';
+ if(!uuid.test(configured)&&!recorded)throw Error('无法确认这是原有D1数据库：缺少有效的 wrangler.local.toml 数据库ID和 deployment-public.json 记录。请从原部署电脑恢复至少一份原始部署记录后再继续。');
  if(uuid.test(configured)&&configured!==databaseId)throw Error('检测到本机 wrangler.local.toml 的D1 ID与Cloudflare同名数据库不一致；为保护原授权数据，已停止部署');
- if(deploymentInfo?.d1Id&&deploymentInfo.d1Id!==databaseId)throw Error('deployment-public.json记录的D1 ID与当前数据库不一致；为保护原授权数据，已停止部署');
+ if(recorded&&recorded!==databaseId)throw Error('deployment-public.json记录的D1 ID与当前数据库不一致；为保护原授权数据，已停止部署');
 }
 function cmd(args,{input}={}){
  const win=process.platform==='win32';
