@@ -68,6 +68,13 @@
         "COPYING.LGPLv2.1",
         "FFMPEG_NOTICE.txt"
       ]
+    },
+    {
+      "from": "assets/tutorial",
+      "to": "tutorial",
+      "filter": [
+        "step-*.webp"
+      ]
     }
   ],
   "copyright": "Copyright © 2026 独独AI工作台",

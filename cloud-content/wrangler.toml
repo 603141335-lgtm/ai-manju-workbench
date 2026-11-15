@@ -1,0 +1,18 @@
+name = "dudu-ai-content"
+main = "src/worker.js"
+compatibility_date = "2026-11-12"
+workers_dev = true
+
+# Run: npx wrangler kv namespace create DUDU_KV
+# Replace the id below with your real namespace ID.
+[[kv_namespaces]]
+binding = "DUDU_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Run: npx wrangler r2 bucket create dudu-ai-media
+[[r2_buckets]]
+binding = "DUDU_MEDIA"
+bucket_name = "dudu-ai-media"
+
+# NEVER commit an ADMIN_TOKEN_HASH value into this file.
+# Use: npx wrangler secret put ADMIN_TOKEN_HASH

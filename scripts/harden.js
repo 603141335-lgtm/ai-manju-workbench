@@ -13,7 +13,7 @@ const root=path.resolve(__dirname,'..');
 const safeModules=[
  'src/main.js','src/parser.js','src/workspace.js','src/renderer.js',
  'src/store.js','src/downloads.js','src/tailframe.js',
- 'src/thumbnail-cache.js','src/notice-service.js','src/api-settings.js',
+ 'src/thumbnail-cache.js','src/notice-service.js','src/tutorial-content.js','src/tutorial-media.js','src/tutorial-ui.js','src/task-journal.js','src/api-settings.js',
  'src/reference-labels.js','src/voice-bindings.js','src/import-core.js',
  'src/import-engine.js','src/mention-core.js'
 ];

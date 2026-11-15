@@ -10,7 +10,7 @@ for(const file of files){
  const r=cp.spawnSync(process.execPath,['--check',abs],{encoding:'utf8',timeout:30000});
  if(r.status!==0)throw Error(file+' 语法检查失败：'+r.stderr);
 }
-const protectedFiles=['main.js','parser.js','workspace.js','renderer.js','import-engine.js','import-core.js','reference-labels.js','voice-bindings.js','api-settings.js','downloads.js'];
+const protectedFiles=['main.js','parser.js','workspace.js','renderer.js','import-engine.js','import-core.js','reference-labels.js','voice-bindings.js','api-settings.js','tutorial-media.js','tutorial-ui.js','task-journal.js','downloads.js'];
 for(const name of protectedFiles){
  const s=fs.readFileSync(path.join(root,'src',name),'utf8');
  if(!s.includes('_0x'))throw Error(name+' 需要在正式包中混淆，但当前未混淆');
