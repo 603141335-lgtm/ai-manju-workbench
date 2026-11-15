@@ -367,6 +367,29 @@ async function orderStatus(request, env, body, helpers) {
   if(!order) throw Error("订单不存在");
   return json({...order,delivered:!!order.delivered_ms});
 }
+async function listUserOrders(request,env,body,helpers) {
+  await helpers.verifyDevice("order-list",body);
+  const deviceHash=await consumeNonce(env,body,helpers);
+  const result=await env.DB.prepare("SELECT order_id,order_no,product_name,amount_cents,payment_method,status,created_ms,paid_ms,delivered_ms FROM orders WHERE device_hash=? ORDER BY created_ms DESC LIMIT 20")
+    .bind(deviceHash).all();
+  const origin=new URL(request.url).origin;
+  return json({orders:(result.results||[]).map(order=>({...order,delivered:!!order.delivered_ms,checkoutUrl:order.status==="pending"?new URL("/checkout/"+order.order_id,origin).toString():""}))});
+}
+async function reconcileUserOrder(request,env,body,helpers) {
+  await helpers.verifyDevice("order-reconcile",body);
+  const deviceHash=await consumeNonce(env,body,helpers);
+  const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=? AND device_hash=?").bind(clean(body.orderId,80),deviceHash).first();
+  if(!order) throw Error("订单不存在");
+  if(order.status==="refunded") return json({status:"refunded",message:"订单已退款，不能自动发放授权"});
+  if(order.status==="paid") {
+    if(!order.delivered_ms) await markOrderPaid(env,order,order.provider_trade_no,"user-reconcile-"+randomHex(8),"manual",helpers);
+    const latest=await env.DB.prepare("SELECT delivered_ms FROM orders WHERE order_id=?").bind(order.order_id).first();
+    return json({status:"paid",delivered:!!latest?.delivered_ms,message:latest?.delivered_ms?"付款已确认，永久授权已发放":"付款已确认，授权正在处理"});
+  }
+  if(!paymentReady(env,order.payment_method)) throw Error("对应支付商户密钥尚未完整配置");
+  const result=order.payment_method==="wechat"?await queryWechatPayment(env,order,helpers):await queryAlipayPayment(env,order,helpers);
+  return json({...result,orderId:order.order_id});
+}
 async function applicationCreate(request, env, body, helpers) {
   await helpers.verifyDevice("apply",body);
   const deviceHash=await consumeNonce(env,body,helpers);
@@ -586,6 +609,14 @@ export async function handleOpsRequest(request, env, path, helpers) {
   if(path==="/v1/orders/status"&&request.method==="POST") {
     try { return await orderStatus(request,env,await request.json(),helpers); }
     catch(e) { return json({error:clean(e.message,180)||"订单查询失败"},400); }
+  }
+  if(path==="/v1/orders/list"&&request.method==="POST") {
+    try { return await listUserOrders(request,env,await request.json(),helpers); }
+    catch(e) { return json({error:clean(e.message,180)||"订单列表读取失败"},400); }
+  }
+  if(path==="/v1/orders/reconcile"&&request.method==="POST") {
+    try { return await reconcileUserOrder(request,env,await request.json(),helpers); }
+    catch(e) { return json({error:clean(e.message,180)||"支付核对失败"},400); }
   }
   if(path.startsWith("/v1/admin/")&&!path.startsWith("/v1/admin/cards/")&&request.method==="POST") {
     try { return await adminOps(request,env,path,helpers); }
