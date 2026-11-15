@@ -3,7 +3,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {readFileSync,writeFileSync,existsSync,mkdirSync,copyFileSync,statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {dirname,resolve,join} from 'node:path';
+import {dirname,resolve,join,relative} from 'node:path';
 import {parseDatabaseList,renderLocalConfig,assertExistingDeploymentIdentity} from './setup-cloudflare.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
