@@ -25,6 +25,34 @@
    $('btnLicenseBuy').disabled=false;
   }catch(err){$('licenseProduct').innerHTML='<option value="">商品暂不可用</option>';$('btnLicenseBuy').disabled=true;$('licenseOrderStatus').textContent=err.message}
  }
+ async function loadMyOrders(){
+  const root=$('licenseOrdersList');if(!root||!B.licenseOrders)return;
+  try{
+   const orders=await B.licenseOrders();root.replaceChildren();
+   if(!orders.length){const empty=document.createElement('p');empty.className='licenseNote';empty.textContent='暂时没有订单。创建购买订单后，会自动保存在这里。';root.append(empty);return}
+   orders.forEach(order=>{
+    const row=document.createElement('div');row.className='licenseOrderItem';
+    const info=document.createElement('div');info.className='licenseOrderInfo';
+    const title=document.createElement('strong');title.textContent=order.order_no+' · '+order.product_name;
+    const status=order.status==='paid'?(order.delivered?'已付款 · 授权已发放':'已付款 · 授权处理中'):order.status==='pending'?'等待付款':order.status==='closed'?'订单已关闭':'已退款';
+    const detail=document.createElement('small');detail.textContent='¥'+(Number(order.amount_cents)/100).toFixed(2)+' · '+(order.payment_method==='wechat'?'微信支付':'支付宝')+' · '+status+' · '+new Date(order.created_ms).toLocaleString();
+    info.append(title,detail);row.append(info);
+    const actions=document.createElement('div');actions.className='licenseOrderActions';
+    if(order.status==='pending'&&order.checkoutUrl){
+     const resume=document.createElement('button');resume.className='smallBtn';resume.textContent='继续付款';
+     resume.onclick=async()=>{try{currentOrderId=order.order_id;await B.licenseOpenCheckout(order.checkoutUrl);$('licenseOrderStatus').textContent='已重新打开订单收银台，付款后会自动核对。';watchOrder(order.order_id)}catch(err){$('licenseOrderStatus').textContent='打开收银台失败：'+err.message}};
+     actions.append(resume);
+    }
+    if(order.status==='pending'||order.status==='closed'||(order.status==='paid'&&!order.delivered)){
+     const verify=document.createElement('button');verify.className='smallBtn';verify.textContent=order.status==='paid'?'重试同步授权':'已付款？核对到账';
+     verify.onclick=async()=>{verify.disabled=true;$('licenseOrderStatus').textContent='正在向支付平台核对订单…';try{const result=await B.licenseReconcileOrder(order.order_id);$('licenseOrderStatus').textContent=result.message||('查单结果：'+result.status);if(result.status==='paid'){const state=result.license||await B.licenseRefresh();render(state);if(state.valid){$('licenseOrderStatus').textContent='支付成功，永久授权已激活。';await loadMyOrders();close();return}}await loadMyOrders()}catch(err){$('licenseOrderStatus').textContent='核对失败：'+err.message}finally{verify.disabled=false}};
+     actions.append(verify);
+    }
+    if(!actions.childNodes.length){const done=document.createElement('small');done.className='licenseNote';done.textContent=order.status==='paid'?'已完成':'—';actions.append(done)}
+    row.append(actions);root.append(row);
+   });
+  }catch(err){root.replaceChildren();const message=document.createElement('p');message.className='licenseNote';message.textContent='读取订单失败：'+err.message;root.append(message)}
+ }
  async function checkApplication(){
   try{
    const result=await B.licenseApplicationStatus(),a=result.application;
@@ -70,6 +98,7 @@
   try{
    const order=await B.licenseCreateOrder(productId,payment);currentOrderId=order.orderId;
    $('licenseOrderStatus').textContent='订单已创建：'+order.orderNo+' · 正在打开收银台…';
+   await loadMyOrders();
    await B.licenseOpenCheckout(order.checkoutUrl);
    watchOrder(order.orderId);
   }finally{$('btnLicenseBuy').disabled=false}
@@ -85,6 +114,7 @@
    if($('tutorialDialog')?.open){$('tutorialDialog').close();B.setOverlay(false)}
    await refresh();B.setOverlay(true);
    if(!dialog.open)dialog.showModal();
+   loadMyOrders().catch(()=>{});
   }finally{opening=false}
  }
  async function action(fn){
@@ -101,12 +131,13 @@
  $('btnLicenseRefresh').onclick=()=>action(()=>B.licenseRefresh());
  $('btnLicenseApply').onclick=()=>submitApplication().catch(err=>$('licenseApplicationStatus').textContent=err.message);
  $('btnLicenseBuy').onclick=()=>buyProduct().catch(err=>$('licenseOrderStatus').textContent='购买失败：'+err.message);
+ $('btnLicenseOrdersRefresh').onclick=()=>loadMyOrders();
  $('btnLicenseReadonly').onclick=close;
  $('btnLicenseWechat').onclick=()=>B.copyText('du4du44').then(()=>feedback('已复制 du4du44'));
  $('btnLicenseBackupWechat').onclick=()=>B.copyText('du6du66').then(()=>feedback('已复制 du6du66'));
  dialog.addEventListener('cancel',e=>{e.preventDefault();close()});
  async function init(){
-  const v=await refresh();loadProducts().catch(()=>{});checkApplication().catch(()=>{});
+  const v=await refresh();loadProducts().catch(()=>{});checkApplication().catch(()=>{});loadMyOrders().catch(()=>{});
   if(!v.valid&&first){first=false;await open();}
   return v;
  }
