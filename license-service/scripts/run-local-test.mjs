@@ -20,11 +20,20 @@ if(required.some(value=>!config.includes(value))||config.includes('database_name
 if(!existsSync(join(root,'node_modules','wrangler'))) throw Error('未找到本地 Wrangler，请先在 license-service 目录运行 npm ci');
 const {keys}=ensureLocalTestSecrets();
 
+const wranglerCmd=join(root,'node_modules','.bin','wrangler.cmd');
 const wranglerEntry=join(root,'node_modules','wrangler','bin','wrangler.js');
-if(!existsSync(wranglerEntry)) throw Error('未找到本地 Wrangler CLI 入口，请重新运行 npm ci');
+if(process.platform==='win32'&&!existsSync(wranglerCmd)) throw Error('未找到 node_modules\\.bin\\wrangler.cmd，请重新运行 npm ci');
+if(process.platform!=='win32'&&!existsSync(wranglerEntry)) throw Error('未找到本地 Wrangler CLI 入口，请重新运行 npm ci');
 
 function runWrangler(args){
-  const result=spawnSync(process.execPath,[wranglerEntry,...args],{cwd:root,stdio:'inherit',windowsHide:false});
+  let result;
+  if(process.platform==='win32'){
+    const quote=value=>'"'+String(value).replace(/"/g,'""')+'"';
+    const command=quote(wranglerCmd)+' '+args.map(quote).join(' ');
+    result=spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c','"'+command+'"'],{cwd:root,stdio:'inherit',windowsHide:false});
+  }else{
+    result=spawnSync(process.execPath,[wranglerEntry,...args],{cwd:root,stdio:'inherit',windowsHide:false});
+  }
   if(result.error) throw result.error;
   if(result.status!==0) throw Error('本机 Wrangler 命令失败（退出码 '+result.status+'）；未运行任何远程部署命令');
 }
@@ -38,6 +47,4 @@ console.log('地址：http://127.0.0.1:8788/admin');
 console.log('模拟台：http://127.0.0.1:8788/__test');
 console.log('本机测试管理员令牌（不要分享）：'+keys.DUDU_ADMIN_TOKEN);
 console.log('按 Ctrl+C 停止。此命令不部署 Worker、不创建 Cloudflare D1、不调用微信或支付宝。');
-const result=spawnSync(process.execPath,[wranglerEntry,'dev','--config','wrangler.test.toml','--persist-to',statePath,'--ip','127.0.0.1','--port','8788'],{cwd:root,stdio:'inherit',windowsHide:false});
-if(result.error) throw result.error;
-if(result.status!==0) process.exitCode=1;
+runWrangler(['dev','--config','wrangler.test.toml','--persist-to',statePath,'--ip','127.0.0.1','--port','8788']);
