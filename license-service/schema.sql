@@ -120,6 +120,31 @@ CREATE TABLE IF NOT EXISTS payment_reconcile_state (
 );
 CREATE INDEX IF NOT EXISTS idx_payment_reconcile_checked ON payment_reconcile_state(last_checked_ms);
 
+-- Full-refund ledger. Failed/closed attempts remain auditable; only one active or successful
+-- refund is allowed per order. Retrying after a confirmed failure creates a new refund number.
+CREATE TABLE IF NOT EXISTS refunds (
+  refund_id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  refund_no TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL CHECK(provider IN ('wechat','alipay')),
+  amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+  reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'processing' CHECK(status IN ('processing','succeeded','failed','manual_review')),
+  provider_refund_id TEXT NOT NULL DEFAULT '',
+  provider_status TEXT NOT NULL DEFAULT '',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_checked_ms INTEGER,
+  last_error TEXT NOT NULL DEFAULT '',
+  created_ms INTEGER NOT NULL,
+  updated_ms INTEGER NOT NULL,
+  succeeded_ms INTEGER,
+  FOREIGN KEY(order_id) REFERENCES orders(order_id)
+);
+CREATE INDEX IF NOT EXISTS idx_refunds_order_created ON refunds(order_id, created_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_refunds_status_updated ON refunds(status, updated_ms DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_refunds_one_active_per_order
+  ON refunds(order_id) WHERE status IN ('processing','manual_review','succeeded');
+
 -- A unique outbox row per paid order makes delivery idempotent under duplicate callbacks.
 -- It stores only the card HMAC, never the plaintext card code.
 CREATE TABLE IF NOT EXISTS delivery_outbox (
