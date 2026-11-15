@@ -52,7 +52,19 @@ npm run check
 npm test
 ~~~
 
-本地命令 `npm run deploy:setup` 会把增量表结构应用到现有 D1，并更新原 Worker，属于**生产部署**，必须在备份完成及沙箱/测试商户验收通过后才执行。
+本地命令 `npm run deploy:setup` 会把增量表结构应用到现有 D1，并更新原 Worker，属于**生产部署**。新版部署脚本增加了强制安全门：
+
+1. 必须先运行 `npm run deploy:backup -- --confirm-export`。
+2. 必须把生成的整个备份目录复制到加密离线介质。
+3. 必须先完成微信、支付宝沙箱/测试商户支付、退款、退款回调和授权撤销验收。
+4. 部署脚本会自动检查最新备份清单、原 D1 ID、SQL 文件大小与 SHA-256、备份密钥是否与当前原密钥完全一致；任何一项不匹配都会在数据库迁移前停止。
+5. 只有以上条件都满足后，才执行下面这条带有明确确认参数的命令：
+
+~~~powershell
+npm run deploy:setup -- --confirm-backup-copied --confirm-sandbox-passed --confirm-production=DEPLOY_PRODUCTION_V1_3
+~~~
+
+缺少任意确认参数时，脚本会在访问 Cloudflare、修改本地部署配置或执行 D1 迁移之前直接停止。不要为了绕过安全门而随意添加确认参数。
 
 也可以使用 GitHub Actions 的手动工作流 `Deploy Dudu AI License Service (manual, protected)`：
 
