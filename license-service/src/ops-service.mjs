@@ -899,7 +899,7 @@ async function adminOps(req, env, path, helpers) {
       env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' AND message NOT LIKE '%退款回调%' ORDER BY occurred_ms DESC LIMIT 1").first(),
       env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='alipay' ORDER BY occurred_ms DESC LIMIT 1").first(),
       env.DB.prepare("SELECT MAX(last_checked_ms) AS checked_ms, SUM(attempts) AS attempts FROM payment_reconcile_state").first(),
-      env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' AND message LIKE '%退款回调%' ORDER BY occurred_ms DESC LIMIT 1").first()
+      env.DB.prepare("SELECT event_id,occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' AND message LIKE '%退款回调%' ORDER BY occurred_ms DESC LIMIT 1").first()
     ]);
     const origin=new URL(req.url).origin;
     return json({
