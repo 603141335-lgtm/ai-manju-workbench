@@ -3,7 +3,7 @@ on:
   push:
     branches: [feature/ops-center-v1.0]
   pull_request:
-    branches: [feature/dudu-ai-v1.2.0-license]
+    branches: [feature/dudu-ai-v1.2.0-license, feature/ops-center-v1.0]
 permissions:
   contents: read
 jobs:
