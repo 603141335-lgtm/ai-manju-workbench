@@ -340,3 +340,22 @@ test('Alipay full refund accepts documented response without out_request_no echo
     assert.equal(db.prepare("SELECT status FROM refunds WHERE refund_id='refund-alipay'").get().status,'succeeded');
   }finally{globalThis.fetch=originalFetch;db.close()}
 });
+
+test('alerts include failed and closed refunds for finance follow-up',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const now=Date.now();
+  for(const [id,status] of [['order-failed-refund','failed'],['order-closed-refund','closed']]){
+    db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,created_ms,paid_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id,'DU-'+id,'f'.repeat(64),'p1','永久授权',1000,'wechat','paid',now,now,now);
+    db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,status,last_error,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?)")
+      .run('refund-'+status,id,'RF-'+status,'wechat',1000,status,'请人工跟进',now,now);
+  }
+  const env={DB:makeD1(db)};
+  const req=new Request('https://dudu.example/v1/admin/alerts/list',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+  const result=await (await handleOpsRequest(req,env,'/v1/admin/alerts/list',{adminAuth:async()=>true})).json();
+  const ids=result.alerts.filter(x=>x.type==='退款需关注').map(x=>x.id);
+  assert.ok(ids.includes('DU-order-failed-refund'));
+  assert.ok(ids.includes('DU-order-closed-refund'));
+  db.close();
+});
