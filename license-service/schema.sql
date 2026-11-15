@@ -94,6 +94,16 @@ CREATE TABLE IF NOT EXISTS payment_events (
 );
 CREATE INDEX IF NOT EXISTS idx_payment_events_order ON payment_events(order_no, created_ms DESC);
 
+-- Throttle scheduled/manual reconciliation so provider APIs are not polled on every client refresh.
+CREATE TABLE IF NOT EXISTS payment_reconcile_state (
+  order_id TEXT PRIMARY KEY,
+  last_checked_ms INTEGER NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY(order_id) REFERENCES orders(order_id)
+);
+CREATE INDEX IF NOT EXISTS idx_payment_reconcile_checked ON payment_reconcile_state(last_checked_ms);
+
 -- A unique outbox row per paid order makes delivery idempotent under duplicate callbacks.
 -- It stores only the card HMAC, never the plaintext card code.
 CREATE TABLE IF NOT EXISTS delivery_outbox (
