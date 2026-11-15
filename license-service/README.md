@@ -55,7 +55,7 @@ npm run deploy:setup
 - Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
 - Variable：`DUDU_D1_DATABASE_ID`（原 `dudu-license` 的 UUID）
 
-从 `feature/dudu-ai-v1.2.0-license` 分支手动运行。必须确认已完成密钥离线备份和 D1 全量导出，并输入 `DEPLOY_PRODUCTION_V1_3`。工作流会再次核验 D1 名称和 UUID、运行测试、应用增量 schema，再部署 Worker。它不会轮换原 Worker Secrets。
+从 `feature/dudu-ai-v1.2.0-license` 分支手动运行。必须确认已完成密钥离线备份、D1 全量导出和沙箱/测试商户验收，并输入 `DEPLOY_PRODUCTION_V1_3`。工作流会再次核验 D1 名称和 UUID、运行测试、应用增量 schema，再部署 Worker。它不会轮换原 Worker Secrets。
 
 部署后检查：
 
