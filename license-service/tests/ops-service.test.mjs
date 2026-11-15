@@ -238,8 +238,8 @@ test('confirmed full refund updates order and revokes the purchased license card
     .run('order-refund','DU-REFUND',deviceHash,'p1','工作台永久授权',9900,'wechat','paid','wx-trade',now,now,now,now);
   db.prepare("INSERT INTO license_cards(id,code_hash,last_four,issued_ms,bound_device_hash,activated_ms) VALUES(?,?,?,?,?,?)")
     .run('card-refund','hash-refund','ABCD',now,deviceHash,now);
-  db.prepare("INSERT INTO delivery_outbox(delivery_id,order_id,card_id,code_hash,last_four,status,attempts,created_ms,delivered_ms) VALUES(?,?,?,?,?,'delivered',1,?,?)")
-    .run('delivery-refund','order-refund','card-refund','hash-refund','ABCD',now,now);
+  db.prepare("INSERT INTO delivery_outbox(delivery_id,order_id,card_id,code_hash,last_four,status,attempts,created_ms,delivered_ms) VALUES(?,?,?,?,?,'pending',0,?,NULL)")
+    .run('delivery-refund','order-refund','card-refund','hash-refund','ABCD',now);
   db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,status,created_ms,updated_ms) VALUES(?,?,?,?,?,'processing',?,?)")
     .run('refund-1','order-refund','RF-1','wechat',9900,now,now);
   const env={DB:makeD1(db)};
@@ -249,6 +249,12 @@ test('confirmed full refund updates order and revokes the purchased license card
   assert.ok(db.prepare("SELECT revoked_ms FROM license_cards WHERE id='card-refund'").get().revoked_ms);
   assert.equal(db.prepare("SELECT status FROM refunds WHERE refund_id='refund-1'").get().status,'succeeded');
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM admin_activity WHERE action='refund_success'").get().n,1);
+  const helpers={adminAuth:async()=>true};
+  const deliveries=await (await handleOpsRequest(new Request('https://dudu.example/v1/admin/deliveries/list',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}),env,'/v1/admin/deliveries/list',helpers)).json();
+  assert.deepEqual(deliveries.deliveries,[]);
+  const health=await (await handleOpsRequest(new Request('https://dudu.example/v1/admin/payments/health',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}),env,'/v1/admin/payments/health',helpers)).json();
+  assert.equal(health.failedDeliveries,0);
+  assert.equal(health.paidUndelivered,0);
   db.close();
 });
 
