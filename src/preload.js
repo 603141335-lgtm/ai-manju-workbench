@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   licenseProducts:()=>ipcRenderer.invoke('license:products'),
   licenseCreateOrder:(productId,paymentMethod)=>ipcRenderer.invoke('license:createOrder',productId,paymentMethod),
   licenseOrderStatus:orderId=>ipcRenderer.invoke('license:orderStatus',orderId),
+  licenseOrders:()=>ipcRenderer.invoke('license:orders'),
+  licenseReconcileOrder:orderId=>ipcRenderer.invoke('license:reconcileOrder',orderId),
   licenseOpenCheckout:url=>ipcRenderer.invoke('license:openCheckout',url),
   onLicenseUpdated:fn=>ipcRenderer.on('license:updated',(_e,v)=>fn(v)),
   apiGet:()=>ipcRenderer.invoke('api:get'),
