@@ -29,6 +29,13 @@ const publicConfig=require('./public-config.json');
 const publicUserDataDir=path.join(app.getPath('appData'),'DoubaoCreativeHubPublic');
 fs.mkdirSync(publicUserDataDir,{recursive:true});
 app.setPath('userData',publicUserDataDir);
+function loadLicenseRuntimeConfig(){
+  if(!app.isPackaged){
+    const localFile=path.join(publicUserDataDir,'license-config.local.json');
+    try{const local=JSON.parse(fs.readFileSync(localFile,'utf8'));if(local?.localTestMode===true)return local}catch{}
+  }
+  return require('./license-config.json');
+}
 
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
@@ -300,6 +307,13 @@ function registerHandlers(){
       return {...order,license:state};
     }
     return order;
+  });
+  ipcMain.handle('license:openAdmin',async()=>{
+    const target=licenseClient?.adminUrl?.();
+    if(!target)throw Error('运营管理中心尚未配置授权服务');
+    const parsed=new URL(target);
+    if(parsed.origin!==licenseClient.service||(app.isPackaged&&parsed.protocol!=='https:'))throw Error('后台地址不安全，已阻止打开');
+    await shell.openExternal(target);return true;
   });
   ipcMain.handle('license:openCheckout',async(_event,url)=>{
     const target=safeHttps(url);
@@ -717,6 +731,6 @@ if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus()}});
   process.on('uncaughtException',log);process.on('unhandledRejection',log);
-  app.whenReady().then(async()=>{cfg=readCfg();licenseClient=new LicenseClient({root:app.getPath('userData'),safeStorage,packaged:app.isPackaged,native:(()=>{try{return require('../native/dudu_core.node')}catch{return null}})()});noticeService=new NoticeService({url:publicConfig.noticeUrl,cachePath:path.join(app.getPath('userData'),'notice-cache.json'),version:app.getVersion()});tutorialMedia=new TutorialMedia({dir:path.join(app.getPath('userData'),'tutorial-cache'),appPath:app.isPackaged?process.resourcesPath:app.getAppPath(),manifestUrl:publicConfig.noticeUrl});apiSettings=new ApiSettings({file:path.join(app.getPath('userData'),'api-settings.json'),safeStorage});thumbnailCache=new ThumbnailCache({root:path.join(app.getPath('userData'),'preview-cache'),createThumbnail:async(source,size)=>{const img=await nativeImage.createThumbnailFromPath(source,size);return img.isEmpty()?null:img.toPNG()}});workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);taskJournal=new TaskJournal(path.join(app.getPath('userData'),'import-task-history.json'));downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱-公开版','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();voiceBindings=await new VoiceBindingsStore(path.join(app.getPath('userData'),'voice-bindings.json'),{ffprobe:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath}).ffprobe}).load();mentionRunner=createMentionRunner({getActive:activeDoubaoContext,resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});/* One import engine per account, created lazily by getAccountImportEngine; no shared global running flag. */registerHandlers();initializeUpdater();createWindow();setTimeout(()=>licenseClient.refresh().then(v=>tell('license:updated',v)).catch(log),1700);setTimeout(()=>thumbnailCache.prune().catch(log),18000);setTimeout(()=>tutorialMedia.prune().catch(log),19000);noticeTimer=setInterval(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),5*60*1000);noticeTimer.unref?.();setTimeout(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),1300)}).catch(err=>{log(err);dialog.showErrorBox('独独AI工作台启动失败',String(err.stack||err));app.quit()});
+  app.whenReady().then(async()=>{cfg=readCfg();licenseClient=new LicenseClient({root:app.getPath('userData'),safeStorage,packaged:app.isPackaged,native:(()=>{try{return require('../native/dudu_core.node')}catch{return null}})(),config:loadLicenseRuntimeConfig()});noticeService=new NoticeService({url:publicConfig.noticeUrl,cachePath:path.join(app.getPath('userData'),'notice-cache.json'),version:app.getVersion()});tutorialMedia=new TutorialMedia({dir:path.join(app.getPath('userData'),'tutorial-cache'),appPath:app.isPackaged?process.resourcesPath:app.getAppPath(),manifestUrl:publicConfig.noticeUrl});apiSettings=new ApiSettings({file:path.join(app.getPath('userData'),'api-settings.json'),safeStorage});thumbnailCache=new ThumbnailCache({root:path.join(app.getPath('userData'),'preview-cache'),createThumbnail:async(source,size)=>{const img=await nativeImage.createThumbnailFromPath(source,size);return img.isEmpty()?null:img.toPNG()}});workspace=new WorkspaceStore(path.join(app.getPath('userData'),'workspace.json'));await workspace.load(cfg);taskJournal=new TaskJournal(path.join(app.getPath('userData'),'import-task-history.json'));downloads=new DownloadManager(app.getPath('userData'),path.join(app.getPath('downloads'),'豆包创作舱-公开版','下载成品'));await downloads.load();tailframes=await new TailFrameStore(app.getPath('userData'),{tools:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath})}).load();voiceBindings=await new VoiceBindingsStore(path.join(app.getPath('userData'),'voice-bindings.json'),{ffprobe:binaries({packaged:app.isPackaged,resourcesPath:process.resourcesPath}).ffprobe}).load();mentionRunner=createMentionRunner({getActive:activeDoubaoContext,resolveRows:(eid,sid,prompt)=>{const seg=workspace.findSegment(eid,sid).seg;const codes=detectSegmentCodes(prompt).codes;return workspace.assetIndex.resolve(codes.length?codes:seg.codes,workspace.data.chosenPaths,seg.manualPaths);},getCodes:(eid,sid)=>workspace.findSegment(eid,sid).seg.codes,getChosenPaths:()=>workspace.data.chosenPaths,notify:info=>tell('mention:status',info)});/* One import engine per account, created lazily by getAccountImportEngine; no shared global running flag. */registerHandlers();initializeUpdater();createWindow();setTimeout(()=>licenseClient.refresh().then(v=>tell('license:updated',v)).catch(log),1700);setTimeout(()=>thumbnailCache.prune().catch(log),18000);setTimeout(()=>tutorialMedia.prune().catch(log),19000);noticeTimer=setInterval(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),5*60*1000);noticeTimer.unref?.();setTimeout(()=>noticeService.refresh().then(v=>tell('notice:updated',v)).catch(log),1300)}).catch(err=>{log(err);dialog.showErrorBox('独独AI工作台启动失败',String(err.stack||err));app.quit()});
   app.on('window-all-closed',()=>app.quit());
 }
