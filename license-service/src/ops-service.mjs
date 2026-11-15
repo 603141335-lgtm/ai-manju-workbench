@@ -151,7 +151,7 @@ function alipayGateway(env) {
   if(target.hostname!=="openapi.alipay.com"&&target.hostname!=="openapi-sandbox.dl.alipaydev.com") throw Error("支付宝网关地址不在允许列表");
   return target.toString();
 }
-export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic, paymentReady, wechatOrderQueryPath, wechatRequestMessage, buildAlipayQueryParams, alipayGateway, paymentSelfTest, logPaymentWebhook, runScheduledReconciliation, maskContact, roleCanAccess, refundStatusFromWechat, finalizeRefundSuccess };
+export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic, paymentReady, wechatOrderQueryPath, wechatRequestMessage, buildAlipayQueryParams, alipayGateway, paymentSelfTest, logPaymentWebhook, runScheduledReconciliation, maskContact, roleCanAccess, refundStatusFromWechat, finalizeRefundSuccess, alipayApiCall };
 
 function paymentReady(env, method) {
   if(method==="wechat") return !!(env.WECHATPAY_MCHID&&env.WECHATPAY_APPID&&env.WECHATPAY_SERIAL_NO&&env.WECHATPAY_PRIVATE_KEY_PEM&&env.WECHATPAY_API_V3_KEY&&env.WECHATPAY_PLATFORM_PUBLIC_KEY_PEM&&env.WECHATPAY_PLATFORM_SERIAL);
