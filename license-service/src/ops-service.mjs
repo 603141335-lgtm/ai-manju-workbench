@@ -151,7 +151,7 @@ function alipayGateway(env) {
   if(target.hostname!=="openapi.alipay.com"&&target.hostname!=="openapi-sandbox.dl.alipaydev.com") throw Error("支付宝网关地址不在允许列表");
   return target.toString();
 }
-export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic, paymentReady, wechatOrderQueryPath, wechatRequestMessage, buildAlipayQueryParams, alipayGateway, paymentSelfTest, logPaymentWebhook, runScheduledReconciliation, maskContact, roleCanAccess, refundStatusFromWechat, finalizeRefundSuccess, alipayApiCall };
+export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic, paymentReady, wechatOrderQueryPath, wechatRequestMessage, buildAlipayQueryParams, alipayGateway, paymentSelfTest, logPaymentWebhook, runScheduledReconciliation, maskContact, roleCanAccess, refundStatusFromWechat, finalizeRefundSuccess, alipayApiCall, submitRefund };
 
 function paymentReady(env, method) {
   if(method==="wechat") return !!(env.WECHATPAY_MCHID&&env.WECHATPAY_APPID&&env.WECHATPAY_SERIAL_NO&&env.WECHATPAY_PRIVATE_KEY_PEM&&env.WECHATPAY_API_V3_KEY&&env.WECHATPAY_PLATFORM_PUBLIC_KEY_PEM&&env.WECHATPAY_PLATFORM_SERIAL);
@@ -690,14 +690,15 @@ async function submitRefund(env,refund,order,origin,actor) {
       out_trade_no:order.order_no,trade_no:order.provider_trade_no||undefined,
       refund_amount:yuan(refund.amount_cents),refund_reason:clean(refund.reason,256),out_request_no:refund.refund_no
     });
-    if(data.out_trade_no!==order.order_no||data.out_request_no!==refund.refund_no)throw Error("支付宝退款响应订单号不匹配");
+    if(data.out_trade_no!==order.order_no||(data.out_request_no&&data.out_request_no!==refund.refund_no))throw Error("支付宝退款响应订单号不匹配");
     if(data.code!=="10000") {
       await updateRefundStatus(env,refund,"failed",clean(data.code||"API_ERROR",40),"",clean(data.sub_msg||data.msg||"支付宝退款申请失败",180),actor);
       return {status:"failed",message:clean(data.sub_msg||data.msg||"支付宝退款申请失败",180)};
     }
-    if(data.fund_change==="Y") {
+    const refundFeeCents=data.refund_fee==null?null:Math.round(Number(data.refund_fee)*100);
+    if(data.fund_change==="Y"&&refundFeeCents===Number(refund.amount_cents)) {
       await finalizeRefundSuccess(env,refund,"FUND_CHANGED",data.trade_no||order.provider_trade_no||"",actor);
-      return {status:"succeeded",message:"支付宝已确认发生退款资金变动，授权已撤销"};
+      return {status:"succeeded",message:"支付宝已确认全额退款资金变动，授权已撤销"};
     }
     await updateRefundStatus(env,refund,"processing",clean(data.fund_change||"PENDING_CONFIRM",40),data.trade_no||"","支付宝已受理退款请求，正在查询最终退款状态",actor);
     return await syncRefund(env,refund,order,actor);
