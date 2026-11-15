@@ -1,38 +1,94 @@
-# 独独AI工作台 v1.2.0 · 永久卡密云端部署
+# 独独AI运营管理中心 V1.3 · 现有授权服务升级
 
-本仓库开发分支已通过自动化测试。授权服务必须在你自己的Cloudflare账户内正式部署，才能向普通用户签发24小时试用和永久卡密。
+本目录包含独独AI工作台授权服务与运营管理中心。V1.3 在 V1.2 的现有 Worker / D1 上增量增加财务报表、全额退款、退款状态核验和退款成功后撤销本订单授权。
 
-## 电脑端简化部署
+**本升级流程只适用于已经部署 V1.2 的环境。不要用它初始化全新生产数据库。**
 
-1. 安装Node.js 22+，下载或克隆仓库，打开PowerShell进入 license-service 文件夹。
-2. 执行 npm install。
-3. 执行 npx wrangler login，通过浏览器授权自己的Cloudflare账户。
-4. 执行 npm run deploy:setup。工具自动检查D1数据库（没有时创建）、执行新增表结构、生成本机所有者密钥、将秘密上传到Worker、部署服务并检查 /health。
-5. 私钥和管理员口令只存在本机 license-service/.private/owner-keys.json（已在.gitignore排除）；请另行离线备份，绝不上传源码仓库、发到聊天或截图。
-6. 工具结束后显示两个GitHub Actions Variables：DUDU_LICENSE_URL（HTTPS服务地址）、DUDU_LICENSE_PUBLIC_KEY_B64（Ed25519公钥）。若要以后从GitHub自动更新Worker，再增加 DUDU_D1_DATABASE_ID。
-7. 打开提示的 /admin 地址，输入owner-keys.json中的 DUDU_ADMIN_TOKEN，批量生成免费永久卡密。每张卡原则上绑定一台电脑。
+## 重要：不要丢失原授权身份
 
-在 GitHub Settings > Secrets and variables > Actions > Variables 添加上述变量。再触发 v1.2.0 Windows 构建以生成可激活安装包。GitHub workflow_dispatch 可能需要工作流文件先存在于默认分支；否则在设置变量后向v1.2.0分支提交一次新改动触发push构建。
+升级必须继续使用原来的：
 
-## GitHub CI更新云端服务（可选）
+- `.private/owner-keys.json`：签名私钥、设备 HMAC、卡密 HMAC、管理员令牌
+- `.private/deployment-public.json`：原 Worker 地址、公钥和 D1 ID（如果存在）
+- `wrangler.local.toml`：原 D1 绑定（如果存在）
 
-使用独立的 deploy-license workflow：管理员在GitHub Secrets中保存 CLOUDFLARE_API_TOKEN 和 CLOUDFLARE_ACCOUNT_ID，并在GitHub Variables保存 DUDU_D1_DATABASE_ID。建议对production-license环境设置审批。首次Worker Secrets由本机deploy:setup上传，后续CI只更新代码和数据库表，不重新生成签名密钥。
+根目录 `.gitignore` 已排除 `license-service/.private/` 和 `license-service/wrangler.local.toml`。不要把密钥、备份、管理员令牌或支付商户私钥提交到 GitHub、发到聊天或截图。
 
-### 安全边界
+如果找不到原 `owner-keys.json`，或无法从原本地配置/部署记录确认 D1 ID，部署脚本会停止；不要重新生成一套密钥，也不要创建同名空库。
 
-- 所有卡密由云端安全随机数生成，只储存HMAC摘要；用户卡密仅在管理员创建时显示一次。
-- 设备签名请求绑定时间戳与nonce，D1会拒绝重复nonce；不保存豆包Cookie、剧本或媒体。
-- Windows设备密钥使用DPAPI加密；永久签名只在云端私钥完成，Windows二进制只带Ed25519公钥；未启用TPM硬件级防复制。
-- 24小时试用记录不随应用重装重置，但完整系统重装、设备伪装和虚拟机克隆无法保证绝对识别。
-- 卡密撤销后拒绝在线续签，已签发离线凭证可能在剩余离线有效期（默认最长30天）内继续可用。
-- 管理接口仍需在Cloudflare配置Access、双因素登录和WAF频率限制。Cloudflare和GitHub私有账户的密码、令牌绝不需要发给助手。
-- 免费永久卡密不涉及支付，微信主号du4du44、备用号du6du66。
-- 正式发行前应在Windows上测试登录、旧项目升级、多账号后台任务、整段导入和豆包原生@的真实页面兼容性。
+## 推荐升级顺序
 
-## 运营管理中心 V1.0
+在原项目的 `license-service` 目录打开 PowerShell：
 
-新版统一管理页面位于 Worker 的 `/admin`，包含运营总览、卡密、免费申请审批、商品、订单、公告教程和支付配置状态。桌面客户端增加免费申请、商品读取、创建支付订单和付款后自动刷新授权。
+~~~powershell
+npm install
+npx wrangler login
+npm run check
+npm test
+npm run deploy:backup -- --confirm-export
+~~~
 
-完整部署、商户 Secret 名称和操作步骤见 [OPS_CENTER_SETUP.md](./OPS_CENTER_SETUP.md)。
+备份脚本会核验原 D1 身份、导出远程 D1 完整 SQL，并在 `.private/backups/` 复制原密钥和部署记录。请把整个备份目录另存到加密离线介质。D1 远程导出期间可能暂时阻塞数据库请求，选择低流量时段执行。
 
-注意：正式支付前必须完成微信支付 Native / 支付宝电脑网站支付产品签约并配置本人商户密钥。未配置密钥时，后台会显示未配置，订单创建会被拒绝，不会假装付款成功。
+自动化测试和备份完成后，先完成独立测试/支付沙箱验收。**不要因为 GitHub Actions 通过就直接对外开放真实收款。**
+
+## 生产部署（必须由管理员主动触发）
+
+有两种方式，二选一：
+
+### 本机部署
+
+在原部署电脑、原工作目录中，确认离线备份已完成且沙箱验收通过后执行：
+
+~~~powershell
+npm run deploy:setup
+~~~
+
+该命令会复用现有 `dudu-license` D1、执行增量表结构并更新现有 `dudu-ai-license` Worker。它不会创建替代数据库或重新生成授权密钥。
+
+### GitHub Actions 手动部署
+
+工作流：`.github/workflows/deploy-license.yml`
+
+需要在 GitHub Environment `production-license` 配置：
+
+- Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
+- Variable：`DUDU_D1_DATABASE_ID`（原 `dudu-license` 的 UUID）
+
+从 `feature/dudu-ai-v1.2.0-license` 分支手动运行。必须确认已完成密钥离线备份、D1 全量导出和沙箱/测试商户验收，并输入 `DEPLOY_PRODUCTION_V1_3`。工作流会再次核验 D1 名称和 UUID、运行测试、应用增量 schema，再部署 Worker。它不会轮换原 Worker Secrets。
+
+部署后检查：
+
+- `/health` 返回 `status: ok`
+- `/manifest.json` 返回公告 JSON
+- `/admin` 能用原管理员令牌登录
+
+## 支付与退款验收
+
+支付密钥只配置在 Cloudflare Worker Secrets，不放在源码、GitHub Variables、浏览器或 Electron 客户端。
+
+正式环境需要本人合法商户主体及已签约产品：
+
+- 微信支付 Native：商户号、AppID、API 证书私钥、APIv3 密钥、微信支付公钥及公钥 ID
+- 支付宝电脑网站支付：应用 ID、应用私钥、支付宝公钥、收款方 UID
+
+后台「支付配置」显示已配置，只代表必需 Secret 存在；本地密钥自检也不代表商户平台在线验收通过。先用沙箱或测试商户验证支付、退款回调、退款查单和授权撤销，再开放真实收款。
+
+当前退款仅支持管理员发起全额原路退款。只有支付平台明确确认退款成功，订单才会标记为已退款并撤销该订单发放的卡密；处理中或结果不确定时不会提前撤销，也不会允许重复退款或补发。
+
+完整操作步骤、支付 Secret 名称及退款流程见 [OPS_CENTER_SETUP.md](./OPS_CENTER_SETUP.md)。
+
+## GitHub CI 与自动化
+
+- `.github/workflows/ops-center-ci.yml`：运行授权、财务、退款、Worker、桌面端语法及 D1 schema 测试。
+- `.github/workflows/deploy-license.yml`：仅手动触发，受 `production-license` Environment 审批、备份确认、口令确认和 D1 身份核验保护。
+- 不要把 Cloudflare API Token、支付商户密钥、授权私钥或管理员令牌放进普通仓库变量或源码。
+
+## 当前功能范围
+
+- 运营总览、免费申请审批、卡密、商品、订单、公告与教程。
+- 微信/支付宝支付状态监控、订单核验、自动发货补偿。
+- 财务报表：实收、成功退款、净现金流、渠道统计和商品排行。
+- 全额原路退款：退款状态查询、重复退款保护、失败记录。
+- 退款成功后只撤销对应订单发放的授权，不影响用户其他卡密。
+- 暂未支持部分退款、用户自助退款、退款自动定时查单、操作员分级权限和财务账单自动对账。
