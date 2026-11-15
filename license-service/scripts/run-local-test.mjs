@@ -6,7 +6,7 @@ import {ensureLocalTestSecrets} from './prepare-local-test.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const configPath=join(root,'wrangler.test.toml');
-const statePath='.private/test-state';
+const statePath=process.env.DUDU_V13_TEST_STATE_DIR||'C:\\dudu-v13-test-state';
 const config=readFileSync(configPath,'utf8');
 const required=[
   'name = "dudu-ai-license-v13-test"',
