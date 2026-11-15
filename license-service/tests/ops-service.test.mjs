@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,runScheduledReconciliation} from '../src/ops-service.mjs';
+import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,paymentSelfTest,logPaymentWebhook,runScheduledReconciliation} from '../src/ops-service.mjs';
 import {generateKeyPairSync} from 'node:crypto';
 
 test('manifest normalizer keeps public content only and rejects duplicate tutorial ids',()=>{
@@ -96,4 +96,41 @@ test('scheduled reconciliation is safe when there are no pending or undelivered 
   const db={prepare(){return {bind(){return this},async all(){return {results:[]}}}}};
   const result=await runScheduledReconciliation({DB:db},{});
   assert.deepEqual(result,{checked:0,paid:0,failed:0,deliveryRecovered:0});
+});
+
+test('local payment self-test validates Alipay key pair and WeChat key formats without network calls',async()=>{
+  const alipayPair=generateKeyPairSync('rsa',{modulusLength:2048});
+  const wrongPair=generateKeyPairSync('rsa',{modulusLength:2048});
+  const alipay={
+    ALIPAY_APP_ID:'20260001',
+    ALIPAY_SELLER_ID:'2088000000000000',
+    ALIPAY_PRIVATE_KEY_PEM:alipayPair.privateKey.export({type:'pkcs8',format:'pem'}),
+    ALIPAY_PUBLIC_KEY_PEM:alipayPair.publicKey.export({type:'spki',format:'pem'})
+  };
+  const ok=await paymentSelfTest(alipay,'alipay');
+  assert.equal(ok.ok,true);
+  const mismatch=await paymentSelfTest({...alipay,ALIPAY_PUBLIC_KEY_PEM:wrongPair.publicKey.export({type:'spki',format:'pem'})},'alipay');
+  assert.equal(mismatch.ok,false);
+  const wechat={
+    WECHATPAY_MCHID:'1900000109',WECHATPAY_APPID:'wx-test-app',WECHATPAY_SERIAL_NO:'merchant-serial',
+    WECHATPAY_PRIVATE_KEY_PEM:alipayPair.privateKey.export({type:'pkcs8',format:'pem'}),
+    WECHATPAY_API_V3_KEY:'12345678901234567890123456789012',
+    WECHATPAY_PLATFORM_PUBLIC_KEY_PEM:wrongPair.publicKey.export({type:'spki',format:'pem'}),
+    WECHATPAY_PLATFORM_SERIAL:'platform-key-id'
+  };
+  assert.equal((await paymentSelfTest(wechat,'wechat')).ok,true);
+  assert.equal((await paymentSelfTest({...wechat,WECHATPAY_API_V3_KEY:'too-short'},'wechat')).ok,false);
+});
+
+test('payment webhook log stores only metadata and a SHA-256 digest, never the raw callback',async()=>{
+  let captured=null;
+  const db={prepare(sql){return {bind(...values){captured={sql,values};return this},async run(){return {meta:{changes:1}}}}}};
+  const raw='raw-callback-body-that-must-not-be-persisted';
+  const ok=await logPaymentWebhook({DB:db},{provider:'wechat',eventId:'evt-1',orderNo:'ORDER-1',outcome:'rejected',message:'验签失败',raw});
+  assert.equal(ok,true);
+  assert.match(captured.sql,/INSERT INTO payment_webhook_logs/);
+  assert.equal(captured.values.includes(raw),false);
+  assert.equal(captured.values[5].length,64);
+  assert.equal(captured.values[0],'wechat');
+  assert.equal(captured.values[3],'rejected');
 });
