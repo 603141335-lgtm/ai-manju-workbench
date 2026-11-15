@@ -7,6 +7,11 @@ on:
         required: true
         type: boolean
         default: false
+      sandbox_confirmed:
+        description: "已完成沙箱/测试商户支付、退款和授权撤销验收"
+        required: true
+        type: boolean
+        default: false
       production_confirmation:
         description: "必须输入 DEPLOY_PRODUCTION_V1_3 才会继续"
         required: true
@@ -26,6 +31,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DUDU_D1_DATABASE_ID: ${{ vars.DUDU_D1_DATABASE_ID }}
       BACKUP_CONFIRMED: ${{ inputs.backup_confirmed }}
+      SANDBOX_CONFIRMED: ${{ inputs.sandbox_confirmed }}
       PRODUCTION_CONFIRMATION: ${{ inputs.production_confirmation }}
       EXPECTED_REF: refs/heads/feature/dudu-ai-v1.2.0-license
     steps:
@@ -35,6 +41,7 @@ jobs:
         run: |
           test "$GITHUB_REF" = "$EXPECTED_REF" || { echo "::error::请从 feature/dudu-ai-v1.2.0-license 分支运行部署"; exit 1; }
           test "$BACKUP_CONFIRMED" = "true" || { echo "::error::部署前必须备份原密钥并导出原 D1 数据"; exit 1; }
+          test "$SANDBOX_CONFIRMED" = "true" || { echo "::error::部署前必须完成沙箱/测试商户支付、退款和授权撤销验收"; exit 1; }
           test "$PRODUCTION_CONFIRMATION" = "DEPLOY_PRODUCTION_V1_3" || { echo "::error::缺少明确的生产部署确认"; exit 1; }
       - uses: actions/setup-node@v4
         with:
