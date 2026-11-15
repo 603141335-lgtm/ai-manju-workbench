@@ -56,7 +56,7 @@ test('RSA key loader accepts PKCS8 and PKCS1 merchant key formats',async()=>{
 test('WeChat Pay query request path and GET signing message follow API v3 canonical format',()=>{
   const path=wechatOrderQueryPath('DUDU-2026-0001','1900000109');
   assert.equal(path,'/v3/pay/transactions/out-trade-no/DUDU-2026-0001?mchid=1900000109');
-  assert.equal(wechatRequestMessage('GET',path,'1731650000','nonce-1',''),'GET\\n'+path+'\\n1731650000\\nnonce-1\\n\\n');
+  assert.equal(wechatRequestMessage('GET',path,'1731650000','nonce-1',''),'GET\n'+path+'\n1731650000\nnonce-1\n\n');
 });
 
 test('Alipay query request uses the signed out_trade_no business payload',()=>{
