@@ -15,28 +15,34 @@ if not exist "node_modules\electron\dist\electron.exe" (
   echo [1/3] Installing workbench dependencies...
   call npm ci --no-audit --no-fund
   if errorlevel 1 goto :failed
+  if not exist "node_modules\electron\dist\electron.exe" (
+    call npm install-scripts approve electron
+    if errorlevel 1 goto :failed
+    call npm rebuild electron --foreground-scripts
+    if errorlevel 1 goto :failed
+  )
 )
 
-if not exist "license-service\node_modules\wrangler\bin\wrangler.js" (
-  echo [2/3] Installing isolated local license test dependencies...
-  pushd "license-service"
+echo [2/3] Checking isolated local license test dependencies...
+pushd "license-service"
+if not exist "node_modules\wrangler\bin\wrangler.js" (
   call npm ci --no-audit --no-fund
   if errorlevel 1 (
     popd
     goto :failed
   )
-  call npm install-scripts approve esbuild workerd
-  if errorlevel 1 (
-    popd
-    goto :failed
-  )
-  call npm rebuild esbuild workerd --foreground-scripts
-  if errorlevel 1 (
-    popd
-    goto :failed
-  )
-  popd
 )
+call npm install-scripts approve esbuild workerd
+if errorlevel 1 (
+  popd
+  goto :failed
+)
+call npm rebuild esbuild workerd --foreground-scripts
+if errorlevel 1 (
+  popd
+  goto :failed
+)
+popd
 
 echo [3/3] Starting the local-only license backend in a separate window...
 start "DuduAI Local License Worker" cmd.exe /k "cd /d ""%ROOT%license-service"" && npm run test:env"
