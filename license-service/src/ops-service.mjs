@@ -151,12 +151,52 @@ function alipayGateway(env) {
   if(target.hostname!=="openapi.alipay.com"&&target.hostname!=="openapi-sandbox.dl.alipaydev.com") throw Error("支付宝网关地址不在允许列表");
   return target.toString();
 }
-export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic, paymentReady, wechatOrderQueryPath, wechatRequestMessage, buildAlipayQueryParams, alipayGateway, runScheduledReconciliation };
+export { alipaySignContent, normalizeManifest, importRsaPrivate, importRsaPublic, paymentReady, wechatOrderQueryPath, wechatRequestMessage, buildAlipayQueryParams, alipayGateway, paymentSelfTest, logPaymentWebhook, runScheduledReconciliation };
 
 function paymentReady(env, method) {
   if(method==="wechat") return !!(env.WECHATPAY_MCHID&&env.WECHATPAY_APPID&&env.WECHATPAY_SERIAL_NO&&env.WECHATPAY_PRIVATE_KEY_PEM&&env.WECHATPAY_API_V3_KEY&&env.WECHATPAY_PLATFORM_PUBLIC_KEY_PEM&&env.WECHATPAY_PLATFORM_SERIAL);
   if(method==="alipay") return !!(env.ALIPAY_APP_ID&&env.ALIPAY_PRIVATE_KEY_PEM&&env.ALIPAY_PUBLIC_KEY_PEM&&env.ALIPAY_SELLER_ID);
   return false;
+}
+async function paymentSelfTest(env,method) {
+  const checks=[];
+  if(!paymentReady(env,method)) return {ok:false,method,checks:[{name:"必需配置",ok:false,message:"仍有必需密钥或商户参数未配置"}]};
+  try {
+    if(method==="wechat") {
+      if(enc.encode(env.WECHATPAY_API_V3_KEY).length!==32) throw Error("微信支付APIv3密钥必须为32字节");
+      await importRsaPrivate(env.WECHATPAY_PRIVATE_KEY_PEM);
+      checks.push({name:"商户API私钥格式",ok:true});
+      await importRsaPublic(env.WECHATPAY_PLATFORM_PUBLIC_KEY_PEM);
+      checks.push({name:"微信支付平台公钥格式",ok:true});
+      const challenge="DUDU-WECHAT-LOCAL-KEY-TEST-"+randomHex(16);
+      const signature=await rsaSign(env.WECHATPAY_PRIVATE_KEY_PEM,challenge);
+      if(!signature) throw Error("商户私钥签名失败");
+      checks.push({name:"商户私钥签名",ok:true});
+      checks.push({name:"APIv3密钥长度",ok:true});
+      return {ok:true,method,checks,note:"本地密钥格式与签名能力通过；未发起真实扣款，也未验证商户平台在线连通性。微信平台公钥与商户私钥用途不同，不进行配对校验。"};
+    }
+    const challenge="DUDU-ALIPAY-LOCAL-KEY-TEST-"+randomHex(16);
+    const signature=await rsaSign(env.ALIPAY_PRIVATE_KEY_PEM,challenge);
+    const verified=await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,challenge,signature);
+    if(!verified) throw Error("支付宝应用私钥与支付宝公钥无法完成签名配对校验");
+    checks.push({name:"支付宝RSA2私钥签名",ok:true});
+    checks.push({name:"支付宝公钥验签配对",ok:true});
+    checks.push({name:"应用ID与收款方UID",ok:true});
+    return {ok:true,method,checks,note:"本地RSA2密钥配对通过；未发起真实扣款，也未验证商户平台在线连通性。"};
+  } catch(error) {
+    return {ok:false,method,checks,message:clean(error.message,180)||"本地密钥自检失败"};
+  }
+}
+async function logPaymentWebhook(env,{provider,eventId="",orderNo="",outcome="error",message="",raw=""}) {
+  try {
+    const digest=hex(await crypto.subtle.digest("SHA-256",enc.encode(String(raw))));
+    await env.DB.prepare("INSERT INTO payment_webhook_logs(provider,event_id,order_no,outcome,message,payload_sha256,occurred_ms) VALUES(?,?,?,?,?,?,?)")
+      .bind(provider,clean(eventId,120),clean(orderNo,80),outcome,clean(message,180),digest,Date.now()).run();
+    return true;
+  } catch(error) {
+    console.error("payment-webhook-log-failed",provider,String(error?.message||error));
+    return false;
+  }
 }
 async function createWechatOrder(env, order, origin) {
   const path="/v3/pay/transactions/native";
@@ -340,32 +380,65 @@ async function decryptWechatResource(resource, env) {
   return JSON.parse(dec.decode(plain));
 }
 async function handleWechatNotify(request, env, helpers) {
-  const raw=await request.text();
-  if(!await verifyWechatCallback(request,env,raw)) return json({code:"FAIL",message:"签名验证失败"},401);
+  const raw=await request.text(), bytes=enc.encode(raw).length;
+  let notice={};try{notice=JSON.parse(raw)}catch{}
+  const eventId=clean(notice.id,120);
+  if(bytes>65536) {
+    await logPaymentWebhook(env,{provider:"wechat",eventId,outcome:"rejected",message:"回调请求超过64KB",raw});
+    return json({code:"FAIL",message:"请求过大"},413);
+  }
+  if(!await verifyWechatCallback(request,env,raw)) {
+    await logPaymentWebhook(env,{provider:"wechat",eventId,outcome:"rejected",message:"微信支付回调验签失败",raw});
+    return json({code:"FAIL",message:"签名验证失败"},401);
+  }
+  let orderNo="";
   try {
-    const notice=JSON.parse(raw), trade=await decryptWechatResource(notice.resource,env);
-    if(trade.trade_state!=="SUCCESS") return json({code:"SUCCESS",message:"已接收非成功状态"});
+    const trade=await decryptWechatResource(notice.resource,env);
+    orderNo=clean(trade.out_trade_no,80);
+    if(trade.trade_state!=="SUCCESS") {
+      await logPaymentWebhook(env,{provider:"wechat",eventId,orderNo,outcome:"ignored",message:"已验签，非成功交易状态："+clean(trade.trade_state,40),raw});
+      return json({code:"SUCCESS",message:"已接收非成功状态"});
+    }
     if(trade.mchid!==env.WECHATPAY_MCHID||trade.appid!==env.WECHATPAY_APPID||trade.amount?.currency!=="CNY") throw Error("微信商户、应用或币种不匹配");
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(trade.out_trade_no).first();
     if(!order||order.payment_method!=="wechat"||Number(trade.amount?.total)!==Number(order.amount_cents)) throw Error("微信订单号或金额不匹配");
     const hash=hex(await crypto.subtle.digest("SHA-256",enc.encode(raw)));
     await markOrderPaid(env,order,trade.transaction_id,notice.id,hash,helpers);
+    await logPaymentWebhook(env,{provider:"wechat",eventId,orderNo,outcome:"accepted",message:"验签通过，到账已确认并完成授权发放",raw});
     return json({code:"SUCCESS",message:"成功"});
-  } catch(e) { return json({code:"FAIL",message:clean(e.message,120)||"处理失败"},400); }
+  } catch(error) {
+    await logPaymentWebhook(env,{provider:"wechat",eventId,orderNo,outcome:"error",message:error.message||"回调处理失败",raw});
+    return json({code:"FAIL",message:clean(error.message,120)||"处理失败"},400);
+  }
 }
 async function handleAlipayNotify(request, env, helpers) {
-  const raw=await request.text(), params=Object.fromEntries(new URLSearchParams(raw).entries());
+  const raw=await request.text(),bytes=enc.encode(raw).length,params=Object.fromEntries(new URLSearchParams(raw).entries());
+  const eventId=clean(params.notify_id,120),orderNo=clean(params.out_trade_no,80);
+  if(bytes>65536) {
+    await logPaymentWebhook(env,{provider:"alipay",eventId,orderNo,outcome:"rejected",message:"回调请求超过64KB",raw});
+    return new Response("failure",{status:413});
+  }
+  if(!params.sign||!await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,alipaySignContent(params),params.sign)) {
+    await logPaymentWebhook(env,{provider:"alipay",eventId,orderNo,outcome:"rejected",message:"支付宝回调验签失败",raw});
+    return new Response("failure",{status:401});
+  }
   try {
-    if(!params.sign||!await rsaVerify(env.ALIPAY_PUBLIC_KEY_PEM,alipaySignContent(params),params.sign)) return new Response("failure",{status:401});
     if(params.app_id!==env.ALIPAY_APP_ID) throw Error("支付宝应用ID不匹配");
     if(params.seller_id!==env.ALIPAY_SELLER_ID) throw Error("支付宝收款方不匹配");
-    if(!["TRADE_SUCCESS","TRADE_FINISHED"].includes(params.trade_status)) return new Response("success",{headers:{"content-type":"text/plain"}});
+    if(!["TRADE_SUCCESS","TRADE_FINISHED"].includes(params.trade_status)) {
+      await logPaymentWebhook(env,{provider:"alipay",eventId,orderNo,outcome:"ignored",message:"已验签，非成功交易状态："+clean(params.trade_status,40),raw});
+      return new Response("success",{headers:{"content-type":"text/plain; charset=utf-8"}});
+    }
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(params.out_trade_no).first();
     if(!order||order.payment_method!=="alipay"||Math.round(Number(params.total_amount)*100)!==Number(order.amount_cents)) throw Error("支付宝订单号或金额不匹配");
     const hash=hex(await crypto.subtle.digest("SHA-256",enc.encode(raw)));
     await markOrderPaid(env,order,params.trade_no,params.notify_id||("alipay-"+params.trade_no),hash,helpers);
+    await logPaymentWebhook(env,{provider:"alipay",eventId,orderNo,outcome:"accepted",message:"验签通过，到账已确认并完成授权发放",raw});
     return new Response("success",{headers:{"content-type":"text/plain; charset=utf-8"}});
-  } catch { return new Response("failure",{status:400,headers:{"content-type":"text/plain; charset=utf-8"}}); }
+  } catch(error) {
+    await logPaymentWebhook(env,{provider:"alipay",eventId,orderNo,outcome:"error",message:error.message||"回调处理失败",raw});
+    return new Response("failure",{status:400,headers:{"content-type":"text/plain; charset=utf-8"}});
+  }
 }
 
 async function closeStaleOrders(env) {
@@ -584,6 +657,48 @@ async function adminOps(req, env, path, helpers) {
   if(path==="/v1/admin/audit/list") {
     const result=await env.DB.prepare("SELECT id,event,card_id,occurred_ms FROM admin_audit ORDER BY occurred_ms DESC LIMIT 200").all();
     return json({events:result.results||[]});
+  }
+  if(path==="/v1/admin/payments/health") {
+    const since=Date.now()-24*60*60*1000;
+    const [pending,undelivered,failedDeliveries,failedWebhooks,webhookCounts,lastWechat,lastAlipay,lastReconcile] = await Promise.all([
+      env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status='pending'").first(),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status='paid' AND delivered_ms IS NULL").first(),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM delivery_outbox WHERE status IN ('pending','failed')").first(),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM payment_webhook_logs WHERE outcome IN ('rejected','error') AND occurred_ms>?").bind(since).first(),
+      env.DB.prepare("SELECT provider,outcome,COUNT(*) AS n FROM payment_webhook_logs WHERE occurred_ms>? GROUP BY provider,outcome").bind(since).all(),
+      env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' ORDER BY occurred_ms DESC LIMIT 1").first(),
+      env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='alipay' ORDER BY occurred_ms DESC LIMIT 1").first(),
+      env.DB.prepare("SELECT MAX(last_checked_ms) AS checked_ms, SUM(attempts) AS attempts FROM payment_reconcile_state").first()
+    ]);
+    const origin=new URL(req.url).origin;
+    return json({
+      pendingOrders:pending?.n||0,paidUndelivered:undelivered?.n||0,failedDeliveries:failedDeliveries?.n||0,
+      failedWebhooks24h:failedWebhooks?.n||0,webhookCounts24h:webhookCounts.results||[],
+      lastWebhook:{wechat:lastWechat||null,alipay:lastAlipay||null},
+      reconciliation:{lastCheckedMs:lastReconcile?.checked_ms||null,totalAttempts:lastReconcile?.attempts||0},
+      callbacks:{wechat:origin+"/v1/payments/wechat/notify",alipay:origin+"/v1/payments/alipay/notify"},
+      providers:{wechat:paymentReady(env,"wechat"),alipay:paymentReady(env,"alipay")}
+    });
+  }
+  if(path==="/v1/admin/payments/events/list") {
+    const result=await env.DB.prepare("SELECT id,provider,event_id,order_no,outcome,message,payload_sha256,occurred_ms FROM payment_webhook_logs ORDER BY occurred_ms DESC LIMIT 200").all();
+    return json({events:result.results||[]});
+  }
+  if(path==="/v1/admin/deliveries/list") {
+    const result=await env.DB.prepare("SELECT d.delivery_id,d.order_id,d.card_id,d.last_four,d.status,d.attempts,d.created_ms,d.delivered_ms,d.last_error,o.order_no,o.product_name,o.amount_cents,o.status AS order_status FROM delivery_outbox d LEFT JOIN orders o ON o.order_id=d.order_id ORDER BY CASE WHEN d.status IN ('failed','pending') THEN 0 ELSE 1 END,d.created_ms DESC LIMIT 200").all();
+    return json({deliveries:result.results||[]});
+  }
+  if(path==="/v1/admin/payments/self-test") {
+    const [wechat,alipay]=await Promise.all([paymentSelfTest(env,"wechat"),paymentSelfTest(env,"alipay")]);
+    await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES('payment_local_self_test',?)").bind(Date.now()).run();
+    return json({wechat,alipay,note:"本地密钥自检不等于支付平台在线连通性测试；不会创建订单或扣款。"});
+  }
+  if(path==="/v1/admin/payments/reconcile/run") {
+    const last=await env.DB.prepare("SELECT occurred_ms FROM admin_audit WHERE event='manual_payment_reconcile' ORDER BY occurred_ms DESC LIMIT 1").first();
+    if(last?.occurred_ms&&Date.now()-last.occurred_ms<60000) return json({error:"手动补偿操作间隔至少60秒"},429);
+    const result=await runScheduledReconciliation(env,helpers);
+    await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES(?,?)").bind("manual_payment_reconcile",Date.now()).run();
+    return json({ok:true,...result});
   }
   if(path==="/v1/admin/payments/status") {
     return json({wechat:{configured:paymentReady(env,"wechat"),required:["WECHATPAY_MCHID","WECHATPAY_APPID","WECHATPAY_SERIAL_NO","WECHATPAY_PRIVATE_KEY_PEM","WECHATPAY_API_V3_KEY","WECHATPAY_PLATFORM_PUBLIC_KEY_PEM","WECHATPAY_PLATFORM_SERIAL"]},alipay:{configured:paymentReady(env,"alipay"),required:["ALIPAY_APP_ID","ALIPAY_PRIVATE_KEY_PEM","ALIPAY_PUBLIC_KEY_PEM","ALIPAY_SELLER_ID"]}});
