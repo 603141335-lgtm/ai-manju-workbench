@@ -45,7 +45,7 @@ npm run deploy:backup -- --confirm-export
 
 ## 2.1 V1.3 本机只读安全自检（Windows）
 
-此步骤不连接 Cloudflare、不生成/更新密钥、不执行真实支付或退款、不部署 Worker。
+此步骤不连接 Cloudflare、不生成/更新密钥、不执行真实支付或退款、不部署 Worker。Windows 启动入口现已提供故障诊断日志：即使缺少原密钥或备份、测试命令失败，也会在控制台显示原因并保持窗口打开；最近一次日志保存在 `%TEMP%\\DuduAI_V13_Check_Last.log`。在下载的 GitHub ZIP 测试副本中没有原 `.private` 是正常的待处理状态，不要以新密钥替代原密钥。
 
 在原部署电脑上，进入 `license-service` 目录后双击 `双击检查V1.3安全状态.bat`，或执行：
 
