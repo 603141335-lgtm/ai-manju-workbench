@@ -20,12 +20,13 @@ if(required.some(value=>!config.includes(value))||config.includes('database_name
 if(!existsSync(join(root,'node_modules','wrangler'))) throw Error('未找到本地 Wrangler，请先在 license-service 目录运行 npm ci');
 const {keys}=ensureLocalTestSecrets();
 
+const wranglerEntry=join(root,'node_modules','wrangler','bin','wrangler.js');
+if(!existsSync(wranglerEntry)) throw Error('未找到本地 Wrangler CLI 入口，请重新运行 npm ci');
+
 function runWrangler(args){
-  const command='npx wrangler '+args.map(value=>'"'+String(value).replace(/"/g,'\\"')+'"').join(' ');
-  const executable=process.platform==='win32'?'cmd.exe':'/bin/sh';
-  const argv=process.platform==='win32'?['/d','/s','/c',command]:['-lc',command];
-  const result=spawnSync(executable,argv,{cwd:root,stdio:'inherit'});
-  if(result.error||result.status!==0) throw Error('本机 Wrangler 命令失败；未运行任何远程部署命令');
+  const result=spawnSync(process.execPath,[wranglerEntry,...args],{cwd:root,stdio:'inherit',windowsHide:false});
+  if(result.error) throw result.error;
+  if(result.status!==0) throw Error('本机 Wrangler 命令失败（退出码 '+result.status+'）；未运行任何远程部署命令');
 }
 
 console.log('\n[1/3] 初始化本机 D1（显式 --local，不连接远程 D1）');
@@ -37,8 +38,6 @@ console.log('地址：http://127.0.0.1:8788/admin');
 console.log('模拟台：http://127.0.0.1:8788/__test');
 console.log('本机测试管理员令牌（不要分享）：'+keys.DUDU_ADMIN_TOKEN);
 console.log('按 Ctrl+C 停止。此命令不部署 Worker、不创建 Cloudflare D1、不调用微信或支付宝。');
-const command='npx wrangler dev --config wrangler.test.toml --persist-to '+statePath+' --ip 127.0.0.1 --port 8788';
-const executable=process.platform==='win32'?'cmd.exe':'/bin/sh';
-const argv=process.platform==='win32'?['/d','/s','/c',command]:['-lc',command];
-const result=spawnSync(executable,argv,{cwd:root,stdio:'inherit'});
-if(result.error||result.status!==0) process.exitCode=1;
+const result=spawnSync(process.execPath,[wranglerEntry,'dev','--config','wrangler.test.toml','--persist-to',statePath,'--ip','127.0.0.1','--port','8788'],{cwd:root,stdio:'inherit',windowsHide:false});
+if(result.error) throw result.error;
+if(result.status!==0) process.exitCode=1;
