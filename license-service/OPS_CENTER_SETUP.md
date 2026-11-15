@@ -59,7 +59,7 @@ npm test
 - 从 `feature/dudu-ai-v1.2.0-license` 分支运行。
 - GitHub Environment `production-license` 必须配置原 Cloudflare API Token 和 Account ID。
 - GitHub Variables `DUDU_D1_DATABASE_ID` 必须填写原 `dudu-license` 的真实 UUID。
-- 手动运行时必须勾选已完成备份，并输入 `DEPLOY_PRODUCTION_V1_3`。
+- 手动运行时必须勾选已完成备份、已完成沙箱/测试商户支付退款及授权撤销验收，并输入 `DEPLOY_PRODUCTION_V1_3`。
 - 工作流会再次查询 Cloudflare D1 列表，核对数据库名称和 UUID；任何不一致都会停止。
 - 工作流先运行测试，再执行增量 schema，最后部署 Worker；不会重新生成或轮换原授权签名密钥。
 
