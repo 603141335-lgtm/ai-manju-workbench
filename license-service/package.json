@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check src/worker.mjs && node --check src/admin-ui.mjs && node --check src/ops-service.mjs && node --check scripts/prepare-local-test.mjs && node --check scripts/run-local-test.mjs",
+    "check": "node --check src/worker.mjs && node --check src/admin-ui.mjs && node --check src/ops-service.mjs && node --check scripts/prepare-local-test.mjs && node --check scripts/run-local-test.mjs && node scripts/check-windows-launcher.mjs",
     "keys": "node scripts/generate-keys.mjs",
     "deploy:setup": "node scripts/setup-cloudflare.mjs --apply",
     "deploy:check": "node scripts/prepare-wrangler.mjs",
