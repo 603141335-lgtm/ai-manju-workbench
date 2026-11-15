@@ -877,6 +877,7 @@ async function localTestAdminOps(req,env,path,body,helpers) {
     if(!refund) return json({error:"本机测试退款记录不存在"},404);
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(refund.order_id).first();
     if(!order) return json({error:"本机测试原订单不存在"},404);
+    if(!["processing","manual_review"].includes(refund.status)) return json({error:"本机测试退款不处于可模拟处理状态"},409);
     if(path.endsWith("/complete")) {
       const result=await completeRefund(env,refund,"LOCAL_TEST_REFUND_SUCCESS","LOCAL-REFUND-"+refund.refund_no);
       await logPaymentWebhook(env,{provider:refund.provider,eventId:"local-test-refund-"+refund.refund_id,orderNo:order.order_no,outcome:"accepted",message:"本机模拟退款成功（无真实资金）",raw:JSON.stringify({mode:"local-only",refundId:refund.refund_id})});
