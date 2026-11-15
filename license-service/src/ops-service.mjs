@@ -480,7 +480,7 @@ async function runScheduledReconciliation(env,helpers) {
   const now=Date.now(),minCreated=now-3*60*60*1000,cutoff=now-5*60*1000;
   const pending=await env.DB.prepare("SELECT o.* FROM orders o LEFT JOIN payment_reconcile_state r ON r.order_id=o.order_id WHERE o.status IN ('pending','closed') AND o.created_ms>? AND (r.last_checked_ms IS NULL OR r.last_checked_ms<?) ORDER BY o.created_ms ASC LIMIT 10")
     .bind(minCreated,cutoff).all();
-  const undelivered=await env.DB.prepare("SELECT * FROM orders WHERE status='paid' AND delivered_ms IS NULL ORDER BY paid_ms ASC LIMIT 10").all();
+  const undelivered=await env.DB.prepare("SELECT * FROM orders o WHERE o.status='paid' AND o.delivered_ms IS NULL AND NOT EXISTS(SELECT 1 FROM refunds r WHERE r.order_id=o.order_id AND r.status IN ('processing','manual_review','succeeded')) ORDER BY o.paid_ms ASC LIMIT 10").all();
   let checked=0,paid=0,failed=0,deliveryRecovered=0;
   for(const order of pending.results||[]) {
     if(!paymentReady(env,order.payment_method)) continue;
@@ -554,6 +554,8 @@ async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, 
     .bind(String(providerTradeNo||""),Date.now(),Date.now(),orderRow.order_id).run();
   const paid=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(orderRow.order_id).first();
   if(!paid||paid.status!=="paid") throw Error("订单状态未能更新为已支付");
+  const refund=await env.DB.prepare("SELECT status FROM refunds WHERE order_id=? AND status IN ('processing','manual_review','succeeded') LIMIT 1").bind(orderRow.order_id).first();
+  if(refund) return {ok:true,orderId:orderRow.order_id,delivered:!!paid.delivered_ms,refundPending:true};
   return deliverPaidOrder(env,paid,helpers);
 }
 async function verifyWechatHeaders(headers, env, raw) {
@@ -863,6 +865,8 @@ async function adminOps(req, env, path, helpers) {
     if(!order) return json({error:"订单不存在"},404);
     if(order.status==="refunded") return json({status:"refunded",message:"订单已退款，不能自动发放授权"});
     if(order.status==="paid") {
+      const refund=await env.DB.prepare("SELECT status FROM refunds WHERE order_id=? AND status IN ('processing','manual_review','succeeded') LIMIT 1").bind(order.order_id).first();
+      if(refund) return json({status:"refund_processing",delivered:!!order.delivered_ms,message:"订单退款处理中或等待人工核对，暂不执行授权补发"});
       if(!order.delivered_ms) await deliverPaidOrder(env,order,helpers);
       return json({status:"paid",delivered:true,message:"订单已确认付款"});
     }
