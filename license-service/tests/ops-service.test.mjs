@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic} from '../src/ops-service.mjs';
+import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams} from '../src/ops-service.mjs';
 import {generateKeyPairSync} from 'node:crypto';
 
 test('manifest normalizer keeps public content only and rejects duplicate tutorial ids',()=>{
@@ -51,4 +51,37 @@ test('RSA key loader accepts PKCS8 and PKCS1 merchant key formats',async()=>{
       assert.equal(await crypto.subtle.verify('RSASSA-PKCS1-v1_5',pub,signature,message),true);
     }
   }
+});
+
+test('WeChat Pay query request path and GET signing message follow API v3 canonical format',()=>{
+  const path=wechatOrderQueryPath('DUDU-2026-0001','1900000109');
+  assert.equal(path,'/v3/pay/transactions/out-trade-no/DUDU-2026-0001?mchid=1900000109');
+  assert.equal(wechatRequestMessage('GET',path,'1731650000','nonce-1',''),'GET\\n'+path+'\\n1731650000\\nnonce-1\\n\\n');
+});
+
+test('Alipay query request uses the signed out_trade_no business payload',()=>{
+  const params=buildAlipayQueryParams({ALIPAY_APP_ID:'20260001'},'DUDU-ORDER-1','2026-11-15 12:00:00');
+  assert.equal(params.method,'alipay.trade.query');
+  assert.equal(params.app_id,'20260001');
+  assert.deepEqual(JSON.parse(params.biz_content),{out_trade_no:'DUDU-ORDER-1'});
+  assert.match(alipaySignContent(params),/method=alipay.trade.query/);
+});
+
+test('Alipay response canonicalization serializes nested JSON values',()=>{
+  const value=alipaySignContent({
+    code:'10000',
+    fund_bill_list:[{fund_channel:'ALIPAYACCOUNT',amount:'9.90'}],
+    sign:'ignored'
+  });
+  assert.equal(value,'code=10000&fund_bill_list=[{"fund_channel":"ALIPAYACCOUNT","amount":"9.90"}]');
+});
+
+test('payment readiness requires every official merchant secret including Alipay seller UID',()=>{
+  const alipay={ALIPAY_APP_ID:'app',ALIPAY_PRIVATE_KEY_PEM:'private',ALIPAY_PUBLIC_KEY_PEM:'public'};
+  assert.equal(paymentReady(alipay,'alipay'),false);
+  assert.equal(paymentReady({...alipay,ALIPAY_SELLER_ID:'seller'},'alipay'),true);
+  const wechat={WECHATPAY_MCHID:'mch',WECHATPAY_APPID:'app',WECHATPAY_SERIAL_NO:'serial',WECHATPAY_PRIVATE_KEY_PEM:'private',WECHATPAY_API_V3_KEY:'12345678901234567890123456789012',WECHATPAY_PLATFORM_PUBLIC_KEY_PEM:'public',WECHATPAY_PLATFORM_SERIAL:'PUB_KEY_ID_1'};
+  assert.equal(paymentReady(wechat,'wechat'),true);
+  delete wechat.WECHATPAY_PLATFORM_SERIAL;
+  assert.equal(paymentReady(wechat,'wechat'),false);
 });
