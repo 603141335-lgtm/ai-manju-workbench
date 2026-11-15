@@ -68,15 +68,19 @@ npm run deploy:preflight
 
 当前用户只有微信和支付宝正式商户账号，没有可用沙箱账号。因此 V1.3 第一轮采用**本机隔离测试**，不创建 Cloudflare 测试 D1、不部署测试 Worker，也不读取或复制生产商户密钥。
 
-在 `license-service` 目录执行：
+Windows 用户可以直接双击 `双击启动V13本机测试环境.bat`。启动器会检查 Node.js 22+、自动安装缺失依赖、执行语法检查，再启动本机 Worker；如果失败，命令窗口会停留并显示错误，不会一闪而退。
+
+也可以在 `license-service` 目录手动执行：
 
 ~~~powershell
+npm ci
+npm run check
 npm run test:env
 ~~~
 
 脚本会：
 - 生成独立的本机测试签名密钥、HMAC 密钥和管理员令牌，保存在 `.private/test-owner-keys.json`。
-- 生成 Wrangler 本地开发用的 `.dev.vars`；若发现不是本脚本生成的既有文件，会停止而不覆盖。
+- 生成 Wrangler 本地开发用的 `.dev.vars`；不会覆盖非测试脚本生成的现有配置；可识别并修复此前版本生成的错误换行文件。
 - 使用 `wrangler.test.toml`，并且只通过 `wrangler d1 execute --local --persist-to .private/test-state` 初始化本机 D1。
 - 只在 `127.0.0.1:8788` 启动 Worker。命令不含 `--remote`、`d1 create` 或 `wrangler deploy`。
 - 初始化一个虚构测试商品，不复制生产设备、卡密、订单、密钥或支付资料。
