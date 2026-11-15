@@ -51,7 +51,13 @@ export function ensureLocalTestSecrets(){
   ].join('\n')+'\n';
   if(existsSync(devVarsPath)){
     const existing=readFileSync(devVarsPath,'utf8');
-    if(existing!==vars) throw Error('现有 .dev.vars 与本机测试密钥不一致；为避免覆盖任何开发配置，已停止。请先自行备份并检查该文件');
+    if(existing!==vars){
+      if(existing.startsWith(marker)&&existing.includes('\\nDUDU_SIGNING_PRIVATE_PKCS8_B64=')){
+        writeFileSync(devVarsPath,vars);
+      }else{
+        throw Error('现有 .dev.vars 与本机测试密钥不一致；为避免覆盖任何开发配置，已停止。请先自行备份并检查该文件');
+      }
+    }
   }else{
     writeFileSync(devVarsPath,vars,{flag:'wx',mode:0o600});
   }
