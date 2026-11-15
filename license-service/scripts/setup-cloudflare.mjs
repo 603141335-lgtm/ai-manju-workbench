@@ -27,7 +27,7 @@ export function renderLocalConfig(template,id){
 }
 export function assertExistingDeploymentIdentity({databaseId,localConfig='',deploymentInfo=null}){
  if(!uuid.test(databaseId||''))throw Error('D1数据库ID无效');
- const configured=localConfig.match(/^database_id\\s*=\\s*"([^"]+)"/m)?.[1]||'';
+ const configured=localConfig.match(/^database_id\s*=\s*"([^"]+)"/m)?.[1]||'';
  const recorded=typeof deploymentInfo?.d1Id==='string'?deploymentInfo.d1Id:'';
  const hasLocal=uuid.test(configured),hasRecorded=uuid.test(recorded);
  if(!hasLocal&&!hasRecorded)throw Error('无法确认这是原有D1数据库：缺少原部署D1身份记录；请恢复原 wrangler.local.toml 或 deployment-public.json，禁止猜测数据库');
@@ -99,7 +99,7 @@ async function main(){
  const required=['DUDU_SIGNING_PRIVATE_PKCS8_B64','DUDU_LICENSE_PUBLIC_KEY_B64','DUDU_DEVICE_HMAC_KEY','DUDU_CARD_HMAC_KEY','DUDU_ADMIN_TOKEN','DUDU_ADMIN_TOKEN_SHA256'];
  if(required.some(k=>!data[k]))throw Error('原部署密钥文件缺少必要字段，已停止部署；请恢复完整备份。');
  mkdirSync(privateDir,{recursive:true,mode:0o700});
- writeFileSync(join(privateDir,'bootstrap.toml'),'name = "dudu-ai-license"\\nmain = "../src/worker.mjs"\\ncompatibility_date = "2026-11-01"\\n');
+ writeFileSync(join(privateDir,'bootstrap.toml'),'name = "dudu-ai-license"\nmain = "../src/worker.mjs"\ncompatibility_date = "2026-11-01"\n');
  const base=['--config','.private/bootstrap.toml'];
  try{cmd(['whoami',...base])}catch{throw Error('请先运行 npx wrangler login 登录原Cloudflare账户')}
  const list=parseDatabaseList(cmd(['d1','list','--json',...base]));
@@ -122,12 +122,12 @@ async function main(){
  let result;
  try{result=cmd(['deploy','--secrets-file','.private/deploy-secrets.json',...cfg])}
  finally{if(existsSync(localSecrets))unlinkSync(localSecrets)}
- const url=(result.match(/https:\/\/[A-Za-z0-9.-]+\\.workers\\.dev\\b/)||[])[0];
+ const url=(result.match(/https:\/\/[A-Za-z0-9.-]+\.workers\.dev\b/)||[])[0];
  if(!url)throw Error('Worker已部署，但未自动解析域名；请在Cloudflare后台复制原有workers.dev HTTPS地址');
  const resp=await fetch(url+'/health',{signal:AbortSignal.timeout(10000)});
  if(!resp.ok||(await resp.json()).status!=='ok')throw Error('远程/health未通过检查，请查看Cloudflare日志');
  const pub={url,publicKey:data.DUDU_LICENSE_PUBLIC_KEY_B64,d1Id:found.id};
- writeFileSync(deploymentInfoPath,JSON.stringify(pub,null,2)+'\\n',{mode:0o600});
+ writeFileSync(deploymentInfoPath,JSON.stringify(pub,null,2)+'\n',{mode:0o600});
  console.log('部署成功，云端地址：'+url);
  console.log('GitHub Variable DUDU_LICENSE_URL = '+url);
  console.log('GitHub Variable DUDU_LICENSE_PUBLIC_KEY_B64 = '+data.DUDU_LICENSE_PUBLIC_KEY_B64);
