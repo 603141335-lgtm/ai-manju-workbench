@@ -243,7 +243,7 @@ async function loadPaymentMonitor(){
  const wechat=health.lastWebhook.wechat,refund=health.lastWebhook.wechatRefund,alipay=health.lastWebhook.alipay;
  $("monWechatLast").textContent=(health.providers.wechat?"配置已就绪":"未配置")+" · "+(wechat?outcomeText(wechat.outcome):"暂无回调");
  $("monWechatTime").textContent=wechat?formatDate(wechat.occurred_ms):"尚未收到支付回调";
- $("monWechatRefundLast").textContent=(health.providers.wechat?"配置已就绪":"未配置")+" · "+(refund?outcomeText(refund.outcome):"暂无退款回调");
+ $("monWechatRefundLast").textContent=(health.providers.wechat?"配置已就绪":"未配置")+" · "+(refund?(refund.message||outcomeText(refund.outcome)):"暂无退款回调");
  $("monWechatRefundTime").textContent=refund?formatDate(refund.occurred_ms):"尚未收到退款回调";
  $("monAlipayLast").textContent=(health.providers.alipay?"配置已就绪":"未配置")+" · "+(alipay?outcomeText(alipay.outcome):"暂无回调");
  $("monAlipayTime").textContent=alipay?formatDate(alipay.occurred_ms):"尚未收到支付回调";
