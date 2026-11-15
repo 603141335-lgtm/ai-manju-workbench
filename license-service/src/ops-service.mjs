@@ -269,7 +269,7 @@ async function runScheduledReconciliation(env,helpers) {
   }
   for(const order of undelivered.results||[]) {
     try {
-      await markOrderPaid(env,order,order.provider_trade_no,"scheduled-delivery-"+randomHex(8),"delivery-retry",helpers);
+      await deliverPaidOrder(env,order,helpers);
       await recordReconcileAttempt(env,order.order_id,"");
       deliveryRecovered++;
     } catch(error) {
@@ -280,19 +280,12 @@ async function runScheduledReconciliation(env,helpers) {
   }
   return {checked,paid,failed,deliveryRecovered};
 }
-async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, helpers) {
-  const orderRow=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(order.order_no).first();
-  if(!orderRow) throw Error("订单不存在");
-  if(orderRow.status==="refunded") throw Error("订单已退款");
-  await env.DB.prepare("INSERT OR IGNORE INTO payment_events(event_id,provider,order_no,payload_sha256,created_ms) VALUES(?,?,?,?,?)")
-    .bind(String(eventId||("evt-"+orderRow.order_no)),orderRow.payment_method,orderRow.order_no,payloadHash,Date.now()).run();
-  await env.DB.prepare("UPDATE orders SET status='paid',provider_trade_no=COALESCE(provider_trade_no,?),paid_ms=COALESCE(paid_ms,?),updated_ms=? WHERE order_id=? AND status IN ('pending','closed')")
-    .bind(String(providerTradeNo||""),Date.now(),Date.now(),orderRow.order_id).run();
-  const paid=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(orderRow.order_id).first();
-  if(!paid||paid.status!=="paid") throw Error("订单状态未能更新为已支付");
+async function deliverPaidOrder(env,paid,helpers) {
+  if(!paid||paid.status!=="paid") throw Error("只有已确认付款的订单可以发放授权");
+  if(paid.delivered_ms) return {ok:true,orderId:paid.order_id,delivered:true,alreadyDelivered:true};
   let delivery=await env.DB.prepare("SELECT * FROM delivery_outbox WHERE order_id=?").bind(paid.order_id).first();
   if(!delivery){
-    const code=helpers.newCode(), cardId=crypto.randomUUID(), codeHash=await helpers.hmac(env.DUDU_CARD_HMAC_KEY,code);
+    const code=helpers.newCode(),cardId=crypto.randomUUID(),codeHash=await helpers.hmac(env.DUDU_CARD_HMAC_KEY,code);
     await env.DB.prepare("INSERT OR IGNORE INTO delivery_outbox(delivery_id,order_id,card_id,code_hash,last_four,status,created_ms) VALUES(?,?,?,?,?,'pending',?)")
       .bind(crypto.randomUUID(),paid.order_id,cardId,codeHash,code.slice(-4),Date.now()).run();
     delivery=await env.DB.prepare("SELECT * FROM delivery_outbox WHERE order_id=?").bind(paid.order_id).first();
@@ -304,11 +297,23 @@ async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, 
   if(!card) throw Error("授权卡密写入失败，订单保留待补发");
   await env.DB.prepare("UPDATE delivery_outbox SET status='delivered',attempts=attempts+1,delivered_ms=COALESCE(delivered_ms,?),last_error='' WHERE order_id=?")
     .bind(Date.now(),paid.order_id).run();
-  await env.DB.prepare("UPDATE orders SET delivered_ms=COALESCE(delivered_ms,?),updated_ms=? WHERE order_id=?")
+  await env.DB.prepare("UPDATE orders SET delivered_ms=COALESCE(delivered_ms,?),updated_ms=?,last_error='' WHERE order_id=?")
     .bind(Date.now(),Date.now(),paid.order_id).run();
   await env.DB.prepare("INSERT INTO admin_audit(event,card_id,occurred_ms) VALUES('auto_deliver',?,?)")
     .bind(delivery.card_id,Date.now()).run();
   return {ok:true,orderId:paid.order_id,delivered:true};
+}
+async function markOrderPaid(env, order, providerTradeNo, eventId, payloadHash, helpers) {
+  const orderRow=await env.DB.prepare("SELECT * FROM orders WHERE order_no=?").bind(order.order_no).first();
+  if(!orderRow) throw Error("订单不存在");
+  if(orderRow.status==="refunded") throw Error("订单已退款");
+  await env.DB.prepare("INSERT OR IGNORE INTO payment_events(event_id,provider,order_no,payload_sha256,created_ms) VALUES(?,?,?,?,?)")
+    .bind(String(eventId||("evt-"+orderRow.order_no)),orderRow.payment_method,orderRow.order_no,payloadHash,Date.now()).run();
+  await env.DB.prepare("UPDATE orders SET status='paid',provider_trade_no=COALESCE(provider_trade_no,?),paid_ms=COALESCE(paid_ms,?),updated_ms=? WHERE order_id=? AND status IN ('pending','closed')")
+    .bind(String(providerTradeNo||""),Date.now(),Date.now(),orderRow.order_id).run();
+  const paid=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(orderRow.order_id).first();
+  if(!paid||paid.status!=="paid") throw Error("订单状态未能更新为已支付");
+  return deliverPaidOrder(env,paid,helpers);
 }
 async function verifyWechatHeaders(headers, env, raw) {
   const serial=headers.get("Wechatpay-Serial")||"";
@@ -419,7 +424,7 @@ async function reconcileUserOrder(request,env,body,helpers) {
   if(!order) throw Error("订单不存在");
   if(order.status==="refunded") return json({status:"refunded",message:"订单已退款，不能自动发放授权"});
   if(order.status==="paid") {
-    if(!order.delivered_ms) await markOrderPaid(env,order,order.provider_trade_no,"user-reconcile-"+randomHex(8),"manual",helpers);
+    if(!order.delivered_ms) await deliverPaidOrder(env,order,helpers);
     const latest=await env.DB.prepare("SELECT delivered_ms FROM orders WHERE order_id=?").bind(order.order_id).first();
     return json({status:"paid",delivered:!!latest?.delivered_ms,message:latest?.delivered_ms?"付款已确认，永久授权已发放":"付款已确认，授权正在处理"});
   }
@@ -559,7 +564,7 @@ async function adminOps(req, env, path, helpers) {
     if(!order) return json({error:"订单不存在"},404);
     if(order.status==="refunded") return json({status:"refunded",message:"订单已退款，不能自动发放授权"});
     if(order.status==="paid") {
-      if(!order.delivered_ms) await markOrderPaid(env,order,order.provider_trade_no,"admin-reconcile-"+randomHex(8),"manual",helpers);
+      if(!order.delivered_ms) await deliverPaidOrder(env,order,helpers);
       return json({status:"paid",delivered:true,message:"订单已确认付款"});
     }
     if(!paymentReady(env,order.payment_method)) throw Error("对应支付商户密钥尚未完整配置");
@@ -573,7 +578,7 @@ async function adminOps(req, env, path, helpers) {
     const id=clean(body.orderId,80);
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(id).first();
     if(!order||order.status!=="paid") return json({error:"仅已支付订单可以补发"},400);
-    await markOrderPaid(env,order,order.provider_trade_no,"admin-resend-"+randomHex(8),"manual",helpers);
+    await deliverPaidOrder(env,order,helpers);
     return json({ok:true,delivered:true});
   }
   if(path==="/v1/admin/audit/list") {
