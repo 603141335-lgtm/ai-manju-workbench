@@ -393,11 +393,11 @@ async function applicationStatus(request, env, body, helpers) {
 async function paymentReturnPage(request,env) {
   const id=new URL(request.url).searchParams.get("order")||"";
   if(!/^[0-9a-f-]{36}$/i.test(id)) return new Response("订单编号无效",{status:400});
-  const order=await env.DB.prepare("SELECT order_no,status FROM orders WHERE order_id=?").bind(id).first();
+  const order=await env.DB.prepare("SELECT order_no,status,delivered_ms FROM orders WHERE order_id=?").bind(id).first();
   if(!order) return new Response("订单不存在",{status:404});
-  const paid=order.status==="paid";
-  const title=paid?"付款已确认":"已返回支付页面";
-  const message=paid?"系统已收到支付平台确认，授权已自动发放。":"如果你已经完成付款，请稍候返回独独AI工作台，系统会自动核对到账结果。请不要重复付款。";
+  const paid=order.status==="paid",delivered=!!order.delivered_ms;
+  const title=delivered?"付款与授权已完成":paid?"付款已确认，授权处理中":"已返回支付页面";
+  const message=delivered?"系统已收到支付平台确认，永久授权已自动发放。":paid?"系统已确认付款，授权正在处理。请返回独独AI工作台稍后刷新授权。":"如果你已经完成付款，请稍候返回独独AI工作台，系统会自动核对到账结果。请不要重复付款。";
   const page='<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+html(title)+'</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1525;color:#edf4ff;font:16px Microsoft Yahei"><main style="max-width:520px;margin:20px;padding:30px;background:#172943;border:1px solid #345174;border-radius:16px;text-align:center"><h2>'+html(title)+'</h2><p>'+html(message)+'</p><p>订单号：'+html(order.order_no)+'</p><p>请关闭此页面并返回独独AI工作台。</p></main></body></html>';
   return new Response(page,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'","x-content-type-options":"nosniff"}});
 }
