@@ -9,7 +9,7 @@ const SCHEMA=readFileSync(new URL('../schema.sql',import.meta.url),'utf8');
 class FakeD1{
  constructor(){this.db=new DatabaseSync(':memory:');this.db.exec(SCHEMA)}
  prepare(sql){const stmt=this.db.prepare(sql);
-  return {all:async()=>({results:stmt.all()}),bind(...args){return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})}}}
+  return {first:async()=>stmt.get()||null,all:async()=>({results:stmt.all()}),run:async()=>({meta:{changes:Number(stmt.run().changes)}}),bind(...args){return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})}}}
  }
 }
 function env(){
