@@ -26,3 +26,13 @@ test('device proof binds free application and purchase metadata',()=>{
  assert.equal(verify(null,Buffer.from(deviceMessage('order-create',{...order,paymentMethod:'alipay'})),publicKey,orderSig),false);
 });
 
+test('device proof binds order history and self-service payment reconciliation',()=>{
+ const {privateKey,publicKey}=generateKeyPairSync('ed25519');
+ const r={deviceId:'b'.repeat(64),publicKey:publicKey.export({type:'spki',format:'der'}).toString('base64'),ts:Date.now(),nonce:randomBytes(16).toString('hex'),code:'',orderId:'123e4567-e89b-12d3-a456-426614174000'};
+ for(const op of ['order-list','order-reconcile']){
+  const message=Buffer.from(deviceMessage(op,r)),sig=sign(null,message,privateKey);
+  assert.equal(verify(null,message,publicKey,sig),true);
+  assert.equal(verify(null,Buffer.from(deviceMessage(op==='order-list'?'order-reconcile':'order-list',r)),publicKey,sig),false);
+ }
+ assert.equal(verify(null,Buffer.from(deviceMessage('order-reconcile',{...r,orderId:'00000000-0000-0000-0000-000000000000'})),publicKey,sign(null,Buffer.from(deviceMessage('order-reconcile',r)),privateKey)),false);
+});
