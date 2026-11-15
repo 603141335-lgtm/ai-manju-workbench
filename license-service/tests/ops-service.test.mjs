@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,paymentSelfTest,logPaymentWebhook,runScheduledReconciliation,handleOpsRequest,maskContact,roleCanAccess,refundStatusFromWechat,finalizeRefundSuccess,alipayApiCall} from '../src/ops-service.mjs';
+import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,paymentSelfTest,logPaymentWebhook,runScheduledReconciliation,handleOpsRequest,maskContact,roleCanAccess,refundStatusFromWechat,finalizeRefundSuccess,alipayApiCall,submitRefund} from '../src/ops-service.mjs';
 import {generateKeyPairSync,sign as nodeSign,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
@@ -302,4 +302,35 @@ test('refund state and role helper mappings are conservative',()=>{
   assert.equal(roleCanAccess('support','/v1/admin/customers/list'),true);
   assert.equal(roleCanAccess('operations','/v1/admin/products/list'),true);
   assert.equal(roleCanAccess('operations','/v1/admin/operators/list'),false);
+});
+
+test('Alipay full refund accepts documented response without out_request_no echo and revokes entitlement',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const now=Date.now();
+  db.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,provider_trade_no,created_ms,paid_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run('order-alipay-refund','DU-ALIPAY-REFUND','e'.repeat(64),'p1','工作台永久授权',9900,'alipay','paid','ali-trade-1',now,now,now);
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_by,created_ms,updated_ms) VALUES(?,?,?,?,?,?,'requested','owner',?,?)")
+    .run('refund-alipay','order-alipay-refund','RF-ALIPAY-1','alipay',9900,'用户申请全额退款',now,now);
+  const app=generateKeyPairSync('rsa',{modulusLength:2048});
+  const platform=generateKeyPairSync('rsa',{modulusLength:2048});
+  const data={code:'10000',out_trade_no:'DU-ALIPAY-REFUND',trade_no:'ali-trade-1',fund_change:'Y',refund_fee:'99.00'};
+  const signature=nodeSign('RSA-SHA256',Buffer.from(alipaySignContent(data)),platform.privateKey).toString('base64');
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async()=>new Response(JSON.stringify({alipay_trade_refund_response:data,sign:signature}),{status:200});
+  try{
+    const env={DB:makeD1(db),ALIPAY_APP_ID:'20260001',ALIPAY_SELLER_ID:'2088000000000000',
+      ALIPAY_PRIVATE_KEY_PEM:app.privateKey.export({type:'pkcs8',format:'pem'}),
+      ALIPAY_PUBLIC_KEY_PEM:platform.publicKey.export({type:'spki',format:'pem'})};
+    const result=await submitRefund(env,{
+      refund_id:'refund-alipay',order_id:'order-alipay-refund',refund_no:'RF-ALIPAY-1',
+      provider:'alipay',amount_cents:9900,reason:'用户申请全额退款',status:'requested'
+    },{
+      order_id:'order-alipay-refund',order_no:'DU-ALIPAY-REFUND',amount_cents:9900,
+      payment_method:'alipay',provider_trade_no:'ali-trade-1',status:'paid'
+    },'https://dudu.example',{id:'finance-1',name:'财务',role:'finance'});
+    assert.equal(result.status,'succeeded');
+    assert.equal(db.prepare("SELECT status FROM orders WHERE order_id='order-alipay-refund'").get().status,'refunded');
+    assert.equal(db.prepare("SELECT status FROM refunds WHERE refund_id='refund-alipay'").get().status,'succeeded');
+  }finally{globalThis.fetch=originalFetch;db.close()}
 });
