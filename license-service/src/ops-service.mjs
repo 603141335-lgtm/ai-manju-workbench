@@ -890,7 +890,7 @@ async function adminOps(req, env, path, helpers) {
   }
   if(path==="/v1/admin/payments/health") {
     const since=Date.now()-24*60*60*1000;
-    const [pending,undelivered,failedDeliveries,failedWebhooks,webhookCounts,lastWechat,lastAlipay,lastReconcile] = await Promise.all([
+    const [pending,undelivered,failedDeliveries,failedWebhooks,webhookCounts,lastWechat,lastAlipay,lastReconcile,lastWechatRefund] = await Promise.all([
       env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status='pending'").first(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status='paid' AND delivered_ms IS NULL").first(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM delivery_outbox WHERE status IN ('pending','failed')").first(),
@@ -898,15 +898,20 @@ async function adminOps(req, env, path, helpers) {
       env.DB.prepare("SELECT provider,outcome,COUNT(*) AS n FROM payment_webhook_logs WHERE occurred_ms>? GROUP BY provider,outcome").bind(since).all(),
       env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' ORDER BY occurred_ms DESC LIMIT 1").first(),
       env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='alipay' ORDER BY occurred_ms DESC LIMIT 1").first(),
-      env.DB.prepare("SELECT MAX(last_checked_ms) AS checked_ms, SUM(attempts) AS attempts FROM payment_reconcile_state").first()
+      env.DB.prepare("SELECT MAX(last_checked_ms) AS checked_ms, SUM(attempts) AS attempts FROM payment_reconcile_state").first(),
+      env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' AND message LIKE '%退款回调%' ORDER BY occurred_ms DESC LIMIT 1").first()
     ]);
     const origin=new URL(req.url).origin;
     return json({
       pendingOrders:pending?.n||0,paidUndelivered:undelivered?.n||0,failedDeliveries:failedDeliveries?.n||0,
       failedWebhooks24h:failedWebhooks?.n||0,webhookCounts24h:webhookCounts.results||[],
-      lastWebhook:{wechat:lastWechat||null,alipay:lastAlipay||null},
+      lastWebhook:{wechat:lastWechat||null,alipay:lastAlipay||null,wechatRefund:lastWechatRefund||null},
       reconciliation:{lastCheckedMs:lastReconcile?.checked_ms||null,totalAttempts:lastReconcile?.attempts||0},
-      callbacks:{wechat:origin+"/v1/payments/wechat/notify",alipay:origin+"/v1/payments/alipay/notify"},
+      callbacks:{
+        wechat:safeHttps(env.WECHATPAY_NOTIFY_URL)||origin+"/v1/payments/wechat/notify",
+        wechatRefund:safeHttps(env.WECHATPAY_REFUND_NOTIFY_URL)||origin+"/v1/payments/wechat/refund-notify",
+        alipay:safeHttps(env.ALIPAY_NOTIFY_URL)||origin+"/v1/payments/alipay/notify"
+      },
       providers:{wechat:paymentReady(env,"wechat"),alipay:paymentReady(env,"alipay")}
     });
   }
