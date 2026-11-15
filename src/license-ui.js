@@ -11,10 +11,15 @@
   $('licenseState').textContent=state;
   $('licenseDevice').textContent=s.deviceLabel||'未生成';
   $('licenseCountdown').textContent=s.valid?(s.type==='permanent'?'永久免费 · 离线凭证按期续签':('剩余 '+Math.max(0,Math.ceil((s.expiresAt-Date.now())/60000))+' 分钟')):'';
-  $('btnLicenseTrial').disabled=s.valid||!s.configured;
+  const reason=String(s.error||s.reason||'');
+  const trialExpired=reason==='trial_expired'||reason==='24小时试用已经结束';
+  $('btnLicenseTrial').disabled=s.valid||!s.configured||trialExpired;
   $('btnLicenseActivate').disabled=!s.configured;
+  $('btnLicenseAdmin').disabled=!s.configured;
+  $('btnLicenseAdmin').title=s.configured?'在默认浏览器打开运营管理中心；需要管理员令牌登录':'授权服务尚未配置';
   $('licenseStatusMini').textContent=s.valid?(s.type==='permanent'?'✓ 永久授权':'试用中'):'需激活';
-  feedback(s.error||(s.valid?'授权验证通过。你的漫剧项目、账号及素材始终保存在本地。':!s.configured?'需要部署独独AI授权服务并配置公钥后，才能启用免费试用和永久卡密。':s.reason||'首次使用可免费体验24小时，或加微信领取免费永久卡密。'));
+  const reasonMessages={trial_expired:'本机24小时免费试用已到期，不能重复领取。可以提交免费永久授权申请或输入永久卡密。','24小时试用已经结束':'本机24小时免费试用已到期，不能重复领取。可以提交免费永久授权申请或输入永久卡密。',not_started:'尚未开始免费试用，可以点击“开始免费体验”。'};
+  feedback(s.valid?'授权验证通过。你的漫剧项目、账号及素材始终保存在本地。':!s.configured?'需要部署独独AI授权服务并配置公钥后，才能启用免费试用和永久卡密。':(reasonMessages[reason]||reason||'首次使用可免费体验24小时，或加微信领取免费永久卡密。'));
  }
  async function refresh(){const v=await B.licenseStatus();render(v);return v}
  async function loadProducts(){
@@ -133,6 +138,7 @@
  $('btnLicenseBuy').onclick=()=>buyProduct().catch(err=>$('licenseOrderStatus').textContent='购买失败：'+err.message);
  $('btnLicenseOrdersRefresh').onclick=()=>loadMyOrders();
  $('btnLicenseReadonly').onclick=close;
+ $('btnLicenseAdmin').onclick=async()=>{try{await B.licenseOpenAdmin();feedback('已在浏览器打开运营管理中心，请使用管理员令牌登录。')}catch(err){feedback('打开运营管理中心失败：'+String(err.message||err),'error')}};
  $('btnLicenseWechat').onclick=()=>B.copyText('du4du44').then(()=>feedback('已复制 du4du44'));
  $('btnLicenseBackupWechat').onclick=()=>B.copyText('du6du66').then(()=>feedback('已复制 du6du66'));
  dialog.addEventListener('cancel',e=>{e.preventDefault();close()});
