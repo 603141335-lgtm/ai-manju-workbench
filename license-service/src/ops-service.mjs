@@ -578,6 +578,12 @@ async function adminOps(req, env, path, helpers) {
 
 export async function handleOpsRequest(request, env, path, helpers) {
 
+  const signedDevicePaths=new Set(["/v1/application/create","/v1/application/status","/v1/orders/create","/v1/orders/status","/v1/orders/list","/v1/orders/reconcile"]);
+  if(request.method==="POST"&&(signedDevicePaths.has(path)||path.startsWith("/v1/admin/"))) {
+    const limit=path.startsWith("/v1/admin/content/")?65536:8192;
+    if(Number(request.headers.get("content-length")||0)>limit) return json({error:"请求过大"},413);
+    if(!(request.headers.get("content-type")||"").toLowerCase().startsWith("application/json")) return json({error:"请求必须为JSON"},415);
+  }
   if(path==="/manifest.json"&&request.method==="GET") {
     return json(await loadCurrentManifest(env),200,{"cache-control":"public,max-age=60"});
   }
