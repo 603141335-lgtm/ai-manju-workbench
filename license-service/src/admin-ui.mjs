@@ -199,7 +199,7 @@ async function loadFinance(){
  if(!$("financeFrom").value){const from=new Date();from.setDate(from.getDate()-29);$("financeFrom").value=dateInputValue(from)}
  if(!$("financeTo").value)$("financeTo").value=dateInputValue(new Date());
  const fromMs=new Date($("financeFrom").value+"T00:00:00").getTime(),toMs=new Date($("financeTo").value+"T00:00:00").getTime()+86400000;
- const v=await api("/v1/admin/finance/summary",{fromMs,toMs});
+ const v=await api("/v1/admin/finance/summary",{fromMs,toMs,tzOffsetMinutes:-new Date().getTimezoneOffset()});
  $("finGross").textContent=formatMoney(v.grossCents);$("finRefunded").textContent=formatMoney(v.refundedCents);$("finNet").textContent=formatMoney(v.netCents);$("finCounts").textContent=v.orders+" 单 / "+v.refundCount+" 笔";
  const render=(id,rows,columns)=>{const root=$(id);root.replaceChildren();rows.forEach(x=>{const tr=document.createElement("tr");columns.forEach(c=>cell(tr,c(x)));root.append(tr)});if(!rows.length){const tr=document.createElement("tr");cell(tr,"暂无数据");root.append(tr)}};
  render("financeChannels",v.channels,[x=>x.payment_method==="wechat"?"微信支付":"支付宝",x=>x.orders,x=>formatMoney(x.gross_cents)]);
