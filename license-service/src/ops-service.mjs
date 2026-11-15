@@ -786,7 +786,116 @@ async function checkoutPage(request, env, orderId) {
   return new Response("支付信息暂不可用",{status:502});
 }
 
+function isLocalTestRequest(request,env) {
+  if(env.DUDU_TEST_MODE!=="local-only") return false;
+  const host=new URL(request.url).hostname.toLowerCase().replace(/^\[|\]$/g,"");
+  return host==="localhost"||host==="127.0.0.1"||host==="::1";
+}
+
+const localTestConsoleHtml = \`<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>独独AI V1.3 本机支付模拟台</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0b1424;color:#e8eef9;font:15px "Microsoft YaHei",sans-serif;padding:24px}
+main{max-width:760px;margin:auto}.panel{background:#14243a;border:1px solid #29415f;border-radius:14px;padding:20px;margin:14px 0}
+h1{font-size:24px;margin:0 0 8px}.muted{color:#a9bad1}.warning{color:#ffd48a;background:#3b2b16;border:1px solid #705027;padding:12px;border-radius:9px}
+input,select,button{font:inherit;border-radius:8px;padding:10px;border:1px solid #49617e;background:#0e1b2e;color:#eef4ff}
+input,select{width:100%;margin:8px 0 14px}button{background:#315fba;border:0;margin:4px 6px 4px 0;cursor:pointer}button.secondary{background:#42536b}
+pre{white-space:pre-wrap;word-break:break-word;background:#09111e;border-radius:9px;padding:14px;min-height:120px;overflow:auto}
+a{color:#9bc1ff}
+</style>
+<main>
+<h1>独独AI运营管理中心 V1.3｜本机模拟测试</h1>
+<p class="muted">仅供本机开发验收 · 监听 127.0.0.1 · 不连接微信/支付宝 · 不发生真实扣款或退款</p>
+<div class="warning">测试数据只写入本机 D1 状态目录。请勿将本测试配置部署到 Cloudflare，也不要填入正式商户密钥。</div>
+<section class="panel">
+<label>本机测试管理员令牌</label><input id="token" type="password" autocomplete="off" placeholder="粘贴启动命令输出的本机测试令牌">
+<label>模拟支付渠道</label><select id="provider"><option value="wechat">微信支付流程（模拟）</option><option value="alipay">支付宝流程（模拟）</option></select>
+<p><button onclick="createOrder()">1. 创建模拟订单</button><button onclick="markPaid()">2. 模拟支付成功并发放授权</button></p>
+<p><button onclick="startRefund()">3. 发起模拟退款</button><button onclick="completeRefund()">4. 模拟退款成功并撤销授权</button><button class="secondary" onclick="failRefund()">模拟退款失败</button></p>
+<p><a href="/admin" target="_blank" rel="noreferrer">打开运营管理后台</a></p>
+</section>
+<section class="panel"><strong>本次测试结果</strong><pre id="output">等待操作…</pre></section>
+</main>
+<script>
+let orderId="",refundId="";
+async function call(path,body){
+ const token=document.getElementById("token").value.trim();
+ if(!token){alert("请先粘贴本机测试管理员令牌");return null}
+ const response=await fetch(path,{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+token},body:JSON.stringify(body||{})});
+ const data=await response.json().catch(()=>({error:"服务器返回非JSON"}));
+ if(data.orderId)orderId=data.orderId;if(data.refundId)refundId=data.refundId;
+ document.getElementById("output").textContent=JSON.stringify({httpStatus:response.status,data},null,2);
+ return data;
+}
+async function createOrder(){await call("/v1/admin/test/orders/create",{productId:"v13-test-product",paymentMethod:document.getElementById("provider").value})}
+async function markPaid(){if(!orderId){alert("请先创建模拟订单");return}await call("/v1/admin/test/payments/mark-paid",{orderId})}
+async function startRefund(){if(!orderId){alert("请先创建并模拟支付成功");return}await call("/v1/admin/test/refunds/start",{orderId,reason:"本机 V1.3 退款流程验收"})}
+async function completeRefund(){if(!refundId){alert("请先发起模拟退款");return}await call("/v1/admin/test/refunds/complete",{refundId})}
+async function failRefund(){if(!refundId){alert("请先发起模拟退款");return}await call("/v1/admin/test/refunds/fail",{refundId})}
+</script></html>\`;
+
+async function localTestAdminOps(req,env,path,body,helpers) {
+  if(path==="/v1/admin/test/orders/create") {
+    const productId=clean(body.productId,80)||"v13-test-product",method=body.paymentMethod;
+    if(!["wechat","alipay"].includes(method)) return json({error:"模拟支付渠道无效"},400);
+    const product=await env.DB.prepare("SELECT * FROM products WHERE product_id=? AND enabled=1").bind(productId).first();
+    if(!product) return json({error:"本机测试商品不存在，请重新初始化本机测试环境"},404);
+    const now=Date.now(),id=crypto.randomUUID(),number="DU-LOCAL-"+Date.now().toString(36).toUpperCase()+randomHex(6).toUpperCase();
+    const deviceHash=hex(await crypto.subtle.digest("SHA-256",enc.encode("local-test-device:"+id)));
+    await env.DB.prepare("INSERT INTO devices(device_hash,public_key,created_ms) VALUES(?,?,?)").bind(deviceHash,"LOCAL_TEST_ONLY",now).run();
+    await env.DB.prepare("INSERT INTO orders(order_id,order_no,device_hash,product_id,product_name,amount_cents,payment_method,status,checkout_data,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,'pending','{}',?,?)")
+      .bind(id,number,deviceHash,product.product_id,product.name,product.price_cents,method,now,now).run();
+    await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES('local_test_order_create',?)").bind(now).run();
+    return json({ok:true,orderId:id,orderNo:number,status:"pending",paymentMethod:method,productName:product.name,amountCents:product.price_cents,simulated:true},201);
+  }
+  if(path==="/v1/admin/test/payments/mark-paid") {
+    const id=clean(body.orderId,80),order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(id).first();
+    if(!order) return json({error:"本机测试订单不存在"},404);
+    if(order.status==="refunded") return json({error:"订单已退款，不能再次模拟支付"},409);
+    const eventId="local-test-paid-"+order.order_id;
+    const raw=JSON.stringify({mode:"local-only",orderId:order.order_id,orderNo:order.order_no,paymentMethod:order.payment_method});
+    const digest=hex(await crypto.subtle.digest("SHA-256",enc.encode(raw)));
+    const delivery=await markOrderPaid(env,order,"LOCAL-TEST-TRADE-"+order.order_no,eventId,digest,helpers);
+    await logPaymentWebhook(env,{provider:order.payment_method,eventId,orderNo:order.order_no,outcome:"accepted",message:"本机模拟支付成功（无真实资金）",raw});
+    return json({ok:true,orderId:order.order_id,orderNo:order.order_no,status:"paid",simulated:true,...delivery});
+  }
+  if(path==="/v1/admin/test/refunds/start") {
+    const id=clean(body.orderId,80),order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(id).first();
+    if(!order) return json({error:"本机测试订单不存在"},404);
+    if(order.status!=="paid") return json({error:"只有模拟支付成功的订单可以发起退款"},400);
+    const active=await env.DB.prepare("SELECT refund_id,status FROM refunds WHERE order_id=? AND status IN ('processing','manual_review','succeeded') LIMIT 1").bind(id).first();
+    if(active) return json({error:"该订单已有退款记录",refundId:active.refund_id,status:active.status},409);
+    const now=Date.now(),refund={refund_id:crypto.randomUUID(),order_id:id,refund_no:"RF-LOCAL-"+randomHex(8).toUpperCase(),provider:order.payment_method,amount_cents:order.amount_cents,reason:clean(body.reason,200)||"本机模拟退款",status:"processing",created_ms:now,updated_ms:now};
+    await env.DB.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms) VALUES(?,?,?,?,?,?, 'processing',?,?)")
+      .bind(refund.refund_id,refund.order_id,refund.refund_no,refund.provider,refund.amount_cents,refund.reason,now,now).run();
+    await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES('local_test_refund_start',?)").bind(now).run();
+    return json({ok:true,refundId:refund.refund_id,refundNo:refund.refund_no,status:"processing",amountCents:refund.amount_cents,simulated:true},202);
+  }
+  if(path==="/v1/admin/test/refunds/complete"||path==="/v1/admin/test/refunds/fail") {
+    const refund=await env.DB.prepare("SELECT * FROM refunds WHERE refund_id=?").bind(clean(body.refundId,80)).first();
+    if(!refund) return json({error:"本机测试退款记录不存在"},404);
+    const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(refund.order_id).first();
+    if(!order) return json({error:"本机测试原订单不存在"},404);
+    if(path.endsWith("/complete")) {
+      const result=await completeRefund(env,refund,"LOCAL_TEST_REFUND_SUCCESS","LOCAL-REFUND-"+refund.refund_no);
+      await logPaymentWebhook(env,{provider:refund.provider,eventId:"local-test-refund-"+refund.refund_id,orderNo:order.order_no,outcome:"accepted",message:"本机模拟退款成功（无真实资金）",raw:JSON.stringify({mode:"local-only",refundId:refund.refund_id})});
+      return json({ok:true,refundId:refund.refund_id,orderId:order.order_id,simulated:true,...result});
+    }
+    const result=await setRefundState(env,refund,{status:"failed",providerStatus:"LOCAL_TEST_FAILED",error:"本机模拟退款失败；未发生真实资金退款"});
+    await logPaymentWebhook(env,{provider:refund.provider,eventId:"local-test-refund-failed-"+refund.refund_id,orderNo:order.order_no,outcome:"ignored",message:"本机模拟退款失败（无真实资金）",raw:JSON.stringify({mode:"local-only",refundId:refund.refund_id})});
+    return json({ok:true,refundId:refund.refund_id,orderId:order.order_id,simulated:true,...result});
+  }
+  return json({error:"未知本机测试操作"},404);
+}
+
 async function adminOps(req, env, path, helpers) {
+  if(path.startsWith("/v1/admin/test/")) {
+    if(!isLocalTestRequest(req,env)) return json({error:"Not found"},404);
+    if(!await helpers.adminAuth(req,env)) return json({error:"管理员身份验证失败"},401);
+    const testBody=await req.json().catch(()=>({}));
+    return localTestAdminOps(req,env,path,testBody,helpers);
+  }
   if(!await helpers.adminAuth(req,env)) return json({error:"管理员身份验证失败"},401);
   let body={}; if(req.method==="POST") body=await req.json().catch(()=>({}));
   if(path==="/v1/admin/overview") {
@@ -992,6 +1101,10 @@ export async function handleOpsRequest(request, env, path, helpers) {
     const limit=path.startsWith("/v1/admin/content/")?65536:8192;
     if(Number(request.headers.get("content-length")||0)>limit) return json({error:"请求过大"},413);
     if(!(request.headers.get("content-type")||"").toLowerCase().startsWith("application/json")) return json({error:"请求必须为JSON"},415);
+  }
+  if(path==="/__test"&&request.method==="GET") {
+    if(!isLocalTestRequest(request,env)) return new Response("Not found",{status:404});
+    return new Response(localTestConsoleHtml,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","content-security-policy":"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'","x-content-type-options":"nosniff"}});
   }
   if(path==="/manifest.json"&&request.method==="GET") {
     return json(await loadCurrentManifest(env),200,{"cache-control":"public,max-age=60"});
