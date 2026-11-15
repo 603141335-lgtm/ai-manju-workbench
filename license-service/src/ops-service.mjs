@@ -792,7 +792,7 @@ function isLocalTestRequest(request,env) {
   return host==="localhost"||host==="127.0.0.1"||host==="::1";
 }
 
-const localTestConsoleHtml = \`<!doctype html>
+const localTestConsoleHtml = `<!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>独独AI V1.3 本机支付模拟台</title>
 <style>
@@ -833,7 +833,7 @@ async function markPaid(){if(!orderId){alert("请先创建模拟订单");return}
 async function startRefund(){if(!orderId){alert("请先创建并模拟支付成功");return}await call("/v1/admin/test/refunds/start",{orderId,reason:"本机 V1.3 退款流程验收"})}
 async function completeRefund(){if(!refundId){alert("请先发起模拟退款");return}await call("/v1/admin/test/refunds/complete",{refundId})}
 async function failRefund(){if(!refundId){alert("请先发起模拟退款");return}await call("/v1/admin/test/refunds/fail",{refundId})}
-</script></html>\`;
+</script></html>`;
 
 async function localTestAdminOps(req,env,path,body,helpers) {
   if(path==="/v1/admin/test/orders/create") {
