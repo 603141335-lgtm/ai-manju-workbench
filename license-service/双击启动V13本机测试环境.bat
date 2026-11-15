@@ -11,12 +11,10 @@ where node >nul 2>nul
 if errorlevel 1 goto missing_node
 node -e "if(Number(process.versions.node.split('.')[0])<22)process.exit(1)"
 if errorlevel 1 goto old_node
-if not exist "node_modules\wrangler" (
-  echo.
-  echo [1/3] 首次运行，正在自动安装项目依赖，请稍候...
-  call npm ci --no-audit --no-fund
-  if errorlevel 1 goto failed
-)
+echo.
+echo [1/3] 正在按锁定版本安装依赖，并启用已审核的本机运行组件...
+call npm ci --no-audit --no-fund
+if errorlevel 1 goto failed
 echo.
 echo [2/3] 检查启动代码...
 call npm run check
