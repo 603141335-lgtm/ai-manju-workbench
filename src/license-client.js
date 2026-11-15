@@ -24,9 +24,9 @@ function winMachineGuid(){
 }
 function validServiceUrl(url,{allowLocalTest=false}={}){
  try{
-  const u=new URL(url),clean=!u.username&&!u.password&&!u.hash&&!u.search&&!u.port;
+  const u=new URL(url),clean=!u.username&&!u.password&&!u.hash&&!u.search;
   if(!clean)return '';
-  if(u.protocol==='https:'&&!/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(u.hostname))return u.origin;
+  if(u.protocol==='https:'&&!u.port&&!/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(u.hostname))return u.origin;
   if(allowLocalTest&&u.protocol==='http:'&&u.hostname==='127.0.0.1'&&u.port==='8788'&&(u.pathname==='/'||u.pathname===''))return u.origin;
   return '';
  }catch{return ''}
