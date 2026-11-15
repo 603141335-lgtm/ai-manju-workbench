@@ -909,6 +909,7 @@ async function adminOps(req, env, path, helpers) {
         .bind(now,note,id).run();
       if(!r.meta?.changes) return json({error:"申请已被其他操作处理"},409);
       await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES('application_reject',?)").bind(now).run();
+      await recordAdminActivity(env,actor,"application_reject","application",id,note);
       return json({ok:true,status:"rejected"});
     }
     const code=helpers.newCode(),cardId=crypto.randomUUID(),hash=await helpers.hmac(env.DUDU_CARD_HMAC_KEY,code);
@@ -921,6 +922,7 @@ async function adminOps(req, env, path, helpers) {
         .bind(cardId,now,id,cardId)
     ]);
     if(!result?.[0]?.meta?.changes||!result?.[1]?.meta?.changes) return json({error:"申请已被其他操作处理"},409);
+    await recordAdminActivity(env,actor,"application_approve","application",id,note);
     return json({ok:true,status:"approved",activatedOnDevice:true});
   }
   if(path==="/v1/admin/products/list") {
@@ -938,12 +940,14 @@ async function adminOps(req, env, path, helpers) {
     else await env.DB.prepare("INSERT INTO products(product_id,name,description,price_cents,entitlement_type,enabled,sort_order,created_ms,updated_ms) VALUES(?,?,?,?,'permanent',?,?,?,?)")
       .bind(id,name,description,price,enabled,sort,Date.now(),Date.now()).run();
     await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES('product_save',?)").bind(Date.now()).run();
+    await recordAdminActivity(env,actor,"product_save","product",id,name);
     return json({ok:true,productId:id});
   }
   if(path==="/v1/admin/products/toggle") {
     const id=clean(body.productId,80),enabled=body.enabled===true?1:0;
     const r=await env.DB.prepare("UPDATE products SET enabled=?,updated_ms=? WHERE product_id=?").bind(enabled,Date.now(),id).run();
     if(!r.meta?.changes) return json({error:"商品不存在"},404);
+    await recordAdminActivity(env,actor,"product_toggle","product",id,enabled?"上架":"下架");
     return json({ok:true});
   }
   if(path==="/v1/admin/orders/list") {
@@ -965,6 +969,7 @@ async function adminOps(req, env, path, helpers) {
     await recordReconcileAttempt(env,order.order_id,result.status==="paid"?"":result.message||"");
     await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES(?,?)").bind("payment_reconcile_"+result.status,Date.now()).run();
     if(result.status!=="paid"&&result.message) await env.DB.prepare("UPDATE orders SET last_error=?,updated_ms=? WHERE order_id=?").bind(clean(result.message,240),Date.now(),order.order_id).run();
+    await recordAdminActivity(env,actor,"order_reconcile","order",id,result.status+"："+(result.message||""));
     return json({...result,orderId:id});
   }
   if(path==="/v1/admin/orders/resend") {
@@ -972,6 +977,7 @@ async function adminOps(req, env, path, helpers) {
     const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(id).first();
     if(!order||order.status!=="paid") return json({error:"仅已支付订单可以补发"},400);
     await deliverPaidOrder(env,order,helpers);
+    await recordAdminActivity(env,actor,"order_resend","order",id,"管理员手动补发授权");
     return json({ok:true,delivered:true});
   }
   if(path==="/v1/admin/audit/list") {
@@ -1014,6 +1020,7 @@ async function adminOps(req, env, path, helpers) {
   if(path==="/v1/admin/payments/self-test") {
     const [wechat,alipay]=await Promise.all([paymentSelfTest(env,"wechat"),paymentSelfTest(env,"alipay")]);
     await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES('payment_local_self_test',?)").bind(Date.now()).run();
+    await recordAdminActivity(env,actor,"payment_self_test","payment","","执行本地密钥自检");
     return json({wechat,alipay,note:"本地密钥自检不等于支付平台在线连通性测试；不会创建订单或扣款。"});
   }
   if(path==="/v1/admin/payments/reconcile/run") {
@@ -1021,6 +1028,7 @@ async function adminOps(req, env, path, helpers) {
     if(last?.occurred_ms&&Date.now()-last.occurred_ms<60000) return json({error:"手动补偿操作间隔至少60秒"},429);
     const result=await runScheduledReconciliation(env,helpers);
     await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES(?,?)").bind("manual_payment_reconcile",Date.now()).run();
+    await recordAdminActivity(env,actor,"payment_reconcile","payment","",JSON.stringify(result));
     return json({ok:true,...result});
   }
   if(path==="/v1/admin/payments/status") {
@@ -1038,6 +1046,7 @@ async function adminOps(req, env, path, helpers) {
     await env.DB.prepare("INSERT INTO public_content(content_id,manifest_json,updated_ms) VALUES(1,?,?) ON CONFLICT(content_id) DO UPDATE SET manifest_json=excluded.manifest_json,updated_ms=excluded.updated_ms")
       .bind(value,now).run();
     await env.DB.prepare("INSERT INTO admin_audit(event,occurred_ms) VALUES('content_publish',?)").bind(now).run();
+    await recordAdminActivity(env,actor,"content_publish","content",String(historyId),"发布公告与教程");
     return json({ok:true,updatedAt:manifest.updatedAt,historyId});
   }
   if(path==="/v1/admin/content/history") {
@@ -1053,6 +1062,7 @@ async function adminOps(req, env, path, helpers) {
     await env.DB.prepare("INSERT INTO public_content_history(history_id,manifest_json,created_ms) VALUES(?,?,?)").bind(crypto.randomUUID(),JSON.stringify(manifest),now).run();
     await env.DB.prepare("INSERT INTO public_content(content_id,manifest_json,updated_ms) VALUES(1,?,?) ON CONFLICT(content_id) DO UPDATE SET manifest_json=excluded.manifest_json,updated_ms=excluded.updated_ms")
       .bind(JSON.stringify(manifest),now).run();
+    await recordAdminActivity(env,actor,"content_rollback","content",id,"回滚公告与教程版本");
     return json({ok:true,updatedAt:manifest.updatedAt});
   }
   return json({error:"未知管理操作"},404);
