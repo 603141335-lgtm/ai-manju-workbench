@@ -166,6 +166,7 @@ test('admin payment monitoring endpoints return health, webhook history and deli
   db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
   const env={DB:makeD1(db)};
   const helpers={adminAuth:async()=>true};
+  db.prepare("INSERT INTO payment_webhook_logs(provider,event_id,order_no,outcome,message,payload_sha256,occurred_ms) VALUES('wechat','refund-event-1','DU-REFUND-1','accepted','退款回调验签通过：SUCCESS',?,?)").run('a'.repeat(64),Date.now());
   const request=path=>new Request('https://dudu.example'+path,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
   const healthResponse=await handleOpsRequest(request('/v1/admin/payments/health'),env,'/v1/admin/payments/health',helpers);
   assert.equal(healthResponse.status,200);
@@ -173,11 +174,38 @@ test('admin payment monitoring endpoints return health, webhook history and deli
   assert.equal(health.pendingOrders,0);
   assert.equal(health.paidUndelivered,0);
   assert.equal(health.callbacks.wechat,'https://dudu.example/v1/payments/wechat/notify');
+  assert.equal(health.callbacks.wechatRefund,'https://dudu.example/v1/payments/wechat/refund-notify');
   assert.equal(health.callbacks.alipay,'https://dudu.example/v1/payments/alipay/notify');
+  assert.equal(health.lastWebhook.wechat,null);
+  assert.equal(health.lastWebhook.wechatRefund.outcome,'accepted');
+  assert.equal(health.lastWebhook.wechatRefund.event_id,'refund-event-1');
   const events=await (await handleOpsRequest(request('/v1/admin/payments/events/list'),env,'/v1/admin/payments/events/list',helpers)).json();
-  assert.deepEqual(events.events,[]);
+  assert.equal(events.events.length,1);
+  assert.equal(events.events[0].event_id,'refund-event-1');
   const deliveries=await (await handleOpsRequest(request('/v1/admin/deliveries/list'),env,'/v1/admin/deliveries/list',helpers)).json();
   assert.deepEqual(deliveries.deliveries,[]);
+  db.close();
+});
+
+
+test('payment health reports the effective configured callback URLs',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const env={
+    DB:makeD1(db),
+    WECHATPAY_NOTIFY_URL:'https://hooks.example/pay/wechat',
+    WECHATPAY_REFUND_NOTIFY_URL:'https://hooks.example/refund/wechat',
+    ALIPAY_NOTIFY_URL:'https://hooks.example/pay/alipay'
+  };
+  const helpers={adminAuth:async()=>true};
+  const req=new Request('https://dudu.example/v1/admin/payments/health',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+  const response=await handleOpsRequest(req,env,'/v1/admin/payments/health',helpers);
+  const health=await response.json();
+  assert.deepEqual(health.callbacks,{
+    wechat:'https://hooks.example/pay/wechat',
+    wechatRefund:'https://hooks.example/refund/wechat',
+    alipay:'https://hooks.example/pay/alipay'
+  });
   db.close();
 });
 
@@ -346,4 +374,113 @@ test('Alipay refund query does not mark a refund successful without REFUND_SUCCE
     assert.equal((await response.json()).status,'processing');
     assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(seeded.orderId).status,'paid');
   }finally{globalThis.fetch=originalFetch;db.close()}
+});
+
+test('refund reconciliation applies one-minute WeChat and ten-second Alipay query cooldowns from the last attempt',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const now=Date.now();
+  const wx=seedPaidOrder(db,{orderId:'order-wx-cooldown',orderNo:'DU-WX-CD',provider:'wechat',cardId:'card-wx-cd'});
+  const ali=seedPaidOrder(db,{orderId:'order-ali-cooldown',orderNo:'DU-ALI-CD',provider:'alipay',cardId:'card-ali-cd'});
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,last_checked_ms) VALUES('refund-wx-cd',?,'RF-WX-CD','wechat',1200,'test','processing',?,?,?)")
+    .run(wx.orderId,now-120000,now-120000,now-30000);
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,last_checked_ms) VALUES('refund-ali-cd',?,'RF-ALI-CD','alipay',1200,'test','processing',?,?,?)")
+    .run(ali.orderId,now-120000,now-120000,now-5000);
+  const env={DB:makeD1(db),
+    WECHATPAY_MCHID:'1900000109',WECHATPAY_APPID:'wx-test',WECHATPAY_SERIAL_NO:'merchant-serial',
+    WECHATPAY_PRIVATE_KEY_PEM:'invalid-private-key',WECHATPAY_API_V3_KEY:'12345678901234567890123456789012',
+    WECHATPAY_PLATFORM_PUBLIC_KEY_PEM:'invalid-public-key',WECHATPAY_PLATFORM_SERIAL:'platform-serial',
+    ALIPAY_APP_ID:'app-test',ALIPAY_SELLER_ID:'seller-test',ALIPAY_PRIVATE_KEY_PEM:'invalid-private-key',ALIPAY_PUBLIC_KEY_PEM:'invalid-public-key'
+  },helpers={adminAuth:async()=>true};
+  const reconcile=refundId=>handleOpsRequest(new Request('https://dudu.example/v1/admin/refunds/reconcile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({refundId})}),env,'/v1/admin/refunds/reconcile',helpers);
+  try{
+    const wxTooSoon=await reconcile('refund-wx-cd');
+    assert.equal(wxTooSoon.status,429);
+    assert.match((await wxTooSoon.json()).error,/60秒/);
+    const aliTooSoon=await reconcile('refund-ali-cd');
+    assert.equal(aliTooSoon.status,429);
+    assert.match((await aliTooSoon.json()).error,/10秒/);
+    db.prepare("UPDATE refunds SET last_checked_ms=? WHERE refund_id='refund-wx-cd'").run(now-61000);
+    db.prepare("UPDATE refunds SET last_checked_ms=? WHERE refund_id='refund-ali-cd'").run(now-11000);
+    assert.equal((await reconcile('refund-wx-cd')).status,202);
+    assert.equal((await reconcile('refund-ali-cd')).status,202);
+    assert.equal((await reconcile('refund-wx-cd')).status,429);
+    assert.equal((await reconcile('refund-ali-cd')).status,429);
+  }finally{db.close()}
+});
+
+test('only one concurrent refund reconciliation request can claim the provider query slot',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const seeded=seedPaidOrder(db,{orderId:'order-refund-lock',orderNo:'DU-REFUND-LOCK',provider:'alipay',cardId:'card-refund-lock'});
+  const now=Date.now();
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,last_checked_ms) VALUES('refund-lock',?,'RF-LOCK','alipay',1200,'并发测试','processing',?,?,?)")
+    .run(seeded.orderId,now-120000,now-120000,now-11000);
+  const pair=generateKeyPairSync('rsa',{modulusLength:2048});
+  const env={DB:makeD1(db),ALIPAY_APP_ID:'app-test',ALIPAY_SELLER_ID:'seller-test',
+    ALIPAY_PRIVATE_KEY_PEM:pair.privateKey.export({type:'pkcs8',format:'pem'}),
+    ALIPAY_PUBLIC_KEY_PEM:pair.publicKey.export({type:'spki',format:'pem'})};
+  const originalFetch=globalThis.fetch;
+  let calls=0,releaseFetch,startedFetch;
+  const gate=new Promise(resolve=>{releaseFetch=resolve});
+  const started=new Promise(resolve=>{startedFetch=resolve});
+  globalThis.fetch=async(_url,options)=>{
+    calls++;startedFetch();
+    await gate;
+    const params=Object.fromEntries(new URLSearchParams(options.body).entries());
+    assert.equal(params.method,'alipay.trade.fastpay.refund.query');
+    const data={code:'10000',msg:'Success',out_trade_no:seeded.orderNo,out_request_no:'RF-LOCK',total_amount:'12.00',refund_amount:'12.00'};
+    const sign=nodeSign('RSA-SHA256',Buffer.from(alipaySignContent(data)),pair.privateKey).toString('base64');
+    return new Response(JSON.stringify({alipay_trade_fastpay_refund_query_response:data,sign}),{status:200});
+  };
+  const reconcile=()=>handleOpsRequest(new Request('https://dudu.example/v1/admin/refunds/reconcile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({refundId:'refund-lock'})}),env,'/v1/admin/refunds/reconcile',{adminAuth:async()=>true});
+  try{
+    const firstPromise=reconcile();
+    await started;
+    const concurrent=await reconcile();
+    assert.equal(concurrent.status,429);
+    releaseFetch();
+    const first=await firstPromise;
+    assert.equal(first.status,200);
+    assert.equal((await first.json()).status,'processing');
+    assert.equal(calls,1);
+  }finally{releaseFetch?.();globalThis.fetch=originalFetch;db.close()}
+});
+
+test('a late processing query result cannot overwrite a verified successful WeChat refund callback',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const seeded=seedPaidOrder(db,{orderId:'order-refund-race',orderNo:'DU-REFUND-RACE',provider:'wechat',cardId:'card-refund-race'});
+  const now=Date.now();
+  db.prepare("INSERT INTO refunds(refund_id,order_id,refund_no,provider,amount_cents,reason,status,created_ms,updated_ms,last_checked_ms) VALUES('refund-race',?,'RF-RACE','wechat',1200,'并发回调测试','processing',?,?,?)")
+    .run(seeded.orderId,now-120000,now-120000,now-61000);
+  const pair=generateKeyPairSync('rsa',{modulusLength:2048});
+  const privatePem=pair.privateKey.export({type:'pkcs8',format:'pem'}),publicPem=pair.publicKey.export({type:'spki',format:'pem'});
+  const env={DB:makeD1(db),WECHATPAY_MCHID:'1900000109',WECHATPAY_APPID:'wx-test',WECHATPAY_SERIAL_NO:'merchant-serial',
+    WECHATPAY_PRIVATE_KEY_PEM:privatePem,WECHATPAY_API_V3_KEY:'12345678901234567890123456789012',
+    WECHATPAY_PLATFORM_PUBLIC_KEY_PEM:publicPem,WECHATPAY_PLATFORM_SERIAL:'platform-serial'};
+  const originalFetch=globalThis.fetch;
+  let releaseFetch,startedFetch;
+  const gate=new Promise(resolve=>{releaseFetch=resolve});
+  const started=new Promise(resolve=>{startedFetch=resolve});
+  globalThis.fetch=async(url,options)=>{
+    assert.equal(options.method,'GET');
+    assert.equal(url,'https://api.mch.weixin.qq.com/v3/refund/domestic/refunds/RF-RACE');
+    startedFetch();await gate;
+    return signedWechatResponse({out_trade_no:seeded.orderNo,out_refund_no:'RF-RACE',refund_id:'wx-refund-race',status:'PROCESSING',amount:{total:1200,refund:1200}},pair.privateKey);
+  };
+  const reconcile=()=>handleOpsRequest(new Request('https://dudu.example/v1/admin/refunds/reconcile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({refundId:'refund-race'})}),env,'/v1/admin/refunds/reconcile',{adminAuth:async()=>true});
+  try{
+    const queryPromise=reconcile();
+    await started;
+    const notify=await signedWechatRefundNotify({mchid:env.WECHATPAY_MCHID,out_trade_no:seeded.orderNo,out_refund_no:'RF-RACE',refund_id:'wx-refund-race',refund_status:'SUCCESS',amount:{total:1200,refund:1200}},env,pair.privateKey);
+    const callback=await handleOpsRequest(notify,env,'/v1/payments/wechat/refund-notify',{});
+    assert.equal(callback.status,200);
+    assert.equal((await callback.json()).code,'SUCCESS');
+    releaseFetch();
+    const query=await queryPromise;
+    const queryResult=await query.json();
+    assert.equal(query.status,200);
+    assert.equal(queryResult.status,'succeeded');
+    assert.equal(db.prepare("SELECT status FROM refunds WHERE refund_id='refund-race'").get().status,'succeeded');
+    assert.equal(db.prepare("SELECT status FROM orders WHERE order_id=?").get(seeded.orderId).status,'refunded');
+    assert.ok(db.prepare("SELECT revoked_ms FROM license_cards WHERE id=?").get(seeded.cardId).revoked_ms);
+  }finally{releaseFetch?.();globalThis.fetch=originalFetch;db.close()}
 });

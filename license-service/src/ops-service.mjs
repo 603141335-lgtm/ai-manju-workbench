@@ -339,8 +339,15 @@ async function completeRefund(env,refund,providerStatus,providerRefundId="") {
 async function setRefundState(env,refund,{status,providerStatus="",providerRefundId="",error=""}) {
   if(status==="succeeded") return completeRefund(env,refund,providerStatus,providerRefundId);
   const now=Date.now();
-  await env.DB.prepare("UPDATE refunds SET status=?,provider_status=?,provider_refund_id=CASE WHEN ?='' THEN provider_refund_id ELSE ? END,last_error=?,last_checked_ms=?,updated_ms=?,attempts=attempts+1 WHERE refund_id=?")
+  const updated=await env.DB.prepare("UPDATE refunds SET status=?,provider_status=?,provider_refund_id=CASE WHEN ?='' THEN provider_refund_id ELSE ? END,last_error=?,last_checked_ms=?,updated_ms=?,attempts=attempts+1 WHERE refund_id=? AND status IN ('processing','manual_review')")
     .bind(status,clean(providerStatus,60),providerRefundId,providerRefundId,clean(error,240),now,now,refund.refund_id).run();
+  if(!updated.meta?.changes) {
+    const current=await env.DB.prepare("SELECT status FROM refunds WHERE refund_id=?").bind(refund.refund_id).first();
+    if(current?.status==="succeeded") return {status:"succeeded",message:"退款已由支付平台确认成功；本订单对应授权已自动撤销"};
+    if(current?.status==="failed") return {status:"failed",message:"该退款单已确认未成功，请核对后再决定是否重新申请"};
+    if(!current) return {status:"not_found",message:"退款记录已不存在"};
+    return {status:current.status,message:"退款状态已被其他操作更新，请刷新后核对"};
+  }
   return {status,message:clean(error,220)||({processing:"退款正在支付平台处理中，尚未撤销授权",failed:"支付平台已确认本次退款未完成",manual_review:"退款结果需要人工核对，系统已暂停自动补发"})[status]||"退款状态已更新"};
 }
 function refundStatusFromWechat(value) {
@@ -433,9 +440,17 @@ async function reconcileAdminRefund(env,refundId) {
   if(!refund) return json({error:"退款记录不存在"},404);
   if(refund.status==="succeeded"||refund.status==="failed") return json({ok:true,status:refund.status,message:refund.status==="succeeded"?"退款已确认成功":"该退款单已确认未成功，请核对后再决定是否重新申请"});
   if(!paymentReady(env,refund.provider)) return json({error:"对应支付商户密钥尚未完整配置"},400);
-  if(refund.provider==="alipay"&&Date.now()-refund.created_ms<10000) return json({error:"支付宝退款查询建议在发起退款10秒后进行"},429);
   const order=await env.DB.prepare("SELECT * FROM orders WHERE order_id=?").bind(refund.order_id).first();
   if(!order) return json({error:"原订单不存在"},404);
+  const now=Date.now(),queryIntervalMs=refund.provider==="wechat"?60000:10000;
+  const claimed=await env.DB.prepare("UPDATE refunds SET last_checked_ms=?,updated_ms=? WHERE refund_id=? AND status IN ('processing','manual_review') AND COALESCE(last_checked_ms,created_ms)<=?")
+    .bind(now,now,refund.refund_id,now-queryIntervalMs).run();
+  if(!claimed.meta?.changes) {
+    const current=await env.DB.prepare("SELECT status FROM refunds WHERE refund_id=?").bind(refund.refund_id).first();
+    if(current?.status==="succeeded"||current?.status==="failed") return json({ok:true,status:current.status,message:current.status==="succeeded"?"退款已确认成功":"该退款单已确认未成功，请核对后再决定是否重新申请"});
+    if(!current) return json({error:"退款记录不存在"},404);
+    return json({error:refund.provider==="wechat"?"微信退款查询已被其他请求占用，或需等待上次查询后60秒":"支付宝退款查询已被其他请求占用，或需等待上次查询后10秒"},429);
+  }
   try {
     const result=refund.provider==="wechat"?await queryWechatRefund(env,order,refund):await queryAlipayRefund(env,order,refund);
     const state=await setRefundState(env,refund,result);
@@ -466,7 +481,7 @@ async function handleWechatRefundNotify(request,env) {
     await logPaymentWebhook(env,{provider:"wechat",eventId,orderNo:refund.order_no,outcome:"accepted",message:"退款回调验签通过："+clean(trade.refund_status,40),raw});
     return json({code:"SUCCESS",message:state.message||"成功"});
   } catch(error) {
-    await logPaymentWebhook(env,{provider:"wechat",eventId,outcome:"error",message:error.message||"退款回调处理失败",raw});
+    await logPaymentWebhook(env,{provider:"wechat",eventId,outcome:"error",message:"微信退款回调处理失败："+clean(error.message||"未知错误",140),raw});
     return json({code:"FAIL",message:clean(error.message,120)||"处理失败"},400);
   }
 }
@@ -890,23 +905,28 @@ async function adminOps(req, env, path, helpers) {
   }
   if(path==="/v1/admin/payments/health") {
     const since=Date.now()-24*60*60*1000;
-    const [pending,undelivered,failedDeliveries,failedWebhooks,webhookCounts,lastWechat,lastAlipay,lastReconcile] = await Promise.all([
+    const [pending,undelivered,failedDeliveries,failedWebhooks,webhookCounts,lastWechat,lastAlipay,lastReconcile,lastWechatRefund] = await Promise.all([
       env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status='pending'").first(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status='paid' AND delivered_ms IS NULL").first(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM delivery_outbox WHERE status IN ('pending','failed')").first(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM payment_webhook_logs WHERE outcome IN ('rejected','error') AND occurred_ms>?").bind(since).first(),
       env.DB.prepare("SELECT provider,outcome,COUNT(*) AS n FROM payment_webhook_logs WHERE occurred_ms>? GROUP BY provider,outcome").bind(since).all(),
-      env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' ORDER BY occurred_ms DESC LIMIT 1").first(),
+      env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' AND message NOT LIKE '%退款回调%' ORDER BY occurred_ms DESC LIMIT 1").first(),
       env.DB.prepare("SELECT occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='alipay' ORDER BY occurred_ms DESC LIMIT 1").first(),
-      env.DB.prepare("SELECT MAX(last_checked_ms) AS checked_ms, SUM(attempts) AS attempts FROM payment_reconcile_state").first()
+      env.DB.prepare("SELECT MAX(last_checked_ms) AS checked_ms, SUM(attempts) AS attempts FROM payment_reconcile_state").first(),
+      env.DB.prepare("SELECT event_id,occurred_ms,outcome,message FROM payment_webhook_logs WHERE provider='wechat' AND message LIKE '%退款回调%' ORDER BY occurred_ms DESC LIMIT 1").first()
     ]);
     const origin=new URL(req.url).origin;
     return json({
       pendingOrders:pending?.n||0,paidUndelivered:undelivered?.n||0,failedDeliveries:failedDeliveries?.n||0,
       failedWebhooks24h:failedWebhooks?.n||0,webhookCounts24h:webhookCounts.results||[],
-      lastWebhook:{wechat:lastWechat||null,alipay:lastAlipay||null},
+      lastWebhook:{wechat:lastWechat||null,alipay:lastAlipay||null,wechatRefund:lastWechatRefund||null},
       reconciliation:{lastCheckedMs:lastReconcile?.checked_ms||null,totalAttempts:lastReconcile?.attempts||0},
-      callbacks:{wechat:origin+"/v1/payments/wechat/notify",alipay:origin+"/v1/payments/alipay/notify"},
+      callbacks:{
+        wechat:safeHttps(env.WECHATPAY_NOTIFY_URL)||origin+"/v1/payments/wechat/notify",
+        wechatRefund:safeHttps(env.WECHATPAY_REFUND_NOTIFY_URL)||origin+"/v1/payments/wechat/refund-notify",
+        alipay:safeHttps(env.ALIPAY_NOTIFY_URL)||origin+"/v1/payments/alipay/notify"
+      },
       providers:{wechat:paymentReady(env,"wechat"),alipay:paymentReady(env,"alipay")}
     });
   }
