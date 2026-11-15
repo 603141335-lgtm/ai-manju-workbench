@@ -87,3 +87,38 @@ test('bad device signature and bad admin token are denied',async()=>{
  assert.equal((await call(e,'/v1/trial/start',x)).status,400);
  assert.equal((await call(e,'/v1/admin/cards/issue',{count:2},false)).status,401);
 });
+
+test('device block denies subsequent signed license refresh requests',async()=>{
+ const e=env(),a=device('e'.repeat(64));
+ const trial=await call(e,'/v1/trial/start',proof(a,'trial'));
+ assert.equal(trial.status,200);
+ const deviceHash=e.DB.db.prepare('SELECT device_hash FROM devices LIMIT 1').get().device_hash;
+ e.DB.prepare('INSERT INTO device_controls(device_hash,blocked_ms,block_reason,blocked_by,updated_ms) VALUES(?,?,?,?,?)')
+  .bind(deviceHash,Date.now(),'test block','support-1',Date.now()).run();
+ const refresh=await call(e,'/v1/license/refresh',proof(a,'refresh'));
+ assert.equal(refresh.status,403);
+ assert.equal(refresh.data.reason,'device_blocked');
+});
+
+test('operator tokens authenticate against stored hashes and enforce server-side roles',async()=>{
+ const e=env(),token='DUDU-OP-'+randomBytes(24).toString('hex');
+ const tokenHash=createHash('sha256').update(token).digest('hex'),now=Date.now(),id='operator-finance-1';
+ e.DB.prepare('INSERT INTO admin_operators(operator_id,display_name,role,token_sha256,enabled,created_ms,updated_ms) VALUES(?,?,?,?,1,?,?)')
+  .bind(id,'财务管理员','finance',tokenHash,now,now).run();
+ const callAs=async(path,body={})=>{
+  const response=await worker.fetch(new Request('https://license.example.test'+path,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(body)}),e);
+  return {status:response.status,data:await response.json()};
+ };
+ const session=await callAs('/v1/admin/session');
+ assert.equal(session.status,200);
+ assert.equal(session.data.role,'finance');
+ const finance=await callAs('/v1/admin/finance/summary',{fromMs:now-86400000,toMs:now+86400000});
+ assert.equal(finance.status,200);
+ const customers=await callAs('/v1/admin/customers/list');
+ assert.equal(customers.status,403);
+ const issue=await callAs('/v1/admin/cards/issue',{count:1});
+ assert.equal(issue.status,403);
+ e.DB.prepare('UPDATE admin_operators SET enabled=0 WHERE operator_id=?').bind(id).run();
+ const disabled=await callAs('/v1/admin/session');
+ assert.equal(disabled.status,401);
+});
