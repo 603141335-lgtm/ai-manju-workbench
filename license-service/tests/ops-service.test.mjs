@@ -259,7 +259,7 @@ test('Alipay full refund is verified before order is marked refunded and purchas
   globalThis.fetch=async(_url,options)=>{
     calls++;
     const params=Object.fromEntries(new URLSearchParams(options.body).entries()),biz=JSON.parse(params.biz_content);
-    assert.equal(params.method,'alipay.trade.refund');assert.equal(biz.out_trade_no,seeded.orderNo);
+    assert.equal(params.method,'alipay.trade.refund');assert.equal(biz.trade_no,'ali-trade-1');
     assert.equal(biz.refund_amount,'12.00');assert.ok(biz.out_request_no);
     const data={code:'10000',msg:'Success',out_trade_no:seeded.orderNo,out_request_no:biz.out_request_no,trade_no:'ali-trade-1',refund_fee:'12.00',fund_change:'Y'};
     return new Response(signedAlipayEnvelope(data,pair.privateKey),{status:200,headers:{'content-type':'application/json'}});
@@ -288,7 +288,7 @@ test('WeChat refund stays processing until a verified encrypted refund notificat
   const originalFetch=globalThis.fetch;
   globalThis.fetch=async(url,options)=>{
     assert.equal(url,'https://api.mch.weixin.qq.com/v3/refund/domestic/refunds');
-    const body=JSON.parse(options.body);assert.equal(body.out_trade_no,seeded.orderNo);
+    const body=JSON.parse(options.body);assert.equal(body.transaction_id,'wx-trade-1');
     assert.equal(body.amount.refund,1200);assert.equal(body.amount.total,1200);
     return signedWechatResponse({out_trade_no:seeded.orderNo,out_refund_no:body.out_refund_no,refund_id:'wx-refund-1',status:'PROCESSING',amount:{total:1200,refund:1200}},pair.privateKey);
   };
