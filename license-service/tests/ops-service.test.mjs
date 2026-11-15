@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,paymentSelfTest,logPaymentWebhook,runScheduledReconciliation} from '../src/ops-service.mjs';
+import {normalizeManifest,alipaySignContent,importRsaPrivate,importRsaPublic,paymentReady,wechatOrderQueryPath,wechatRequestMessage,buildAlipayQueryParams,alipayGateway,paymentSelfTest,logPaymentWebhook,runScheduledReconciliation,handleOpsRequest} from '../src/ops-service.mjs';
 import {generateKeyPairSync} from 'node:crypto';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
 
 test('manifest normalizer keeps public content only and rejects duplicate tutorial ids',()=>{
   const value=normalizeManifest({
@@ -133,4 +135,51 @@ test('payment webhook log stores only metadata and a SHA-256 digest, never the r
   assert.equal(captured.values[5].length,64);
   assert.equal(captured.values[0],'wechat');
   assert.equal(captured.values[3],'rejected');
+});
+
+function makeD1(db){
+  return {prepare(sql){
+    const statement=db.prepare(sql);let values=[];
+    const api={
+      bind(...args){values=args;return api},
+      async first(){return statement.get(...values)||null},
+      async all(){return {results:statement.all(...values)}},
+      async run(){const result=statement.run(...values);return {meta:{changes:Number(result.changes)}}}
+    };
+    return api;
+  }};
+}
+
+test('admin payment monitoring endpoints return health, webhook history and delivery queue',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const env={DB:makeD1(db)};
+  const helpers={adminAuth:async()=>true};
+  const request=path=>new Request('https://dudu.example'+path,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+  const healthResponse=await handleOpsRequest(request('/v1/admin/payments/health'),env,'/v1/admin/payments/health',helpers);
+  assert.equal(healthResponse.status,200);
+  const health=await healthResponse.json();
+  assert.equal(health.pendingOrders,0);
+  assert.equal(health.paidUndelivered,0);
+  assert.equal(health.callbacks.wechat,'https://dudu.example/v1/payments/wechat/notify');
+  assert.equal(health.callbacks.alipay,'https://dudu.example/v1/payments/alipay/notify');
+  const events=await (await handleOpsRequest(request('/v1/admin/payments/events/list'),env,'/v1/admin/payments/events/list',helpers)).json();
+  assert.deepEqual(events.events,[]);
+  const deliveries=await (await handleOpsRequest(request('/v1/admin/deliveries/list'),env,'/v1/admin/deliveries/list',helpers)).json();
+  assert.deepEqual(deliveries.deliveries,[]);
+  db.close();
+});
+
+test('manual payment recovery endpoint runs once and enforces its 60-second cooldown',async()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
+  const env={DB:makeD1(db)};
+  const helpers={adminAuth:async()=>true};
+  const req=()=>new Request('https://dudu.example/v1/admin/payments/reconcile/run',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+  const first=await handleOpsRequest(req(),env,'/v1/admin/payments/reconcile/run',helpers);
+  assert.equal(first.status,200);
+  assert.deepEqual(await first.json(),{ok:true,checked:0,paid:0,failed:0,deliveryRecovered:0});
+  const second=await handleOpsRequest(req(),env,'/v1/admin/payments/reconcile/run',helpers);
+  assert.equal(second.status,429);
+  db.close();
 });
