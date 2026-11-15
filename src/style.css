@@ -258,6 +258,12 @@
 .licensePane h3{margin:0 0 8px;font-size:15px}.licensePane p{font-size:12px;line-height:1.5;color:#bbcee2;margin:0 0 12px}
 .licensePane input{min-width:170px;flex:1;border:1px solid #54728e;border-radius:8px;background:#081c31;color:#fff;padding:11px}
 .licenseForm{display:flex;gap:8px;flex-wrap:wrap}.licenseContacts{display:flex;flex-wrap:wrap;gap:16px;font-size:12px}.licenseContacts b{color:#a1f2e9}
+.licenseOrderHeading{display:flex;justify-content:space-between;align-items:center;gap:8px}.licenseOrderHeading h3{margin:0}
+.licenseOrdersList{display:grid;gap:8px;margin-top:10px;max-height:230px;overflow:auto}
+.licenseOrderItem{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 10px;border:1px solid #2e4968;border-radius:9px;background:#0d2035}
+.licenseOrderInfo{min-width:0;display:grid;gap:2px}.licenseOrderInfo strong{font-size:12px;overflow-wrap:anywhere}.licenseOrderInfo small{font-size:10px;color:#93abc8}
+.licenseOrderActions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.licenseOrderActions button{font-size:11px;padding:6px 9px;white-space:nowrap}
+@media(max-width:560px){.licenseOrderItem{align-items:flex-start;flex-direction:column}.licenseOrderActions{justify-content:flex-start}}
 .licenseFooter{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap}
 #licenseMessage{font-size:12px;color:#b7d7ee;line-height:1.6;margin:0}#licenseMessage[data-kind="error"]{color:#ffb4aa}
 .licenseNote{font-size:11px;color:#839fbe}
