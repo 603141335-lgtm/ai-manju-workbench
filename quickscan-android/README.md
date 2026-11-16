@@ -1,10 +1,10 @@
 # 快递快扫 | 安卓快递扫码登记工具
 
-**当前版本 v0.14.1（稳扫补拍测试版）**
-- 代码位置 `quickscan-android/`
-- v0.14.1 开发分支 `quickscan-v0141-repair`，原 v0.13 维护分支 `quickscan-app`
-- 构建环境 JDK 17 或 21、Gradle 8.9、Android SDK 35
-- 在工程目录运行 `gradle :app:assembleDebug`，生成 `app/build/outputs/apk/debug/app-debug.apk`
+**当前版本 v0.16.0（界面改版）**
+
+- 代码位于 `quickscan-android/`，分支为 `quickscan-v0160-ui`。
+- 改版方案、入门和构建参数见 [界面改版说明](UI_V0160.md)。
+- 直接安装交付 APK 可与旧版并存。同一手机上的旧记录和照片仍在旧版应用里。
 
 ## v0.14.1 使用方式
 
@@ -44,13 +44,9 @@
 | `CHANGELOG.md` | 每次升级的变更记录 |
 | `UPGRADE_GUIDE.md` | 升级、签名和数据安全说明 |
 
-## 以后升级怎么做
-直接告诉 ChatGPT：**“继续升级我的 GitHub 快递快扫，仓库 603141335-lgtm/ai-manju-workbench，分支 quickscan-app，代码在 quickscan-android，按我的新需求改完并编译 APK。”**
+## 后续修改
 
-1. 从 `quickscan-app` 读取最新源码，避免用旧对话中的压缩包覆盖。
-2. 修改应用代码 → 递增 `versionCode` / `versionName` → 更新 `CHANGELOG.md`。
-3. 提交到 `quickscan-app`，GitHub Actions 自动构建；确认构建为绿色。
-4. 从 Actions 的最新成功任务中下载 APK Artifact；实际在手机测试。
+从 `quickscan-v0160-ui` 的 `quickscan-android/` 继续维护界面版。构建前核对安装包的应用 ID 和签名，按 [构建步骤](UI_V0160.md#构建)生成 APK。发布前更新版本号和变更记录，并在目标手机试扫。
 
 ## 非常重要：APK 升级与数据
 当前 v0.9 属于实验阶段，使用 GitHub Actions **临时调试签名**，包名为 `com.kuaidi.quickscan.v09`。以后即使包名不变，不同构建的临时签名也可能导致覆盖安装失败。

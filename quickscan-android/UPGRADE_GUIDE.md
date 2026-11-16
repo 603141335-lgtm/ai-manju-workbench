@@ -1,21 +1,18 @@
 # 快递快扫 | 后续升级操作说明
 
-## 项目唯一入口
-- 仓库：`603141335-lgtm/ai-manju-workbench`
-- 长期开发分支：**quickscan-app**
-- 代码根目录：**quickscan-android**
-- 自动编译工作流：`.github/workflows/quickscan-apk.yml`
-- 已知成功版本：v0.12（于 2026-11-05 云端编译，未承诺真机全部功能通过）
+## 界面版源码与构建
 
-## 给下一次 AI 的标准任务
-> 从 GitHub `603141335-lgtm/ai-manju-workbench` 仓库的 `quickscan-app` 分支读取 `quickscan-android/` 全部最新源码，继续升级快递快扫。保留原有条码、拍照、照片管理、Excel 导出/分享、声音、批次和查询功能。按我这次提出的需求只做增量修改，记录 CHANGELOG.md，跑 GitHub Actions 生成并验证 APK，给我可下载文件。不要影响 main 分支的 AI 漫剧项目。
+- 仓库 `603141335-lgtm/ai-manju-workbench`
+- 维护分支 `quickscan-v0160-ui`
+- 工程目录 `quickscan-android/`
+- 构建命令与界面设计见 [界面改版说明](UI_V0160.md)。
 
-## 版本与包名（必须注意）
-- `versionCode` 必须每次递增，`versionName` 体现新版本。
-- 正式连续升级**必须固定包名和签名密钥**，否则不能在原地更新且保留记录。
-- 目前 v0.8 的 `applicationId=com.kuaidi.quickscan.v012`、临时 Debug 签名只适于试用。
-- 不得把个人正式签名私钥放进公开源码/Git 提交；建议保存在 GitHub Actions Secrets 并留离线备份。
-- 不要为解决签名冲突直接让用户卸载含数据的旧版；优先安排数据导出/迁移。
+## 版本与包名
+
+- 每次发版递增 `versionCode`，同步更新 `versionName`。
+- 交付的独立安装包使用 `com.kuaidi.quickscan.ui`。原有数据存于旧应用。
+- 使用原包名覆盖升级需要旧版对应的签名私钥。原签名不可用时可以使用独立包安装，旧应用继续访问原记录和照片。
+- 签名密钥保存在受控的构建环境中。
 
 ## 重点回归测试
 1. 一维条形码连续扫描准确；不识别二维码。

@@ -7,9 +7,11 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.speech.tts.TextToSpeech
@@ -24,11 +26,14 @@ import android.view.WindowManager
 import androidx.core.content.FileProvider
 import android.os.Bundle
 import android.provider.Settings
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.inputmethod.EditorInfo
 import android.view.View
 import android.widget.*
 import android.text.Editable
+import android.text.TextUtils
 import android.text.TextWatcher
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -53,10 +58,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity:ComponentActivity(){
-  private val primary=Color.rgb(40,100,213)
-  private val ink=Color.rgb(26,42,65)
-  private val muted=Color.rgb(116,132,155)
-  private val canvasColor=Color.rgb(244,247,253)
+  private var themePalette=ScanTheme.BLUE
+  private var viewContext:Context=this
+  private val primary get()=themePalette.primary
+  private val ink get()=themePalette.ink
+  private val muted get()=themePalette.muted
+  private val canvasColor get()=themePalette.canvas
+  private var homeQuery=""
   private lateinit var db:ScanDb
   private lateinit var page:LinearLayout
   private var activeBatch=0L
@@ -76,7 +84,6 @@ class MainActivity:ComponentActivity(){
   private var scanRowsBox:LinearLayout?=null
   private var scanSearch:EditText?=null
   private var scanCount:TextView?=null
-  private var pendingQueueButton:TextView?=null
   private var duplicateAnnounced=""
   private var duplicateTime=0L
   private var scanOverlay:BarcodeHighlightOverlay?=null
@@ -122,7 +129,7 @@ class MainActivity:ComponentActivity(){
           output.use{XlsxWriter.write(it,rows,detail)}
           runOnUiThread{
             toast("✓ Excel导出成功 · "+rows.size+"条")
-            AlertDialog.Builder(this).setTitle("Excel 已保存")
+            dialogBuilder().setTitle("Excel 已保存")
               .setItems(arrayOf("分享给微信、QQ等软件","选择应用打开 Excel","完成")){_,choice->
                 when(choice){
                   0->shareContent(uri,EXCEL_MIME,"选择分享 Excel 的软件")
@@ -155,8 +162,7 @@ class MainActivity:ComponentActivity(){
     super.onCreate(savedInstanceState)
     onBackPressedDispatcher.addCallback(this,backToHome)
     WindowCompat.setDecorFitsSystemWindows(window,false)
-    WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightStatusBars=true
-    WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightNavigationBars=true
+    applyTheme(ScanTheme.fromPreference(getPreferences(MODE_PRIVATE).getString(ScanTheme.PREFERENCE,null)))
     db=ScanDb(this)
     voiceEnabled=getPreferences(MODE_PRIVATE).getBoolean("voiceEnabled",true)
     vibrationEnabled=getPreferences(MODE_PRIVATE).getBoolean("vibrationEnabled",true)
@@ -175,13 +181,14 @@ class MainActivity:ComponentActivity(){
     val first=batches.firstOrNull{it.id==(restoreRepair?.batchId ?: savedBatch)} ?: batches.firstOrNull()
     activeBatch=first?.id?:0L
     batchName=first?.name?:""
-    showHome()
+    showHome(savedInstanceState?.getString("homeQuery").orEmpty())
     if(restoreRepair!=null){
       if(checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)showScan(restoreRepair)
       else pendingRepair=restoreRepair
     }
   }
   override fun onSaveInstanceState(outState:Bundle){
+    if(currentPage=="home")outState.putString("homeQuery",homeQuery)
     (repairTarget ?: pendingRepair)?.let{outState.putLong("repairRow",it.id)}
     super.onSaveInstanceState(outState)
   }
@@ -195,23 +202,59 @@ class MainActivity:ComponentActivity(){
     db.close()
     super.onDestroy()
   }
+  private fun applyTheme(selection:ScanTheme){
+    themePalette=selection
+    viewContext=ContextThemeWrapper(this,selection.style)
+    WindowCompat.getInsetsController(window,window.decorView).apply{
+      isAppearanceLightStatusBars=!selection.isDark
+      isAppearanceLightNavigationBars=!selection.isDark
+    }
+  }
+  private fun showThemeDialog(){
+    val options=ScanTheme.entries
+    AlertDialog.Builder(viewContext).setTitle("切换主题")
+      .setSingleChoiceItems(options.map{it.title}.toTypedArray(),themePalette.ordinal){dialog,which->
+        dialog.dismiss()
+        val selection=options[which]
+        if(themePalette!=selection){
+          getPreferences(MODE_PRIVATE).edit().putString(ScanTheme.PREFERENCE,selection.name).apply()
+          applyTheme(selection)
+          showHome(homeQuery)
+        }
+      }.setNegativeButton("取消",null).show()
+  }
+  private fun dialogBuilder()=AlertDialog.Builder(viewContext)
   private fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
   private fun shape(color:Int,radius:Int=14)=GradientDrawable().apply{setColor(color);cornerRadius=dp(radius).toFloat()}
-  private fun label(t:String,size:Float=15f,c:Int=ink,bold:Boolean=false)=TextView(this).apply{
+  private fun label(t:String,size:Float=15f,c:Int=ink,bold:Boolean=false)=TextView(viewContext).apply{
     text=t;textSize=size;setTextColor(c);gravity=Gravity.CENTER_VERTICAL
     if(bold)setTypeface(null,Typeface.BOLD)
   }
-  private fun container(vertical:Boolean=true)=LinearLayout(this).apply{orientation=if(vertical)LinearLayout.VERTICAL else LinearLayout.HORIZONTAL}
+  private fun container(vertical:Boolean=true)=LinearLayout(viewContext).apply{orientation=if(vertical)LinearLayout.VERTICAL else LinearLayout.HORIZONTAL}
   private fun margins(bottom:Int=11)=LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(bottom)}
-  private fun button(t:String,main:Boolean=false,action:()->Unit)=label(t,14f,if(main)Color.WHITE else primary,true).apply{
-    gravity=Gravity.CENTER;background=shape(if(main)primary else Color.rgb(231,240,255),14)
-    setPadding(dp(11),dp(14),dp(11),dp(14));setOnClickListener{action()}
+  private fun ripple(fill:Int, radius:Int=14, foreground:Int=ink)=RippleDrawable(
+    ColorStateList.valueOf((foreground and 0x00ffffff) or 0x22000000),
+    shape(fill,radius),shape(Color.WHITE,radius)
+  )
+  private fun button(t:String,main:Boolean=false,action:()->Unit)=label(t,14f,if(main)themePalette.onPrimary else primary,true).apply{
+    gravity=Gravity.CENTER
+    background=ripple(if(main)primary else themePalette.accentSurface,14,if(main)themePalette.onPrimary else primary)
+    minHeight=dp(48)
+    setPadding(dp(10),dp(11),dp(10),dp(11))
+    setOnClickListener{action()}
   }
   private fun card():LinearLayout=container().apply{
     setPadding(dp(16),dp(15),dp(16),dp(15))
-    background=shape(Color.WHITE,20)
-    elevation=dp(1).toFloat()
-    page.addView(this,margins(13))
+    background=shape(themePalette.surface,18).apply{setStroke(dp(1),themePalette.outline)}
+    page.addView(this,margins(12))
+  }
+  private fun compactIcon(resource:Int,description:String,action:()->Unit)=ImageButton(viewContext).apply{
+    setImageResource(resource)
+    setColorFilter(primary)
+    scaleType=ImageView.ScaleType.CENTER_INSIDE
+    contentDescription=description
+    background=ripple(themePalette.accentSurface)
+    setOnClickListener{action()}
   }
   private fun pair(box:LinearLayout,a:View,b:View){
     val line=container(false).apply{gravity=Gravity.CENTER_VERTICAL}
@@ -219,7 +262,7 @@ class MainActivity:ComponentActivity(){
     line.addView(b,LinearLayout.LayoutParams(0,-2,1f).apply{leftMargin=dp(9)})
     box.addView(line,margins(9))
   }
-  private fun input(hint:String,value:String="")=EditText(this).apply{
+  private fun input(hint:String,value:String="")=EditText(viewContext).apply{
     setSingleLine(true);setText(value);setTextSize(16f);setTextColor(ink)
     setHint(hint);setHintTextColor(muted);background=shape(canvasColor,12)
     setPadding(dp(12),dp(11),dp(12),dp(11))
@@ -242,39 +285,55 @@ class MainActivity:ComponentActivity(){
       scanOverlay?.clearTarget()
     }
   }
-  private fun shell(title:String,sub:String){
-    val root=container().apply{setBackgroundColor(canvasColor)}
-    setPageContent(root)
-    val header=container().apply{
-      background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(22,49,106),Color.rgb(44,102,210)))
-      setPadding(dp(19),dp(20),dp(19),dp(21))
+  private fun shell(title:String,topContent:View?=null){
+    val root=container().apply{
+      setBackgroundColor(canvasColor)
+      isFocusableInTouchMode=true
     }
-    val heading=container(false).apply{gravity=Gravity.CENTER_VERTICAL}
-    val icon=ImageView(this).apply{setImageResource(R.drawable.ic_quickscan_launcher)}
-    heading.addView(icon,LinearLayout.LayoutParams(dp(46),dp(46)).apply{rightMargin=dp(12)})
-    val labels=container()
-    labels.addView(label(title,22f,Color.WHITE,true),margins(2))
-    labels.addView(label(sub,12f,Color.rgb(211,228,255)))
-    heading.addView(labels,LinearLayout.LayoutParams(0,-2,1f))
-    header.addView(heading)
+    val header=topContent ?: label(title,22f,ink,true).apply{
+      setPadding(dp(17),dp(12),dp(17),dp(10))
+      ViewCompat.setAccessibilityHeading(this,true)
+    }
     root.addView(header)
-    val scroller=ScrollView(this).apply{isFillViewport=true;isVerticalScrollBarEnabled=false}
-    page=container().apply{setPadding(dp(14),dp(16),dp(14),dp(8))}
+    val scroller=ScrollView(viewContext).apply{
+      isFillViewport=true
+      isVerticalScrollBarEnabled=false
+      clipToPadding=false
+    }
+    page=container().apply{setPadding(dp(14),dp(8),dp(14),dp(6))}
     scroller.addView(page)
     root.addView(scroller,LinearLayout.LayoutParams(-1,0,1f))
+    root.addView(View(this).apply{setBackgroundColor(themePalette.outline)},LinearLayout.LayoutParams(-1,dp(1)))
+
     val navigation=container(false).apply{
-      setBackgroundColor(Color.WHITE);setPadding(dp(8),dp(7),dp(8),dp(9))
+      setBackgroundColor(themePalette.surface)
+      setPadding(dp(8),dp(6),dp(8),dp(6))
     }
-    listOf("▦ 批次" to "home","▥ 扫码" to "scan","📷 失败件" to "pending","⚙ 设置" to "settings").forEach{(title,tag)->
+    val tabs=listOf(
+      Triple("批次","home",R.drawable.ic_action_records),
+      Triple("扫码","scan",R.drawable.ic_nav_scan),
+      Triple("设置","settings",R.drawable.ic_nav_settings)
+    )
+    tabs.forEach{(tabTitle,tag,icon)->
       val active=currentPage==tag || (currentPage=="batch" && tag=="home")
-      val view=label(title,13f,if(active)primary else muted,active).apply{
-        gravity=Gravity.CENTER;setPadding(dp(1),dp(12),dp(1),dp(12))
-        if(active)background=shape(Color.rgb(234,242,255),14)
-        setOnClickListener{when(tag){"home"->showHome();"scan"->showScan();"pending"->showPendingPhotos();else->showSettings()}}
+      val color=if(active)primary else muted
+      val view=label(tabTitle,12f,color,active).apply{
+        val drawable=ContextCompat.getDrawable(viewContext,icon)?.mutate()
+        drawable?.setTint(color)
+        drawable?.setBounds(0,0,dp(20),dp(20))
+        setCompoundDrawables(null,drawable,null,null)
+        compoundDrawablePadding=dp(3)
+        gravity=Gravity.CENTER
+        minimumHeight=dp(49)
+        isSelected=active
+        background=ripple(if(active)themePalette.accentSurface else Color.TRANSPARENT)
+        setOnClickListener{when(tag){"home"->showHome();"scan"->showScan();else->showSettings()}}
       }
-      navigation.addView(view,LinearLayout.LayoutParams(0,-2,1f).apply{leftMargin=dp(3);rightMargin=dp(3)})
+      navigation.addView(view,LinearLayout.LayoutParams(0,-2,1f).apply{marginStart=dp(3);marginEnd=dp(3)})
     }
     root.addView(navigation)
+    setPageContent(root)
+    root.requestFocus()
   }
   private fun announce(kind:String){
     if(vibrationEnabled){
@@ -315,7 +374,7 @@ class MainActivity:ComponentActivity(){
   private fun csv(t:String)="\""+t.replace("\"","\"\"")+"\""
   private fun prompt(title:String,hint:String,default:String="",accept:(String)->Unit){
     val edit=input(hint,default);val holder=container().apply{setPadding(dp(17),dp(10),dp(17),0);addView(edit)}
-    AlertDialog.Builder(this).setTitle(title).setView(holder)
+    dialogBuilder().setTitle(title).setView(holder)
       .setNegativeButton("取消",null).setPositiveButton("确定"){_,_->
         accept(edit.text.toString().trim())
       }.show()
@@ -333,7 +392,7 @@ class MainActivity:ComponentActivity(){
         var suffix=2
         while(existingNames.contains(name+"-"+suffix))suffix++
         val alternative=name+"-"+suffix
-        AlertDialog.Builder(this).setTitle("已存在批次 "+name)
+        dialogBuilder().setTitle("已存在批次 "+name)
           .setMessage("可以打开今天已有的批次，也可以创建新的 "+alternative+"。")
           .setPositiveButton("使用已有"){_,_->
             activeBatch=existing.id;batchName=existing.name;then()
@@ -351,65 +410,121 @@ class MainActivity:ComponentActivity(){
       newBatchDialog(then)
       return
     }
-    AlertDialog.Builder(this).setTitle("选择扫码批次")
+    dialogBuilder().setTitle("选择扫码批次")
       .setItems(batches.map{it.name+" · "+it.count+" 件"}.toTypedArray()){_,which->
         activeBatch=batches[which].id;batchName=batches[which].name;then()
       }.setNeutralButton("新建"){_,_->newBatchDialog(then)}.show()
   }
-  private fun showHome(){
-    currentPage="home";stopCamera();shell("快递快扫","扫码登记 · 批次管理 · 直接查询")
-    val intro=card()
-    intro.addView(label("今天："+today(),21f,ink,true),margins(5))
-    intro.addView(label("只扫快递一维码 · 快速自动登记",12f,muted),margins(14))
-    pair(intro,button("＋ 新建批次",true){newBatchDialog{showScan()}},button("选批扫码"){selectBatch{showScan()}})
+  private fun showHome(initialQuery:String=""){
+    currentPage="home"
+    stopCamera()
+    homeQuery=initialQuery
+
+    val searchBar=container(false).apply{
+      gravity=Gravity.CENTER_VERTICAL
+      setPadding(dp(14),dp(10),dp(14),dp(4))
+    }
+    val field=container(false).apply{
+      gravity=Gravity.CENTER_VERTICAL
+      background=shape(themePalette.surface,15).apply{setStroke(dp(1),themePalette.outline)}
+    }
+    val magnifier=ImageView(viewContext).apply{
+      setImageResource(R.drawable.ic_search)
+      setColorFilter(muted)
+      importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+    field.addView(magnifier,LinearLayout.LayoutParams(dp(20),dp(20)).apply{marginStart=dp(14)})
+    val query=input("搜索单号 / 后四位",initialQuery).apply{
+      minHeight=dp(52)
+      background=null
+      imeOptions=EditorInfo.IME_ACTION_SEARCH
+      setOnEditorActionListener { _,action,_ ->
+        if(action!=EditorInfo.IME_ACTION_SEARCH)return@setOnEditorActionListener false
+        WindowCompat.getInsetsController(window,this).hide(WindowInsetsCompat.Type.ime())
+        true
+      }
+    }
+    field.addView(query,LinearLayout.LayoutParams(0,-2,1f))
+    val clear=compactIcon(R.drawable.ic_clear,"清空搜索"){query.text.clear()}.apply{
+      background=ripple(Color.TRANSPARENT)
+    }
+    field.addView(clear,LinearLayout.LayoutParams(dp(48),dp(48)))
+    searchBar.addView(field,LinearLayout.LayoutParams(0,-2,1f))
+    searchBar.addView(compactIcon(R.drawable.ic_action_theme,"切换主题"){showThemeDialog()},
+      LinearLayout.LayoutParams(dp(52),dp(52)).apply{marginStart=dp(8)})
+
+    shell("快递快扫",searchBar)
     val batches=db.batches()
     val lastBatchId=getPreferences(MODE_PRIVATE).getLong("lastScanBatch",0L)
     val lastBatch=batches.firstOrNull{it.id==lastBatchId}
-    if(lastBatch!=null){
-      intro.addView(button("继续扫码 · "+lastBatch.name){
+    val intro=card()
+    val heading=container(false).apply{gravity=Gravity.CENTER_VERTICAL}
+    heading.addView(ImageView(viewContext).apply{
+      setImageResource(R.drawable.ic_quickscan_launcher)
+      importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    },LinearLayout.LayoutParams(dp(38),dp(38)).apply{marginEnd=dp(10)})
+    heading.addView(label("快递快扫",22f,ink,true).apply{ViewCompat.setAccessibilityHeading(this,true)},
+      LinearLayout.LayoutParams(0,-2,1f))
+    heading.addView(label("今天 "+today(),13f,muted))
+    intro.addView(heading,margins(15))
+    val create=button("新建批次",lastBatch==null){newBatchDialog{showScan()}}
+    if(lastBatch==null){
+      intro.addView(create)
+    }else{
+      val resume=button("继续扫码",true){
         activeBatch=lastBatch.id
         batchName=lastBatch.name
         showScan()
-      })
-    }
-    val stats=card()
-    stats.addView(label("累计 "+batches.sumOf{it.count}+" 件 · "+batches.size+" 个批次",17f,primary,true))
-    stats.addView(button("📷 扫码失败照片 · 待补录 "+db.pendingPhotoCount()+" 张"){showPendingPhotos()},margins(8))
-    val find=card()
-    find.addView(label("查询单号",17f,ink,true),margins(9))
-    val query=input("直接输入完整单号或末四位")
-    find.addView(query,margins(9))
-    val foundList=container()
-    find.addView(foundList)
-    fun display(q:String){
-      foundList.removeAllViews()
-      if(q.isBlank()){
-        foundList.addView(label("所有批次均可查询，无须单独打开窗口",12f,muted))
-      }else{
-        val matches=db.all(null,q,80)
-        if(matches.isEmpty())foundList.addView(label("没有找到匹配记录",13f,muted))
-        else matches.forEach{addRow(foundList,it)}
       }
+      pair(intro,resume,create)
+      intro.addView(label("上次批次 "+lastBatch.name,13f,muted))
     }
-    display("")
+
+    val history=card()
+    val historyTitle=label("历史批次",18f,ink,true).apply{ViewCompat.setAccessibilityHeading(this,true)}
+    history.addView(historyTitle,margins(4))
+    history.addView(label("累计 "+batches.sumOf{it.count}+" 件 · "+batches.size+" 个批次",13f,muted),margins(10))
+    if(batches.isEmpty())history.addView(label("还没有批次，创建后即可开始扫码",14f,muted))
+    batches.forEach{batch->
+      val item=container(false).apply{
+        gravity=Gravity.CENTER_VERTICAL
+        setPadding(dp(12),dp(9),dp(12),dp(9))
+        background=ripple(canvasColor,12)
+        setOnClickListener{activeBatch=batch.id;batchName=batch.name;showBatch()}
+      }
+      val batchText=container()
+      batchText.addView(label(batch.name,16f,ink,true).apply{
+        maxLines=1
+        ellipsize=TextUtils.TruncateAt.END
+      })
+      batchText.addView(label(formatTime(batch.created),12f,muted))
+      item.addView(batchText,LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=dp(8)})
+      item.addView(label(batch.count.toString()+" 件",13f,primary,true))
+      history.addView(item,margins(7))
+    }
+
+    val results=card()
+    fun display(raw:String){
+      homeQuery=raw
+      val filter=raw.trim()
+      val searching=filter.isNotEmpty()
+      clear.visibility=if(raw.isEmpty())View.GONE else View.VISIBLE
+      intro.visibility=if(searching)View.GONE else View.VISIBLE
+      history.visibility=if(searching)View.GONE else View.VISIBLE
+      results.visibility=if(searching)View.VISIBLE else View.GONE
+      results.removeAllViews()
+      if(!searching)return
+      results.addView(label("查询结果",17f,ink,true).apply{ViewCompat.setAccessibilityHeading(this,true)},margins(6))
+      val matches=db.all(null,filter,80)
+      if(matches.isEmpty())results.addView(label("没有找到匹配记录",14f,muted))
+      else matches.forEach{addRow(results,it)}
+    }
+    display(initialQuery)
     query.addTextChangedListener(object:TextWatcher{
       override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
       override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){display(s?.toString().orEmpty())}
       override fun afterTextChanged(s:Editable?){}
     })
-    val list=card()
-    list.addView(label("历史批次",18f,ink,true),margins(12))
-    if(batches.isEmpty())list.addView(label("还没有记录，创建批次即可开始",14f,muted))
-    batches.forEach{batch->
-      val item=container().apply{
-        setPadding(dp(12),dp(12),dp(12),dp(12))
-        background=shape(canvasColor,12)
-        addView(label(batch.name+"  ·  "+batch.count+" 件",17f,ink,true))
-        addView(label(formatTime(batch.created),12f,muted))
-        setOnClickListener{activeBatch=batch.id;batchName=batch.name;showBatch()}
-      }
-      list.addView(item,margins(9))
-    }
   }
 
   /** Decode a bounded thumbnail; never allocate the full-resolution JPEG for every list item. */
@@ -431,7 +546,7 @@ class MainActivity:ComponentActivity(){
   /** Central inbox for unreadable-waybill photos captured by the camera button. */
   private fun showPendingPhotos(){
     currentPage="pending";stopCamera()
-    shell("扫码失败件","所有批次集中查看 · 看图补录单号")
+    shell("失败照片补录")
     val count=db.pendingPhotoCount()
     val rows=db.pendingPhotos(40)
     val batches=db.batches().associate{it.id to it.name}
@@ -465,7 +580,7 @@ class MainActivity:ComponentActivity(){
         }else item.addView(label("照片预览无法加载，可以尝试打开原图。",13f,muted),margins(8))
         item.addView(button("放大看单号 · 双指缩放"){showPhotoFullscreen(row.photo)},margins(8))
       }else{
-        item.addView(label("⚠ 照片文件已丢失；原记录仍在。",13f,Color.rgb(191,70,60)),margins(8))
+        item.addView(label("⚠ 照片文件已丢失；原记录仍在。",13f,if(themePalette.isDark)0xffffa59a.toInt() else 0xffb2382d.toInt()),margins(8))
       }
       val codeField=input("输入面单条码下的完整单号")
       codeField.setSelectAllOnFocus(true)
@@ -485,7 +600,7 @@ class MainActivity:ComponentActivity(){
   }
 
   private fun showBatch(){
-    currentPage="batch";stopCamera();shell("批次 "+batchName,"查看记录 · 导出表格")
+    currentPage="batch";stopCamera();shell("批次 "+batchName)
     val records=db.all(activeBatch)
     val photoRecords=records.filter{it.photo.isNotBlank()}
     val selected=mutableSetOf<Long>()
@@ -508,7 +623,7 @@ class MainActivity:ComponentActivity(){
       manager.addView(button("删除选中照片",true){
         if(selected.isEmpty()){toast("请先勾选要删除的照片");return@button}
         val ids=selected.toSet()
-        AlertDialog.Builder(this)
+        dialogBuilder()
           .setTitle("确认彻底删除 "+ids.size+" 张照片？")
           .setMessage("将永久删除本软件内选中的原始照片，不会删除快递单号、时间、备注或记录。此操作不能在软件内撤销。之前另存或分享出去的照片不受影响。")
           .setNegativeButton("取消",null)
@@ -529,7 +644,9 @@ class MainActivity:ComponentActivity(){
           gravity=Gravity.CENTER_VERTICAL
           setPadding(dp(1),dp(5),dp(5),dp(5))
         }
-        val check=CheckBox(this).apply{
+        val check=CheckBox(viewContext).apply{
+          setTextColor(ink)
+          buttonTintList=ColorStateList.valueOf(primary)
           contentDescription="选择照片 "+(if(row.code.isBlank())"待补单号" else row.code)
           setOnCheckedChangeListener{_,checked->
             if(checked)selected.add(row.id)else selected.remove(row.id)
@@ -579,7 +696,7 @@ class MainActivity:ComponentActivity(){
       runOnUiThread{
         showBatch()
         val message="已删除 "+deleted+" 张照片"+(if(missing>0)"，清理 "+missing+" 条失效照片引用" else "")+(if(failed>0)"；失败 "+failed+" 张" else "")+"。快递单号、时间和备注已保留。"
-        AlertDialog.Builder(this).setTitle("照片清理完成")
+        dialogBuilder().setTitle("照片清理完成")
           .setMessage(message).setPositiveButton("知道了",null).show()
       }
     }.start()
@@ -620,10 +737,10 @@ class MainActivity:ComponentActivity(){
     val code=input("补录条码下方的数字",r.code)
     val note=input("备注",r.note)
     layout.addView(code,margins(9));layout.addView(note,margins(8))
-    detailDialog=AlertDialog.Builder(this).setTitle("快递详情 · "+formatTime(r.time)).setView(layout)
+    detailDialog=dialogBuilder().setTitle("快递详情 · "+formatTime(r.time)).setView(layout)
       .setNegativeButton("取消",null)
       .setNeutralButton("删除"){_,_->
-        AlertDialog.Builder(this).setTitle("确认删除？").setPositiveButton("删除"){_,_->
+        dialogBuilder().setTitle("确认删除？").setPositiveButton("删除"){_,_->
           if(r.photo.isNotEmpty())File(r.photo).delete()
           db.delete(r.id);refresh()
         }.setNegativeButton("取消",null).show()
@@ -635,7 +752,7 @@ class MainActivity:ComponentActivity(){
         }else{refresh()}
       }.show()
   }
-  private fun refresh(){when(currentPage){"home"->showHome();"batch"->showBatch();"search"->showSearch();"scan"->showScan()}}
+  private fun refresh(){when(currentPage){"home"->showHome(homeQuery);"batch"->showBatch();"search"->showSearch();"scan"->showScan()}}
   private fun updateScanOutcome(code:String,status:String,color:Int){
     if(currentPage!="scan")return
     val card=feedbackCard ?:return
@@ -671,7 +788,7 @@ class MainActivity:ComponentActivity(){
     val image=ImageButton(this).apply{
       setImageResource(resource);setColorFilter(primary)
       scaleType=ImageView.ScaleType.CENTER_INSIDE
-      background=shape(Color.rgb(232,241,255),13)
+      background=ripple(themePalette.accentSurface,13)
       setPadding(dp(12),dp(12),dp(12),dp(12))
       contentDescription=description
       setOnClickListener{action()}
@@ -692,14 +809,14 @@ class MainActivity:ComponentActivity(){
     lastRefocusAt=0L
     repairTarget=repair
     getPreferences(MODE_PRIVATE).edit().putLong("lastScanBatch",activeBatch).apply()
-    val windowRoot=FrameLayout(this).apply{setBackgroundColor(Color.WHITE)}
-    val root=container().apply{setBackgroundColor(Color.WHITE)}
+    val windowRoot=FrameLayout(this).apply{setBackgroundColor(themePalette.surface)}
+    val root=container().apply{setBackgroundColor(themePalette.surface)}
     windowRoot.addView(root,FrameLayout.LayoutParams(-1,-1))
     setPageContent(windowRoot)
 
     val top=container(false).apply{
       gravity=Gravity.CENTER_VERTICAL
-      setBackgroundColor(Color.WHITE)
+      setBackgroundColor(themePalette.surface)
       setPadding(dp(14),dp(7),dp(14),dp(7))
     }
     val back=label("‹",29f,ink,true).apply{
@@ -750,7 +867,7 @@ class MainActivity:ComponentActivity(){
     root.addView(cameraFrame,LinearLayout.LayoutParams(-1,dp((screenHeight*0.37f).toInt().coerceIn(220,335))))
     val controls=container(false).apply{
       gravity=Gravity.CENTER_VERTICAL
-      setBackgroundColor(Color.WHITE)
+      setBackgroundColor(themePalette.surface)
       setPadding(dp(12),dp(9),dp(12),dp(9))
     }
     val cameraActions=mutableListOf(
@@ -781,22 +898,20 @@ class MainActivity:ComponentActivity(){
       })
     }
 
-    root.addView(View(this).apply{setBackgroundColor(Color.rgb(227,233,241))},
+    root.addView(View(this).apply{setBackgroundColor(themePalette.outline)},
       LinearLayout.LayoutParams(-1,dp(1)))
 
     val bottom=container().apply{
       setPadding(dp(14),dp(12),dp(14),dp(8))
-      setBackgroundColor(Color.WHITE)
+      setBackgroundColor(themePalette.surface)
     }
     val titleRow=container(false).apply{gravity=Gravity.CENTER_VERTICAL}
     scanCount=label("扫码记录",17f,ink,true)
     titleRow.addView(scanCount,LinearLayout.LayoutParams(0,-2,1f))
-    pendingQueueButton=button("失败件 "+db.pendingPhotoCount()){showPendingPhotos()}
-    titleRow.addView(pendingQueueButton,LinearLayout.LayoutParams(-2,-2).apply{rightMargin=dp(7)})
     titleRow.addView(button("导出"){exportBatch()})
-    bottom.addView(titleRow,margins(9))
-    scanSearch=input("搜索单号 / 后四位")
+    scanSearch=input("搜索本批单号 / 后四位")
     bottom.addView(scanSearch,margins(9))
+    bottom.addView(titleRow,margins(7))
     scanRowsBox=container()
     bottom.addView(scanRowsBox)
     val scroll=ScrollView(this).apply{
@@ -846,7 +961,6 @@ class MainActivity:ComponentActivity(){
     val q=scanSearch?.text?.toString()?.trim().orEmpty()
     val total=db.count(activeBatch)
     scanCount?.text="扫码记录 · "+total+" 件"
-    pendingQueueButton?.text="失败件 "+db.pendingPhotoCount()
     val rows=db.recent(activeBatch,q,if(q.isEmpty())14 else 100)
     if(rows.isEmpty()){
       holder.addView(label(if(q.isBlank())"暂无扫码记录" else "没有匹配单号",13f,muted))
@@ -867,7 +981,7 @@ class MainActivity:ComponentActivity(){
       line.addView(label(if(item.photo.isBlank())"待拍照" else "有照片",12f,muted),
         LinearLayout.LayoutParams(-2,-2).apply{leftMargin=dp(7)})
       holder.addView(line)
-      holder.addView(View(this).apply{setBackgroundColor(Color.rgb(239,242,248))},
+      holder.addView(View(this).apply{setBackgroundColor(themePalette.outline)},
         LinearLayout.LayoutParams(-1,dp(1)))
     }
   }
@@ -1042,7 +1156,7 @@ class MainActivity:ComponentActivity(){
     }
   }
   private fun showSearch(){
-    currentPage="search";stopCamera();shell("单号查询","完整单号、末四位及备注都可以搜")
+    currentPage="search";stopCamera();shell("单号查询")
     val box=card()
     val query=input("输入单号或末四位")
     box.addView(query,margins(12))
@@ -1113,11 +1227,11 @@ class MainActivity:ComponentActivity(){
   }
   private fun exportBatch(){
     if(activeBatch==0L){toast("请先新建批次");announce("failure");return}
-    AlertDialog.Builder(this).setTitle("选择 Excel 内容")
+    dialogBuilder().setTitle("选择 Excel 内容")
       .setItems(arrayOf("完整明细：单号、时间、备注、照片状态","仅单号：方便粘贴腾讯文档")){_,which->
         exportDetail=(which==0)
         val suffix=if(exportDetail)"完整明细" else "仅单号"
-        AlertDialog.Builder(this).setTitle("接下来做什么？")
+        dialogBuilder().setTitle("接下来做什么？")
           .setItems(arrayOf("保存到手机文件夹","分享给微信、QQ等软件","选择软件打开 Excel")){_,action->
             when(action){
               0->exportRequest.launch("快递快扫_"+batchName+"_"+suffix+".xlsx")
@@ -1169,7 +1283,7 @@ class MainActivity:ComponentActivity(){
     dialog.show()
   }
   private fun showScanSettingsDialog(){
-    AlertDialog.Builder(this).setTitle("扫码设置")
+    dialogBuilder().setTitle("扫码设置")
       .setItems(arrayOf(
         "扫码速度："+modeLabel(),
         "播报风格："+voiceLabel(),
@@ -1201,7 +1315,7 @@ class MainActivity:ComponentActivity(){
       "标准模式 · CODE128 3帧 / ITF 4帧",
       "严谨模式 · CODE128 4帧 / ITF 5帧"
     )
-    AlertDialog.Builder(this).setTitle("扫码速度（推荐极速模式）")
+    dialogBuilder().setTitle("扫码速度（推荐极速模式）")
       .setSingleChoiceItems(names,modes.indexOf(scanMode).coerceAtLeast(0)){dialog,which->
         scanMode=modes[which]
         strictGate.setMode(scanMode)
@@ -1218,7 +1332,7 @@ class MainActivity:ComponentActivity(){
       "简短播报 · 成功 / 重复",
       "纯提示音 · 无机器人语音"
     )
-    AlertDialog.Builder(this).setTitle("播报声音")
+    dialogBuilder().setTitle("播报声音")
       .setSingleChoiceItems(names,profiles.indexOf(voiceProfile).coerceAtLeast(0)){dialog,which->
         voiceProfile=profiles[which]
         getPreferences(MODE_PRIVATE).edit().putString("voiceProfile",voiceProfile).apply()
@@ -1229,9 +1343,9 @@ class MainActivity:ComponentActivity(){
       }.setNegativeButton("取消",null).show()
   }
   private fun showSettings(){
-    currentPage="settings";stopCamera();shell("设置与说明","语音提示 · Excel 导出 · 数据安全")
+    currentPage="settings";stopCamera();shell("设置")
     val info=card()
-    info.addView(label("快递快扫 v0.15.0",21f,ink,true),margins(8))
+    info.addView(label("快递快扫 "+getString(R.string.app_name_version),20f,ink,true),margins(8))
     info.addView(button("打开失败件照片 · 待补录 "+db.pendingPhotoCount()+" 张"){showPendingPhotos()},margins(8))
     info.addView(label("三档识别速度：极速2/3帧、标准3/4帧、严谨4/5帧。支持倾斜和竖向条码检测、新条码快速切换、动态绿色定位框、成功/重复悬浮提示。照片保存后才提示成功，注意保持面单不离开取景框。",13f,muted))
     val speed=card()
@@ -1243,13 +1357,17 @@ class MainActivity:ComponentActivity(){
     audio.addView(label("扫码声音",18f,ink,true),margins(6))
     audio.addView(label("轻快/沉稳/简短语音及纯提示音，使用手机系统 TTS；音色自然程度由手机已安装的中文语音引擎决定。",12f,muted),margins(8))
     audio.addView(button("当前："+voiceLabel()+" · 点击选择"){showVoiceModeDialog()},margins(6))
-    audio.addView(CheckBox(this).apply{
+    audio.addView(CheckBox(viewContext).apply{
+      setTextColor(ink)
+      buttonTintList=ColorStateList.valueOf(primary)
       text="中文语音播报";isChecked=voiceEnabled
       setOnCheckedChangeListener{_,enabled->
         voiceEnabled=enabled;getPreferences(MODE_PRIVATE).edit().putBoolean("voiceEnabled",enabled).apply()
       }
     })
-    audio.addView(CheckBox(this).apply{
+    audio.addView(CheckBox(viewContext).apply{
+      setTextColor(ink)
+      buttonTintList=ColorStateList.valueOf(primary)
       text="震动提示";isChecked=vibrationEnabled
       setOnCheckedChangeListener{_,enabled->
         vibrationEnabled=enabled;getPreferences(MODE_PRIVATE).edit().putBoolean("vibrationEnabled",enabled).apply()
@@ -1266,7 +1384,7 @@ class MainActivity:ComponentActivity(){
     pair(actions,button("复制单号",true){copyCodes()},button("导出/分享 Excel"){exportBatch()})
     val help=card()
     help.addView(label("模糊条码怎么办？",17f,ink,true),margins(7))
-    help.addView(label("点击取景画面可对焦，也可以调整距离、角度或打开补光。扫不出来就拍照留底，所有照片集中在“失败件”页面统一补录。",14f,muted),margins(10))
+    help.addView(label("点击取景画面可对焦，也可以调整距离、角度或打开补光。扫不出来就拍照留底，在设置或批次详情里可以集中补录。",14f,muted),margins(10))
     help.addView(label("照片保存在手机本地的应用专用 files/photos 目录，普通相册不会自动显示。点记录里的照片可全屏放大、分享或另存到手机。卸载软件会删除本机记录和照片。Excel不嵌入照片。",13f,muted),margins(10))
     help.addView(button("打开系统应用设置"){
       startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+packageName)))
@@ -1281,7 +1399,6 @@ class MainActivity:ComponentActivity(){
     scanRowsBox=null
     scanSearch=null
     scanCount=null
-    pendingQueueButton=null
     repairTarget=null
     provider?.unbindAll()
     provider=null;camera=null;imageCapture=null;previewView=null;flashlight=false

@@ -2,8 +2,8 @@
   <uses-permission android:name="android.permission.CAMERA"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-feature android:name="android.hardware.camera" android:required="false"/>
-  <application android:label="快递快扫 0.15.0" android:allowBackup="false" android:supportsRtl="true"
-      android:icon="@drawable/ic_quickscan_launcher" android:roundIcon="@drawable/ic_quickscan_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+  <application android:label="@string/app_name" android:allowBackup="false" android:supportsRtl="true"
+      android:icon="@mipmap/ic_quickscan" android:roundIcon="@mipmap/ic_quickscan" android:theme="@style/QuickScanBlue">
     <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
