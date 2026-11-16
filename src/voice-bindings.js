@@ -40,13 +40,34 @@ function selectVoices(bindings,imageItems,{maxClips=LIMIT.maxClips,maxSeconds=LI
 }
 function audioLine(row,index){return `音频${index+1} = ${row.code}${row.characterName?' '+row.characterName:''}（${cleanLabel(row.label)}：${audioName(row.path)}）`}
 class VoiceBindingsStore{
- constructor(file,{ffprobe='ffprobe',probe=probeDuration}={}){this.file=file;this.ffprobe=ffprobe;this.probe=probe;this.data={version:1,bindings:{}}}
- async load(){try{const obj=JSON.parse(await fs.promises.readFile(this.file,'utf8'));if(obj&&obj.version===1&&obj.bindings&&typeof obj.bindings==='object'){
-  const entries={};for(const [k,v] of Object.entries(obj.bindings)){try{const code=safeCode(k);entries[code]=(Array.isArray(v)?v:[]).filter(x=>x&&typeof x.path==='string'&&path.isAbsolute(x.path)).slice(0,20).map(x=>({id:String(x.id||randomUUID()),path:x.path,label:cleanLabel(x.label),duration:toDuration(x.duration),isDefault:!!x.isDefault}));}catch{}}
-  this.data={version:1,bindings:entries};}}
- catch(e){if(e.code!=='ENOENT'){await fs.promises.copyFile(this.file,this.file+'.invalid-'+Date.now()).catch(()=>{});}}return this}
- async save(){await fs.promises.mkdir(path.dirname(this.file),{recursive:true});let tmp=this.file+'.tmp';await fs.promises.writeFile(tmp,JSON.stringify(this.data,null,2));await fs.promises.rename(tmp,this.file)}
- snapshot(){return JSON.parse(JSON.stringify(this.data))}
+ constructor(file,{ffprobe='ffprobe',probe=probeDuration}={}){this.file=file;this.ffprobe=ffprobe;this.probe=probe;this.data={version:1,bindings:{}};this.writeQueue=Promise.resolve();this.loadError=''}
+ async load(){
+  try{
+   const obj=JSON.parse(await fs.promises.readFile(this.file,'utf8'));
+   if(!obj||obj.version!==1||!obj.bindings||typeof obj.bindings!=='object'||Array.isArray(obj.bindings))throw Error('音频绑定文件格式不兼容');
+   const entries={};for(const [k,v] of Object.entries(obj.bindings)){try{const code=safeCode(k);entries[code]=(Array.isArray(v)?v:[]).filter(x=>x&&typeof x.path==='string'&&path.isAbsolute(x.path)).slice(0,20).map(x=>({id:String(x.id||randomUUID()),path:x.path,label:cleanLabel(x.label),duration:toDuration(x.duration),isDefault:!!x.isDefault}));}catch{}}
+   this.data={version:1,bindings:entries};
+  }catch(e){
+   if(e.code!=='ENOENT'){
+    this.loadError='音频绑定配置损坏或不兼容，已禁止覆盖原文件：'+e.message;
+    await fs.promises.copyFile(this.file,this.file+'.invalid-'+Date.now()).catch(()=>{});
+   }
+  }
+  return this;
+ }
+ async save(){
+  if(this.loadError)throw Error(this.loadError);
+  const content=JSON.stringify(this.data,null,2);
+  this.writeQueue=this.writeQueue.catch(()=>{}).then(async()=>{
+   await fs.promises.mkdir(path.dirname(this.file),{recursive:true});
+   const tmp=this.file+'.tmp';
+   await fs.promises.writeFile(tmp,content,'utf8');
+   if(fs.existsSync(this.file))await fs.promises.copyFile(this.file,this.file+'.bak');
+   await fs.promises.rename(tmp,this.file);
+  });
+  return this.writeQueue;
+ }
+ snapshot(){return {...JSON.parse(JSON.stringify(this.data)),warning:this.loadError||''}}
  async add(code,paths,label='人物声音'){
   code=safeCode(code);if(!Array.isArray(paths)||paths.length===0)return this.snapshot();let arr=this.data.bindings[code]||[];
   for(const p of paths){if(!path.isAbsolute(p))throw Error('只允许绑定本机绝对路径音频');if(!EXTS.has(path.extname(p).toLowerCase()))throw Error('仅支持WAV/MP3');const stat=await fs.promises.stat(p);if(!stat.isFile()||stat.size<1||stat.size>LIMIT.maxBytes)throw Error('音频不能超过15MB');const duration=await this.probe(p,this.ffprobe);if(duration<2||duration>15)throw Error('Seedance 2.0每段音频需2到15秒：'+audioName(p));
