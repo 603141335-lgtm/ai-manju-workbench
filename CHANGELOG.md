@@ -1,6 +1,7 @@
 # 更新记录
 
 ## V1.3 工作台稳定性加固（开发分支，未发布）
+- 修复 Electron 44 运行文件缺失：通过官方内置 `install-electron` 显式下载并校验，不再误用 `npm rebuild electron`。
 - 修复完整 ZIP 根目录缺少 package-lock.json 导致 npm ci 直接报 EUSAGE。
 - 启动本机后台时验证 Ed25519 签名与测试公钥一致，不再固定等待10秒，保留失败错误输出。
 - Windows 本机测试与正式账号、Cookie、项目和授权缓存隔离；生产版用户目录及 Cloudflare D1 不变。
