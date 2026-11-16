@@ -12,6 +12,12 @@ on:
       - 'native-core/**'
       - 'license-service/**'
   workflow_dispatch:
+  pull_request:
+    branches:
+      - feature/v13-workbench-stability-audit
+    paths:
+      - '.github/workflows/v13-installer.yml'
+      - 'package.json'
 permissions:
   contents: read
 jobs:
