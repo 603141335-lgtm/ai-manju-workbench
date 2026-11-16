@@ -93,16 +93,19 @@ async function main(){
  const wrangler=path.join(licenseRoot,'node_modules','wrangler','bin','wrangler.js');
  if(!fs.existsSync(wrangler))await npm([packageInstallMode(licenseRoot),'--no-audit','--no-fund'],licenseRoot,'Install local backend dependencies');
  if(!fs.existsSync(wrangler))throw Error('Wrangler CLI is missing after installation.');
- const workerd=path.join(licenseRoot,'node_modules','.bin',windows?'workerd.cmd':'workerd');
- function workerdReady(){
-  if(!fs.existsSync(workerd))return false;
+ function nativeToolReady(name){
+  const suffix=windows?'.cmd':'';
+  const exe=path.join(licenseRoot,'node_modules','.bin',name+suffix);
+  if(!fs.existsSync(exe))return false;
   const result=windows?
-   spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c','node_modules\\.bin\\workerd.cmd --version'],{cwd:licenseRoot,stdio:'ignore',windowsHide:true,timeout:10000}):
-   spawnSync(workerd,['--version'],{cwd:licenseRoot,stdio:'ignore',timeout:10000});
+   spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c','node_modules\\.bin\\'+name+'.cmd --version'],{cwd:licenseRoot,stdio:'ignore',windowsHide:true,timeout:10000}):
+   spawnSync(exe,['--version'],{cwd:licenseRoot,stdio:'ignore',timeout:10000});
   return !result.error&&result.status===0;
  }
- if(!workerdReady())await npm(['rebuild','esbuild','workerd','--foreground-scripts'],licenseRoot,'Repair local Workerd native runtime');
- if(!workerdReady())throw Error('Workerd is installed but cannot run. Check Windows Defender and npm native installation logs.');
+ if(!nativeToolReady('workerd')||!nativeToolReady('esbuild'))
+  await npm(['rebuild','esbuild','workerd','--foreground-scripts'],licenseRoot,'Repair local Workerd and esbuild runtimes');
+ if(!nativeToolReady('workerd')||!nativeToolReady('esbuild'))
+  throw Error('Workerd or esbuild is installed but cannot run. Check Windows Defender and npm native installation logs.');
  await npm(['run','check'],root,'Desktop syntax and regression checks');
  await npm(['run','check'],licenseRoot,'Backend syntax and launcher checks');
  await npm(['test'],licenseRoot,'Backend unit and integration checks');
