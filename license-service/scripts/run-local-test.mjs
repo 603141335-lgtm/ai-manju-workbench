@@ -20,22 +20,15 @@ if(required.some(value=>!config.includes(value))||config.includes('database_name
 if(!existsSync(join(root,'node_modules','wrangler'))) throw Error('未找到本地 Wrangler，请先在 license-service 目录运行 npm ci');
 const {keys}=ensureLocalTestSecrets();
 
-const wranglerCmd=join(root,'node_modules','.bin','wrangler.cmd');
+// Direct Node invocation uses argv (not nested cmd.exe quoting), so Windows paths
+// containing spaces, parentheses and non-ASCII characters are handled consistently.
 const wranglerEntry=join(root,'node_modules','wrangler','bin','wrangler.js');
-if(process.platform==='win32'&&!existsSync(wranglerCmd)) throw Error('未找到 node_modules\\.bin\\wrangler.cmd，请重新运行 npm ci');
-if(process.platform!=='win32'&&!existsSync(wranglerEntry)) throw Error('未找到本地 Wrangler CLI 入口，请重新运行 npm ci');
+if(!existsSync(wranglerEntry))throw Error('未找到本地 Wrangler CLI，请先在 license-service 目录执行 npm ci');
 
 function runWrangler(args){
-  let result;
-  if(process.platform==='win32'){
-    const quote=value=>'"'+String(value).replace(/"/g,'""')+'"';
-    const command=quote(wranglerCmd)+' '+args.map(quote).join(' ');
-    result=spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c','"'+command+'"'],{cwd:root,stdio:'inherit',windowsHide:false});
-  }else{
-    result=spawnSync(process.execPath,[wranglerEntry,...args],{cwd:root,stdio:'inherit',windowsHide:false});
-  }
-  if(result.error) throw result.error;
-  if(result.status!==0) throw Error('本机 Wrangler 命令失败（退出码 '+result.status+'）；未运行任何远程部署命令');
+  const result=spawnSync(process.execPath,[wranglerEntry,...args],{cwd:root,stdio:'inherit',windowsHide:false,env:process.env});
+  if(result.error)throw result.error;
+  if(result.status!==0)throw Error('本机 Wrangler 退出码 '+result.status+'；仅在 --local 模式运行，远程 D1 未修改');
 }
 
 console.log('\n[1/3] 初始化本机 D1（显式 --local，不连接远程 D1）');

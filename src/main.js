@@ -7,6 +7,7 @@ const {randomUUID} = require('node:crypto');
 const {pathToFileURL} = require('node:url');
 const {spawn} = require('node:child_process');
 const {createInitialData,normalizeName,safeBounds,allowedImage,allowedEdgeProfile} = require('./store');
+const {saveAccountConfig,readOrCreateAccountConfig}=require('./account-config-store');
 const {WorkspaceStore} = require('./workspace');
 const {parseMultiEpisode} = require('./parser');
 const {DownloadManager,inspectManifest}=require('./downloads');
@@ -24,15 +25,18 @@ const {ThumbnailCache}=require('./thumbnail-cache');
 const {LicenseClient}=require('./license-client');
 const publicConfig=require('./public-config.json');
 
-// Public distribution never reads the author's legacy workspace or sessions.
-// Each Windows user receives a fresh isolated profile; existing workspaces never auto-migrate.
-const publicUserDataDir=path.join(app.getPath('appData'),'DoubaoCreativeHubPublic');
+// Never share production profiles, Doubao sessions or license caches with the local test server.
+// Packaged builds ignore DUDU_LOCAL_TEST_PROFILE, even if it was inherited from the environment.
+const localTestProfile=!app.isPackaged&&process.env.DUDU_LOCAL_TEST_PROFILE==='1';
+const publicUserDataDir=path.join(app.getPath('appData'),localTestProfile?'DoubaoCreativeHubLocalTest':'DoubaoCreativeHubPublic');
 fs.mkdirSync(publicUserDataDir,{recursive:true});
 app.setPath('userData',publicUserDataDir);
 function loadLicenseRuntimeConfig(){
-  if(!app.isPackaged){
+  if(localTestProfile){
     const localFile=path.join(publicUserDataDir,'license-config.local.json');
-    try{const local=JSON.parse(fs.readFileSync(localFile,'utf8'));if(local?.localTestMode===true)return local}catch{}
+    const local=JSON.parse(fs.readFileSync(localFile,'utf8'));
+    if(local?.localTestMode!==true)throw Error('本机测试授权配置无效：请先运行本机测试服务');
+    return local;
   }
   return require('./license-config.json');
 }
@@ -56,18 +60,17 @@ const now=()=>Date.now();
 const exists=(p)=>{try{return fs.statSync(p).isFile()}catch{return false}};
 function log(err){try{fs.appendFileSync(path.join(app.getPath('userData'),'diagnostic.log'),`\n${new Date().toISOString()} ${String(err?.stack||err)}\n`)}catch{}}
 function save(){
-  try{const temp=cfgFile+'.tmp';fs.writeFileSync(temp,JSON.stringify(cfg,null,2),'utf8');fs.renameSync(temp,cfgFile)}catch(e){log(e);throw e}
+ try{saveAccountConfig(cfgFile,cfg)}catch(e){log(e);throw e}
 }
 function readCfg(){
-  fs.mkdirSync(app.getPath('userData'),{recursive:true});cfgFile=path.join(app.getPath('userData'),'config.json');
-  if(exists(cfgFile)){
-    try {const v=JSON.parse(fs.readFileSync(cfgFile,'utf8'));
-      if(v.version===1&&Array.isArray(v.accounts)&&Array.isArray(v.groups)&&Array.isArray(v.segments))return v;
-    }catch(e){log(e);fs.copyFileSync(cfgFile,cfgFile+'.corrupted-'+Date.now())}
-  }
-  const data=createInitialData(randomUUID);cfg=data;save();return data;
+ cfgFile=path.join(app.getPath('userData'),'config.json');
+ return readOrCreateAccountConfig(cfgFile,()=>createInitialData(randomUUID));
 }
-function update(mutator){mutator();save();return cfg;}
+function update(mutator){
+ const before=structuredClone(cfg);
+ try{mutator();save();return cfg}
+ catch(err){cfg=before;throw err}
+}
 function tell(channel,payload){if(win&&!win.isDestroyed())win.webContents.send(channel,payload)}
 function account(id){const a=cfg.accounts.find(x=>x.id===id);if(!a)throw new Error('账号不存在');return a;}
 function segment(id){const s=cfg.segments.find(x=>x.id===id);if(!s)throw new Error('段落不存在');return s;}
@@ -401,9 +404,10 @@ function registerHandlers(){
   guardedHandle('account:add',(_e,groupId,name)=>update(()=>{if(!cfg.groups.some(g=>g.id===groupId))throw Error('分组不存在');cfg.accounts.push({id:randomUUID(),groupId,name:normalizeName(name),done:0})}));
   guardedHandle('account:rename',(_e,id,name)=>update(()=>{account(id).name=normalizeName(name)}));
   guardedHandle('account:remove',(_e,id)=>{
+    if(!cfg.accounts.some(a=>a.id===id))throw Error('账号不存在');
     if(cfg.accounts.length<=1)throw Error('至少保留一个账号');
-    if(activeId===id)selectAccount(cfg.accounts.find(a=>a.id!==id).id);
     if(activeImportAccounts.has(id))throw Error('此账号正在上传或绑定图片，请先取消该账号任务再删除');
+    if(activeId===id)selectAccount(cfg.accounts.find(a=>a.id!==id).id);
     importEnginesByAccount.delete(id);importStatesByAccount.delete(id);
     const slot=views.get(id);if(slot){try{win.contentView.removeChildView(slot.view);slot.view.webContents.close()}catch(e){log(e)}views.delete(id)}
     manualVideoSessions.delete(id);

@@ -4,7 +4,7 @@ concurrency:
   cancel-in-progress: true
 on:
   push:
-    branches: [feature/dudu-ai-v1.2.0-license, feature/v13-workbench-admin-integration]
+    branches: [feature/dudu-ai-v1.2.0-license]
   workflow_dispatch:
 permissions:
   contents: write

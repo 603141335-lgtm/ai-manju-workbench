@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path');
 const TERMINAL=new Set(['done','error','cancelled','interrupted']);
 class TaskJournal{
- constructor(file){this.file=file;this.entries=[];this.timer=null;this.load()}
+ constructor(file){this.file=file;this.entries=[];this.timer=null;this.writeQueue=Promise.resolve();this.lastError='';this.load()}
  load(){
   try{
    const body=JSON.parse(fs.readFileSync(this.file,'utf8'));
@@ -22,15 +22,20 @@ class TaskJournal{
    message:String(info.message||'').slice(0,240),at:Date.now()};
   this.entries=this.entries.filter(x=>x.accountId!==entry.accountId);
   this.entries.push(entry);this.entries=this.entries.slice(-100);
-  if(!this.timer)this.timer=setTimeout(()=>this.flush().catch(()=>{}),500);
+  if(!this.timer)this.timer=setTimeout(()=>this.flush().catch(e=>{this.lastError=e.message}),500);
  }
  list(){return this.entries.map(x=>({...x}))}
  async flush(){
   if(this.timer){clearTimeout(this.timer);this.timer=null}
-  await fs.promises.mkdir(path.dirname(this.file),{recursive:true});
-  const tmp=this.file+'.tmp';
-  await fs.promises.writeFile(tmp,JSON.stringify(this.entries),'utf8');
-  await fs.promises.rename(tmp,this.file);
+  const content=JSON.stringify(this.entries);
+  this.writeQueue=this.writeQueue.catch(()=>{}).then(async()=>{
+   await fs.promises.mkdir(path.dirname(this.file),{recursive:true});
+   const tmp=this.file+'.tmp';
+   await fs.promises.writeFile(tmp,content,'utf8');
+   await fs.promises.rename(tmp,this.file);
+   this.lastError='';
+  });
+  return this.writeQueue.catch(e=>{this.lastError=e.message;throw e});
  }
 }
 module.exports={TaskJournal};

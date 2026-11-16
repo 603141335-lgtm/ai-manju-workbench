@@ -22,7 +22,8 @@ test('public: public installer and public userData are separate from private v0.
  assert.equal(build.productName,'独独AI工作台');
  assert.equal(pkg.build.appId,build.appId);
  const main=source('src/main.js');
- assert.match(main,/const publicUserDataDir=path\.join\(app\.getPath\('appData'\),'DoubaoCreativeHubPublic'\)/);
+ assert.match(main,/const localTestProfile=!app\.isPackaged&&process\.env\.DUDU_LOCAL_TEST_PROFILE==='1'/);
+ assert.match(main,/const publicUserDataDir=path\.join\(app\.getPath\('appData'\),localTestProfile\?'DoubaoCreativeHubLocalTest':'DoubaoCreativeHubPublic'\)/);
  assert.match(main,/fs\.mkdirSync\(publicUserDataDir,\{recursive:true\}\)/);
  assert.match(main,/app\.setPath\('userData',publicUserDataDir\)/);
  assert.match(main,/persist:doubao_\$\{id\}/);

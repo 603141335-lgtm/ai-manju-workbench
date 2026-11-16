@@ -1,5 +1,14 @@
 # 更新记录
 
+## V1.3 工作台稳定性加固（开发分支，未发布）
+- 修复 Electron 44 运行文件缺失：通过官方内置 `install-electron` 显式下载并校验，不再误用 `npm rebuild electron`。
+- 修复完整 ZIP 根目录缺少 package-lock.json 导致 npm ci 直接报 EUSAGE。
+- 启动本机后台时验证 Ed25519 签名与测试公钥一致，不再固定等待10秒，保留失败错误输出。
+- Windows 本机测试与正式账号、Cookie、项目和授权缓存隔离；生产版用户目录及 Cloudflare D1 不变。
+- 账号配置、人物音频、任务状态、加密 API Key 的异常保存/并发写入增加保护与前一版备份。
+- 分离 Windows 自动化检查与正式安装包发布入口，实验开发分支不会自动发布生产包。
+- 新增回归用例；实际 Windows GUI、多账号、豆包网页上传及支付仍需实机验收。详情：docs/V13_WORKBENCH_STABILITY_AUDIT.md。
+
 ## v1.0.0 — 2026-11-04
 - 建立 Windows Electron 桌面工作台源码基线。
 - 多集/多段连续滚动、提示词复制、素材识别、原生多文件拖拽接口。

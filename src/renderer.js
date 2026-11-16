@@ -445,6 +445,11 @@ async function refreshVoiceBindings(){
  if(!ep||!seg){list.textContent='选择一个分镜后可绑定声音';$('voiceCount').textContent='本段 0 段';return;}
  voiceCache=await B.voiceList();
  if(getEp()?.id!==ep.id||getSeg()?.id!==seg.id)return;
+ if(voiceCache.warning){
+  list.textContent='⚠ '+voiceCache.warning+'；原始音频文件未被删除。请打开工作台数据目录检查备份。';
+  $('voiceCount').textContent='音色配置需修复';
+  return;
+ }
  const codes=[...new Set((seg.codes||[]).map(x=>String(x).toUpperCase()))];
  const rows=codes.flatMap(code=>(voiceCache.bindings[code]||[]).map(a=>({code,...a})));
  $('voiceCount').textContent='本段 '+codes.filter(x=>(voiceCache.bindings[x]||[]).length).length+' 人 / '+rows.length+' 段样本';
@@ -588,6 +593,9 @@ function initApiSettings(){
   const setStatus=v=>{
     $('apiKeyStatus').textContent=v.hasKey?'✓ 当前 Windows 用户已加密保存 API Key':'尚未保存 API Key';
     if(v.secureStorageAvailable===false)$('apiKeyStatus').textContent+='；当前 Windows 加密存储不可用';
+    if(v.loadWarning)$('apiKeyStatus').textContent='⚠ '+v.loadWarning+'；请先备份原文件，软件不会自动覆盖。';
+    $('apiSave').disabled=!!v.loadWarning;
+    $('apiClearKey').disabled=!!v.loadWarning;
   };
   const load=async()=>{
     const v=await B.apiGet();setStatus(v);
