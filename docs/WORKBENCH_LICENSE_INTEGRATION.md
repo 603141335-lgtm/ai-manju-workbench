@@ -11,7 +11,7 @@
 
 1. 关闭旧的本机 Worker 窗口（监听 8788 端口）；如果端口已经被同一测试密钥的服务占用，启动器会自动识别并复用。
 2. 将整个 GitHub ZIP **完整解压到新文件夹**，在项目根目录双击 `START_DUDUAI_LOCAL_TEST.bat`。不要在旧 ZIP 或子文件夹里面运行。
-3. 启动器检查 Node.js 22+；根目录没有 `package-lock.json` 时使用 `npm install`，存在锁文件时使用 `npm ci`。后台目录则按其锁文件安装。
+3. 启动器检查 Node.js 22+；根目录没有 `package-lock.json` 时使用 `npm install`，存在锁文件时使用 `npm ci`。后台目录则按其锁文件安装。 Electron 42+ 依赖只安装 npm 包，启动器会在桌面运行文件缺失时额外执行**项目内置** `npm exec --no -- install-electron`；不再使用无效的 `npm rebuild electron`。
 4. 它执行语法检查和自动测试，修复必要的 Workerd 原生依赖；随后在本机启动后台，等待授权服务实际返回**匹配本机测试密钥的 Ed25519 签名证明**，通过后才打开桌面工作台。不再固定等待10秒。
 5. 工作台与生产版使用**完全不同的本地用户目录**：`%APPDATA%\DoubaoCreativeHubLocalTest`。正式版仍使用 `%APPDATA%\DoubaoCreativeHubPublic`，原豆包登录、项目、授权缓存和账号设置不自动迁移、不会覆盖。
 6. 在工作台打开“授权中心”，点击“运营管理中心”，浏览器打开 `http://127.0.0.1:8788/admin`。管理员测试令牌只在**当前本机命令行**显示，输入到后台网页登录框；截图前必须遮住令牌。
@@ -33,3 +33,5 @@
 Windows 发布工作流运行 `npm run license:prepare`，会访问 `/v1/license/attest` 验证云端签名密钥与客户端公钥一致后，才把公开配置写入安装包。管理员令牌、签名私钥、HMAC 密钥和支付商户密钥绝不能放进工作台客户端或普通 GitHub Variables。
 
 **本机联调通过不等于生产服务已部署。** 在正式发布前，仍需按 `license-service/OPS_CENTER_SETUP.md` 完成生产部署审批和支付渠道验收。
+
+若已在旧版本安装了依赖，却只出现 `Electron runtime is missing`，可以在工作台**根目录**单独运行 `npx --no-install install-electron` 修复，不需要清空用户数据、重装全部 npm 依赖或重置授权。
