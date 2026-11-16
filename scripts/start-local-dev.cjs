@@ -94,8 +94,15 @@ async function main(){
  if(!fs.existsSync(wrangler))await npm([packageInstallMode(licenseRoot),'--no-audit','--no-fund'],licenseRoot,'Install local backend dependencies');
  if(!fs.existsSync(wrangler))throw Error('Wrangler CLI is missing after installation.');
  const workerd=path.join(licenseRoot,'node_modules','.bin',windows?'workerd.cmd':'workerd');
- if(!fs.existsSync(workerd))await npm(['rebuild','esbuild','workerd','--foreground-scripts'],licenseRoot,'Install local Workerd runtime');
- if(!fs.existsSync(workerd))throw Error('Local Workerd binary is missing after installation.');
+ function workerdReady(){
+  if(!fs.existsSync(workerd))return false;
+  const result=windows?
+   spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c','node_modules\\.bin\\workerd.cmd --version'],{cwd:licenseRoot,stdio:'ignore',windowsHide:true,timeout:10000}):
+   spawnSync(workerd,['--version'],{cwd:licenseRoot,stdio:'ignore',timeout:10000});
+  return !result.error&&result.status===0;
+ }
+ if(!workerdReady())await npm(['rebuild','esbuild','workerd','--foreground-scripts'],licenseRoot,'Repair local Workerd native runtime');
+ if(!workerdReady())throw Error('Workerd is installed but cannot run. Check Windows Defender and npm native installation logs.');
  await npm(['run','check'],root,'Desktop syntax and regression checks');
  await npm(['run','check'],licenseRoot,'Backend syntax and launcher checks');
  await npm(['test'],licenseRoot,'Backend unit and integration checks');
