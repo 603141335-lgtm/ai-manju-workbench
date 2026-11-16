@@ -7,6 +7,7 @@ const {randomUUID} = require('node:crypto');
 const {pathToFileURL} = require('node:url');
 const {spawn} = require('node:child_process');
 const {createInitialData,normalizeName,safeBounds,allowedImage,allowedEdgeProfile} = require('./store');
+const {saveAccountConfig,readOrCreateAccountConfig}=require('./account-config-store');
 const {WorkspaceStore} = require('./workspace');
 const {parseMultiEpisode} = require('./parser');
 const {DownloadManager,inspectManifest}=require('./downloads');
@@ -59,26 +60,11 @@ const now=()=>Date.now();
 const exists=(p)=>{try{return fs.statSync(p).isFile()}catch{return false}};
 function log(err){try{fs.appendFileSync(path.join(app.getPath('userData'),'diagnostic.log'),`\n${new Date().toISOString()} ${String(err?.stack||err)}\n`)}catch{}}
 function save(){
-  try{
-    const temp=cfgFile+'.tmp';
-    fs.writeFileSync(temp,JSON.stringify(cfg,null,2),'utf8');
-    if(exists(cfgFile))fs.copyFileSync(cfgFile,cfgFile+'.bak');
-    fs.renameSync(temp,cfgFile);
-  }catch(e){log(e);throw e}
+ try{saveAccountConfig(cfgFile,cfg)}catch(e){log(e);throw e}
 }
 function readCfg(){
-  fs.mkdirSync(app.getPath('userData'),{recursive:true});cfgFile=path.join(app.getPath('userData'),'config.json');
-  if(exists(cfgFile)){
-    let v;
-    try{v=JSON.parse(fs.readFileSync(cfgFile,'utf8'))}catch(e){
-      log(e);
-      try{fs.copyFileSync(cfgFile,cfgFile+'.corrupted-'+Date.now())}catch(copyError){log(copyError)}
-      throw Error('账号配置文件无法解析；原数据未被重置。请备份 config.json 并查看 diagnostic.log：'+e.message);
-    }
-    if(v&&v.version===1&&Array.isArray(v.accounts)&&Array.isArray(v.groups)&&Array.isArray(v.segments))return v;
-    throw Error('账号配置格式不兼容；已保留原文件，拒绝用空白数据覆盖。请备份 config.json 后再处理。');
-  }
-  const data=createInitialData(randomUUID);cfg=data;save();return data;
+ cfgFile=path.join(app.getPath('userData'),'config.json');
+ return readOrCreateAccountConfig(cfgFile,()=>createInitialData(randomUUID));
 }
 function update(mutator){mutator();save();return cfg;}
 function tell(channel,payload){if(win&&!win.isDestroyed())win.webContents.send(channel,payload)}
