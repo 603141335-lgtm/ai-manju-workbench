@@ -588,6 +588,9 @@ function initApiSettings(){
   const setStatus=v=>{
     $('apiKeyStatus').textContent=v.hasKey?'✓ 当前 Windows 用户已加密保存 API Key':'尚未保存 API Key';
     if(v.secureStorageAvailable===false)$('apiKeyStatus').textContent+='；当前 Windows 加密存储不可用';
+    if(v.loadWarning)$('apiKeyStatus').textContent='⚠ '+v.loadWarning+'；请先备份原文件，软件不会自动覆盖。';
+    $('apiSave').disabled=!!v.loadWarning;
+    $('apiClearKey').disabled=!!v.loadWarning;
   };
   const load=async()=>{
     const v=await B.apiGet();setStatus(v);
