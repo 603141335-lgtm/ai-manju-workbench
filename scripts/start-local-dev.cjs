@@ -21,6 +21,14 @@ let closing=false;
 function packageInstallMode(directory){
  return fs.existsSync(path.join(directory,'package-lock.json'))?'ci':'install';
 }
+// Electron >=42 intentionally delays downloading its native executable until
+// its bundled install-electron command is run; npm rebuild electron won't do it.
+function electronRuntimePresent(directory,platform=process.platform){
+ const executable=path.join(directory,'node_modules','electron','dist',
+  platform==='win32'?'electron.exe':platform==='darwin'?'Electron.app/Contents/MacOS/Electron':'electron');
+ try{const info=fs.statSync(executable);return info.isFile()&&info.size>5*1024*1024}
+ catch{return false}
+}
 function npmProcess(args,cwd,env=localEnv){
  if(!Array.isArray(args)||args.some(x=>!/^[a-zA-Z0-9:_./-]+$/.test(x)))throw Error('Invalid npm subcommand arguments');
  if(windows)return spawn(process.env.ComSpec||'cmd.exe',['/d','/s','/c','npm '+args.join(' ')],{cwd,env,stdio:'inherit',windowsHide:false});
@@ -84,12 +92,26 @@ async function main(){
  if(windows&&!process.env.APPDATA)throw Error('Windows APPDATA is missing; cannot isolate the test profile.');
  if(!fs.existsSync(path.join(root,'package.json'))||!fs.existsSync(path.join(licenseRoot,'package-lock.json')))
   throw Error('Project directory is incomplete; extract the full ZIP before starting.');
- const electronExe=path.join(root,'node_modules','electron','dist',windows?'electron.exe':'electron');
- if(!fs.existsSync(electronExe)){
+ const electronPackage=path.join(root,'node_modules','electron','package.json');
+ if(!fs.existsSync(electronPackage))
   await npm([packageInstallMode(root),'--no-audit','--no-fund'],root,'Install desktop dependencies');
-  if(!fs.existsSync(electronExe))await npm(['rebuild','electron','--foreground-scripts'],root,'Install Electron runtime');
+ if(!fs.existsSync(electronPackage))throw Error('Electron npm package is missing after installation; check npm registry access.');
+ if(!electronRuntimePresent(root)){
+  // Official Electron 42+ installation flow. --no guarantees that npm never
+  // silently installs an unpinned replacement package from the registry.
+  const bundledInstaller=path.join(root,'node_modules','.bin',windows?'install-electron.cmd':'install-electron');
+  if(!fs.existsSync(bundledInstaller))
+   throw Error('Electron bundled install-electron command is missing; run npm install in this project directory.');
+  console.log('Electron npm package is installed, but its desktop executable has not been downloaded.');
+  console.log('Downloading the EXACT pinned Electron runtime using the bundled official installer.');
+  try{
+   await npm(['exec','--no','--','install-electron'],root,'Download Electron 42+ runtime');
+  }catch(error){
+   throw Error('Electron runtime download failed. Check GitHub Releases network access or proxy, then retry. No project data was changed. '+error.message);
+  }
  }
- if(!fs.existsSync(electronExe))throw Error('Electron runtime is missing after installation: '+electronExe);
+ if(!electronRuntimePresent(root))
+  throw Error('Electron installer returned without a usable native executable. Check antivirus quarantine and GitHub download access; no workspace data was modified.');
  const wrangler=path.join(licenseRoot,'node_modules','wrangler','bin','wrangler.js');
  if(!fs.existsSync(wrangler))await npm([packageInstallMode(licenseRoot),'--no-audit','--no-fund'],licenseRoot,'Install local backend dependencies');
  if(!fs.existsSync(wrangler))throw Error('Wrangler CLI is missing after installation.');
@@ -134,4 +156,4 @@ if(require.main===module){
  main().catch(e=>{console.error('\n[STARTUP FAILED] '+String(e.stack||e));process.exitCode=1})
   .finally(()=>stopBackend());
 }
-module.exports={packageInstallMode,verifyAttestation};
+module.exports={packageInstallMode,verifyAttestation,electronRuntimePresent};
