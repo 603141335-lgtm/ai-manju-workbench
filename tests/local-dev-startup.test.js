@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {generateKeyPairSync,sign}=require('node:crypto');
-const {packageInstallMode,verifyAttestation}=require('../scripts/start-local-dev.cjs');
+const {packageInstallMode,verifyAttestation,electronRuntimePresent}=require('../scripts/start-local-dev.cjs');
 
 test('desktop install chooses npm install for ZIPs without a root lockfile',()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'dudu-start-'));
@@ -51,4 +51,21 @@ test('local orchestrator does not call remote deployment commands',()=>{
  assert.doesNotMatch(source,/--remote|wrangler deploy|d1 create/);
  assert.match(source,/packageInstallMode\(root\)/);
  assert.match(source,/DUDU_LOCAL_TEST_PROFILE:'1'/);
+});
+
+test('Electron native runtime is explicitly downloaded after installing the npm package',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'dudu-electron-bin-'));
+ try{
+  const binary=path.join(dir,'node_modules','electron','dist','electron.exe');
+  assert.equal(electronRuntimePresent(dir,'win32'),false);
+  fs.mkdirSync(path.dirname(binary),{recursive:true});
+  fs.writeFileSync(binary,'incomplete');
+  assert.equal(electronRuntimePresent(dir,'win32'),false);
+  fs.truncateSync(binary,6*1024*1024);
+  assert.equal(electronRuntimePresent(dir,'win32'),true);
+  const source=fs.readFileSync(path.join(__dirname,'../scripts/start-local-dev.cjs'),'utf8');
+  assert.match(source,/exec','--no','--','install-electron/);
+  assert.doesNotMatch(source,/rebuild','electron'/);
+  assert.match(source,/bundledInstaller/);
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
