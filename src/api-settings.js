@@ -54,26 +54,34 @@ class ApiSettings{
   constructor({file,safeStorage,transport=requestJSON}={}){
     if(!file||!safeStorage)throw Error('API 配置缺少存储服务');
     this.file=file;this.safeStorage=safeStorage;this.transport=transport;
+    this.writeQueue=Promise.resolve();this.loadWarning='';
     this.data={provider:'custom',endpoint:'',model:'',encryptedKey:''};this.load();
   }
   load(){
     try{
-      const st=fs.statSync(this.file);if(st.size>32*1024)return;
+      const st=fs.statSync(this.file);
+      if(st.size>32*1024)throw Error('配置文件超过32KB安全限制');
       const o=JSON.parse(fs.readFileSync(this.file,'utf8'));
-      if(!o||typeof o!=='object')return;
+      if(!o||typeof o!=='object'||Array.isArray(o)||!Object.prototype.hasOwnProperty.call(o,'provider'))throw Error('API 配置格式无效');
       this.data={
-        provider:PROVIDERS.hasOwnProperty(o.provider)?o.provider:'custom',
+        provider:Object.prototype.hasOwnProperty.call(PROVIDERS,o.provider)?o.provider:'custom',
         endpoint:shortText(o.endpoint,350),model:shortText(o.model,120),
         encryptedKey:typeof o.encryptedKey==='string'?o.encryptedKey.slice(0,16000):''
       };
-    }catch{}
+    }catch(e){
+      if(e.code!=='ENOENT'){
+        this.loadWarning='本机 API 配置损坏或不兼容，已禁止覆盖原文件：'+e.message;
+        try{fs.copyFileSync(this.file,this.file+'.invalid-'+Date.now())}catch{}
+      }
+    }
   }
   snapshot(){
     return {provider:this.data.provider,endpoint:this.data.endpoint,model:this.data.model,
       hasKey:!!this.data.encryptedKey,secureStorageAvailable:this.safeStorage.isEncryptionAvailable(),
-      availableProviders:PROVIDERS};
+      loadWarning:this.loadWarning,availableProviders:PROVIDERS};
   }
   async save({provider,endpoint,model,key,clearKey}={}){
+    if(this.loadWarning)throw Error(this.loadWarning);
     if(!Object.prototype.hasOwnProperty.call(PROVIDERS,provider))throw Error('API 服务商不支持');
     const apiBase=validateEndpoint(endpoint||PROVIDERS[provider]);
     const apiModel=shortText(model,120);
@@ -86,12 +94,19 @@ class ApiSettings{
       encryptedKey=this.safeStorage.encryptString(key.trim()).toString('base64');
     }
     this.data={provider,endpoint:apiBase,model:apiModel,encryptedKey};
-    await fs.promises.mkdir(path.dirname(this.file),{recursive:true});
-    const temp=this.file+'.tmp';await fs.promises.writeFile(temp,JSON.stringify(this.data),'utf8');
-    await fs.promises.rename(temp,this.file);
+    const content=JSON.stringify(this.data);
+    this.writeQueue=this.writeQueue.catch(()=>{}).then(async()=>{
+      await fs.promises.mkdir(path.dirname(this.file),{recursive:true});
+      const temp=this.file+'.tmp';
+      await fs.promises.writeFile(temp,content,'utf8');
+      try{await fs.promises.copyFile(this.file,this.file+'.bak')}catch(e){if(e.code!=='ENOENT')throw e}
+      await fs.promises.rename(temp,this.file);
+    });
+    await this.writeQueue;
     return this.snapshot();
   }
   getCredentials(){
+    if(this.loadWarning)throw Error(this.loadWarning);
     if(!this.data.endpoint)throw Error('请先保存 API 地址');
     if(!this.data.model)throw Error('请先设置模型 ID');
     if(!this.data.encryptedKey)throw Error('请填写并保存 API Key');
