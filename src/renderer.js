@@ -445,6 +445,11 @@ async function refreshVoiceBindings(){
  if(!ep||!seg){list.textContent='选择一个分镜后可绑定声音';$('voiceCount').textContent='本段 0 段';return;}
  voiceCache=await B.voiceList();
  if(getEp()?.id!==ep.id||getSeg()?.id!==seg.id)return;
+ if(voiceCache.warning){
+  list.textContent='⚠ '+voiceCache.warning+'；原始音频文件未被删除。请打开工作台数据目录检查备份。';
+  $('voiceCount').textContent='音色配置需修复';
+  return;
+ }
  const codes=[...new Set((seg.codes||[]).map(x=>String(x).toUpperCase()))];
  const rows=codes.flatMap(code=>(voiceCache.bindings[code]||[]).map(a=>({code,...a})));
  $('voiceCount').textContent='本段 '+codes.filter(x=>(voiceCache.bindings[x]||[]).length).length+' 人 / '+rows.length+' 段样本';
