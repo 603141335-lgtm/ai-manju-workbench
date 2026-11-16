@@ -66,7 +66,11 @@ function readCfg(){
  cfgFile=path.join(app.getPath('userData'),'config.json');
  return readOrCreateAccountConfig(cfgFile,()=>createInitialData(randomUUID));
 }
-function update(mutator){mutator();save();return cfg;}
+function update(mutator){
+ const before=structuredClone(cfg);
+ try{mutator();save();return cfg}
+ catch(err){cfg=before;throw err}
+}
 function tell(channel,payload){if(win&&!win.isDestroyed())win.webContents.send(channel,payload)}
 function account(id){const a=cfg.accounts.find(x=>x.id===id);if(!a)throw new Error('账号不存在');return a;}
 function segment(id){const s=cfg.segments.find(x=>x.id===id);if(!s)throw new Error('段落不存在');return s;}
@@ -400,9 +404,10 @@ function registerHandlers(){
   guardedHandle('account:add',(_e,groupId,name)=>update(()=>{if(!cfg.groups.some(g=>g.id===groupId))throw Error('分组不存在');cfg.accounts.push({id:randomUUID(),groupId,name:normalizeName(name),done:0})}));
   guardedHandle('account:rename',(_e,id,name)=>update(()=>{account(id).name=normalizeName(name)}));
   guardedHandle('account:remove',(_e,id)=>{
+    if(!cfg.accounts.some(a=>a.id===id))throw Error('账号不存在');
     if(cfg.accounts.length<=1)throw Error('至少保留一个账号');
-    if(activeId===id)selectAccount(cfg.accounts.find(a=>a.id!==id).id);
     if(activeImportAccounts.has(id))throw Error('此账号正在上传或绑定图片，请先取消该账号任务再删除');
+    if(activeId===id)selectAccount(cfg.accounts.find(a=>a.id!==id).id);
     importEnginesByAccount.delete(id);importStatesByAccount.delete(id);
     const slot=views.get(id);if(slot){try{win.contentView.removeChildView(slot.view);slot.view.webContents.close()}catch(e){log(e)}views.delete(id)}
     manualVideoSessions.delete(id);
