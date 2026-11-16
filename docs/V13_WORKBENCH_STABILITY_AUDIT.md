@@ -7,6 +7,7 @@
 | 严重程度 | 问题 | 修复方式 | 相关文件 |
 | --- | --- | --- | --- |
 | 阻断 | 根目录没有 `package-lock.json`，原启动器直接执行 `npm ci`，导致 EUSAGE | 按实际锁文件存在性选择 `npm install` 或 `npm ci`；保留独立后台的锁定依赖 | `scripts/start-local-dev.cjs` |
+| 阻断 | Electron 44 的原生运行文件不随 `npm install` 下载，`npm rebuild electron` 不负责下载 | 调用 Electron 42+ 官方 `install-electron` 内置命令并验证文件体积，失败则提示网络/杀毒软件问题 | `scripts/start-local-dev.cjs`、`tests/local-dev-startup.test.js` |
 | 阻断 | 固定等待 10 秒，旧 Worker 或后台没启动时仍打开工作台 | 检查端口并通过 Ed25519 签名证明验证 **实际本机测试密钥**；只有确认服务就绪才启动桌面端 | `scripts/start-local-dev.cjs` |
 | 高 | 多层 CMD 引号拼接，Windows 文件路径含空格和括号时不可靠 | 启动器改为 Node 子进程和明确参数；本机 Wrangler 使用 Node argv，不拼接 CMD 命令 | `START_DUDUAI_LOCAL_TEST.bat`、`license-service/scripts/run-local-test.mjs` |
 | 高 | 测试版与正式工作台原先共用 %APPDATA% 用户目录 | 开发测试显式标记 `DUDU_LOCAL_TEST_PROFILE=1` 并独立使用 `DoubaoCreativeHubLocalTest`；正式打包版始终保持 `DoubaoCreativeHubPublic` | `src/main.js`、`license-service/scripts/prepare-local-test.mjs` |
