@@ -24,15 +24,18 @@ const {ThumbnailCache}=require('./thumbnail-cache');
 const {LicenseClient}=require('./license-client');
 const publicConfig=require('./public-config.json');
 
-// Public distribution never reads the author's legacy workspace or sessions.
-// Each Windows user receives a fresh isolated profile; existing workspaces never auto-migrate.
-const publicUserDataDir=path.join(app.getPath('appData'),'DoubaoCreativeHubPublic');
+// Never share production profiles, Doubao sessions or license caches with the local test server.
+// Packaged builds ignore DUDU_LOCAL_TEST_PROFILE, even if it was inherited from the environment.
+const localTestProfile=!app.isPackaged&&process.env.DUDU_LOCAL_TEST_PROFILE==='1';
+const publicUserDataDir=path.join(app.getPath('appData'),localTestProfile?'DoubaoCreativeHubLocalTest':'DoubaoCreativeHubPublic');
 fs.mkdirSync(publicUserDataDir,{recursive:true});
 app.setPath('userData',publicUserDataDir);
 function loadLicenseRuntimeConfig(){
-  if(!app.isPackaged){
+  if(localTestProfile){
     const localFile=path.join(publicUserDataDir,'license-config.local.json');
-    try{const local=JSON.parse(fs.readFileSync(localFile,'utf8'));if(local?.localTestMode===true)return local}catch{}
+    const local=JSON.parse(fs.readFileSync(localFile,'utf8'));
+    if(local?.localTestMode!==true)throw Error('本机测试授权配置无效：请先运行本机测试服务');
+    return local;
   }
   return require('./license-config.json');
 }
@@ -56,14 +59,24 @@ const now=()=>Date.now();
 const exists=(p)=>{try{return fs.statSync(p).isFile()}catch{return false}};
 function log(err){try{fs.appendFileSync(path.join(app.getPath('userData'),'diagnostic.log'),`\n${new Date().toISOString()} ${String(err?.stack||err)}\n`)}catch{}}
 function save(){
-  try{const temp=cfgFile+'.tmp';fs.writeFileSync(temp,JSON.stringify(cfg,null,2),'utf8');fs.renameSync(temp,cfgFile)}catch(e){log(e);throw e}
+  try{
+    const temp=cfgFile+'.tmp';
+    fs.writeFileSync(temp,JSON.stringify(cfg,null,2),'utf8');
+    if(exists(cfgFile))fs.copyFileSync(cfgFile,cfgFile+'.bak');
+    fs.renameSync(temp,cfgFile);
+  }catch(e){log(e);throw e}
 }
 function readCfg(){
   fs.mkdirSync(app.getPath('userData'),{recursive:true});cfgFile=path.join(app.getPath('userData'),'config.json');
   if(exists(cfgFile)){
-    try {const v=JSON.parse(fs.readFileSync(cfgFile,'utf8'));
-      if(v.version===1&&Array.isArray(v.accounts)&&Array.isArray(v.groups)&&Array.isArray(v.segments))return v;
-    }catch(e){log(e);fs.copyFileSync(cfgFile,cfgFile+'.corrupted-'+Date.now())}
+    let v;
+    try{v=JSON.parse(fs.readFileSync(cfgFile,'utf8'))}catch(e){
+      log(e);
+      try{fs.copyFileSync(cfgFile,cfgFile+'.corrupted-'+Date.now())}catch(copyError){log(copyError)}
+      throw Error('账号配置文件无法解析；原数据未被重置。请备份 config.json 并查看 diagnostic.log：'+e.message);
+    }
+    if(v&&v.version===1&&Array.isArray(v.accounts)&&Array.isArray(v.groups)&&Array.isArray(v.segments))return v;
+    throw Error('账号配置格式不兼容；已保留原文件，拒绝用空白数据覆盖。请备份 config.json 后再处理。');
   }
   const data=createInitialData(randomUUID);cfg=data;save();return data;
 }
