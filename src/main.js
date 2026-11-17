@@ -109,7 +109,7 @@ function scheduleVideoCheck(id){
 }
 
 const EXTENSION_PAGE_HOSTS=new Set(['www.doubao.com','www.dola.com']);
-const EXTENSION_MEDIA_SUFFIXES=Object.freeze(['doubao.com','dola.com','byteimg.com','ibyteimg.com','ciciai.com','bytecdn.cn','byteoversea.com','bytedance.com','bytedance.net','snssdk.com']);
+const EXTENSION_MEDIA_SUFFIXES=Object.freeze(['doubao.com','dola.com','byteimg.com','ibyteimg.com','ciciai.com','bytecdn.cn','byteoversea.com','bytedance.com','bytedance.net','snssdk.com','bytedapm.com','tiktokcdn.com','tiktokcdn-us.com','volces.com','volcengine.com','bytegoofy.com']);
 function extensionDownloadKey(accountId,url){return accountId+'\n'+url;}
 function queuePendingExtensionDownload(accountId,url,filename){
   const key=extensionDownloadKey(accountId,url);

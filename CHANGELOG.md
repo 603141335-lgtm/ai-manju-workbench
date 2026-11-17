@@ -8,6 +8,8 @@
 - 账号配置、人物音频、任务状态、加密 API Key 的异常保存/并发写入增加保护与前一版备份。
 - 分离 Windows 自动化检查与正式安装包发布入口，实验开发分支不会自动发布生产包。
 - 新增回归用例；实际 Windows GUI、多账号、豆包网页上传及支付仍需实机验收。详情：docs/V13_WORKBENCH_STABILITY_AUDIT.md。
+- 内置「豆包国际版」扩展，按账号持久会话自动加载；Electron 不支持的 chrome.downloads 由受限主进程桥接接入现有下载管理、归档和尾帧流程。
+- 扩展资源通过 extraResources 以未打包目录随安装包发布；保留原 appId、%APPDATA%\DoubaoCreativeHubPublic、persist:doubao_<账号ID> 和历史下载目录。
 
 ## v1.0.0 — 2026-11-04
 - 建立 Windows Electron 桌面工作台源码基线。
