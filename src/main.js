@@ -54,6 +54,9 @@ const importEnginesByAccount=new Map();
 const importStatesByAccount=new Map();
 let win, cfg, cfgFile, workspace, downloads, extensionCandidate=null, lastBounds=null, activeId=null, overlayShown=false;
 const loadedExtensions=new Map();
+const bundledExtensions=new Map();
+const bundledExtensionPromises=new Map();
+const pendingExtensionDownloads=new Map();
 const views=new Map(); // account ID -> {view,lastUsed}
 let mentionRunner=null,tailframes=null,voiceBindings=null,thumbnailCache=null,apiSettings=null;
 const now=()=>Date.now();
@@ -104,6 +107,64 @@ async function ensureVideoMode(id=activeId){
 function scheduleVideoCheck(id){
   setTimeout(()=>{if(views.has(id))ensureVideoMode(id).catch(e=>tell('video:status',{accountId:id,ready:false,message:e.message}))},900);
 }
+
+const EXTENSION_PAGE_HOSTS=new Set(['www.doubao.com','www.dola.com']);
+const EXTENSION_MEDIA_SUFFIXES=Object.freeze(['doubao.com','dola.com','byteimg.com','ibyteimg.com','ciciai.com','bytecdn.cn','byteoversea.com','bytedance.com','bytedance.net','snssdk.com']);
+function extensionDownloadKey(accountId,url){return accountId+'\n'+url;}
+function queuePendingExtensionDownload(accountId,url,filename){
+  const key=extensionDownloadKey(accountId,url);
+  const list=(pendingExtensionDownloads.get(key)||[]).filter(x=>Date.now()-x.createdAt<120000);
+  list.push({filename,createdAt:Date.now()});pendingExtensionDownloads.set(key,list);
+}
+function takePendingExtensionDownload(accountId,url){
+  const key=extensionDownloadKey(accountId,url);
+  const list=(pendingExtensionDownloads.get(key)||[]).filter(x=>Date.now()-x.createdAt<120000);
+  const item=list.shift()||null;
+  if(list.length)pendingExtensionDownloads.set(key,list);else pendingExtensionDownloads.delete(key);
+  return item;
+}
+function removePendingExtensionDownload(accountId,url,filename){
+  const key=extensionDownloadKey(accountId,url),list=pendingExtensionDownloads.get(key)||[];
+  const index=list.findIndex(x=>x.filename===filename);if(index>=0)list.splice(index,1);
+  if(list.length)pendingExtensionDownloads.set(key,list);else pendingExtensionDownloads.delete(key);
+}
+function isAllowedExtensionPage(raw){
+  try{const u=new URL(raw);return u.protocol==='https:'&&EXTENSION_PAGE_HOSTS.has(u.hostname)}catch{return false}
+}
+function isAllowedExtensionMediaUrl(raw){
+  try{const u=new URL(raw);return u.protocol==='https:'&&!u.username&&!u.password&&EXTENSION_MEDIA_SUFFIXES.some(s=>u.hostname===s||u.hostname.endsWith('.'+s))}catch{return false}
+}
+function sanitizeExtensionFilename(value){
+  const raw=String(value||('doubao_'+Date.now()+'.mp4')).split(/[\\/]/).pop();
+  const safe=raw.replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').slice(0,160).replace(/[. ]+$/,'');
+  const ext=path.extname(safe).toLowerCase();
+  if(!['.mp4','.mov','.webm','.mkv','.png','.jpg','.jpeg','.webp','.gif'].includes(ext))throw Error('扩展下载文件类型不受支持');
+  return safe||('doubao_'+Date.now()+ext);
+}
+async function ensureBundledExtension(sess,accountId){
+  if(bundledExtensions.get(accountId)?.state==='loaded')return bundledExtensions.get(accountId);
+  if(bundledExtensionPromises.has(accountId))return bundledExtensionPromises.get(accountId);
+  const task=(async()=>{
+    const accountName=cfg.accounts.find(a=>a.id===accountId)?.name||'';
+    const loading={state:'loading',name:'豆包国际版',version:'1.0.1',account:accountName,bundled:true};
+    bundledExtensions.set(accountId,loading);tell('extension:accountStatus',{accountId,...loading});
+    try{
+      const extensionPath=app.isPackaged?path.join(process.resourcesPath,'extensions','doubao-international'):path.join(app.getAppPath(),'extensions','doubao-international');
+      const manifest=inspectManifest(extensionPath);
+      if(manifest.name!=='豆包国际版'||manifest.manifestVersion!==3)throw Error('内置豆包国际版扩展清单不匹配');
+      const api=sess.extensions;if(!api||typeof api.loadExtension!=='function')throw Error('当前 Electron 不支持扩展加载接口');
+      let extension=null;try{extension=api.getAllExtensions?.().find(x=>x.name===manifest.name&&x.version===manifest.version)||null}catch{}
+      if(!extension)extension=await api.loadExtension(extensionPath,{allowFileAccess:false});
+      const loaded={state:'loaded',name:manifest.name,version:manifest.version,extensionId:extension.id,account:accountName,loadedAt:new Date().toISOString(),bundled:true};
+      bundledExtensions.set(accountId,loaded);tell('extension:accountStatus',{accountId,...loaded});return loaded;
+    }catch(error){
+      const failed={state:'error',name:'豆包国际版',version:'1.0.1',account:accountName,bundled:true,error:String(error?.message||error)};
+      bundledExtensions.set(accountId,failed);tell('extension:accountStatus',{accountId,...failed});throw error;
+    }
+  })().finally(()=>bundledExtensionPromises.delete(accountId));
+  bundledExtensionPromises.set(accountId,task);return task;
+}
+
 function setupSession(sess,accountId){
   if(sess.__creativeHubReady)return;
   sess.__creativeHubReady=true;
@@ -121,7 +182,9 @@ function setupSession(sess,accountId){
       const seg=preparedSeg?preparedSeg:(activeId===accountId?selected.seg:null);
       const acc=cfg.accounts.find(a=>a.id===accountId);
       const context={project:workspace.data.title,episode:ep?.title||'未分集',segment:seg?.title||'未分段',episodeNumber:ep?.number?`第${ep.number}集`:'未分集',segmentNumber:seg?`第${seg.n}段`:'未分段',episodeId:ep?.id||'',segmentId:seg?.id||'',account:acc?.name||'未知账号'};
-      const record=downloads.begin(item.getFilename(),context,item.getURL());
+      const pending=takePendingExtensionDownload(accountId,item.getURL());
+      const requestedName=pending?.filename||item.getFilename();
+      const record=downloads.begin(requestedName,context,item.getURL());
       item.setSavePath(record.path);
       tell('app:toast',`开始下载：${record.file}`);
       tell('download:changed',downloads.snapshot());
@@ -151,7 +214,7 @@ function setupSession(sess,accountId){
 function configureView(id){
   const sess=session.fromPartition(`persist:doubao_${id}`);
   setupSession(sess,id);
-  const view=new WebContentsView({webPreferences:{session:sess,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,allowRunningInsecureContent:false,backgroundThrottling:false}});
+  const view=new WebContentsView({webPreferences:{preload:path.join(__dirname,'doubao-preload.js'),session:sess,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,allowRunningInsecureContent:false,backgroundThrottling:false}});
   const wc=view.webContents;
   wc.setWindowOpenHandler(({url})=>{
     try{if(new URL(url).protocol!=='https:')return {action:'deny'}}catch{return {action:'deny'}}
@@ -162,7 +225,8 @@ function configureView(id){
   wc.on('did-stop-loading',()=>{manualVideoSessions.delete(id);tell('web:status',{id,status:'网页已加载'});scheduleVideoCheck(id)});
   wc.on('did-fail-load',(_e,code,description,url,isMainFrame)=>{if(isMainFrame&&code!==-3)tell('web:status',{id,status:`加载失败 (${code})：${description}`,url})});
   wc.on('render-process-gone',(_e,details)=>{tell('web:status',{id,status:`网页进程退出：${details.reason}，可点刷新重试`})});
-  wc.loadURL(DOUBAO_URL).catch(e=>{log(e);tell('web:status',{id,status:'豆包打开失败：'+e.message})});
+  const openDoubaoPage=()=>{if(!wc.isDestroyed())wc.loadURL(DOUBAO_URL).catch(e=>{log(e);tell('web:status',{id,status:'豆包打开失败：'+e.message})})};
+  ensureBundledExtension(sess,id).then(openDoubaoPage).catch(error=>{log(error);openDoubaoPage()});
   return {view,lastUsed:now()};
 }
 function performanceState(){
@@ -468,12 +532,24 @@ function registerHandlers(){
   ipcMain.handle('download:reveal',(_event,id)=>{
     const record=downloads.history.find(r=>r.id===id);if(!record||!exists(record.path))throw Error('下载文件不存在或已移动');shell.showItemInFolder(record.path);return true;
   });
+  ipcMain.handle('extension:download',async(event,payload={})=>{
+    const pageUrl=event.senderFrame?.url||event.sender.getURL();
+    if(!isAllowedExtensionPage(pageUrl))throw Error('下载请求来源不是豆包页面');
+    const owner=[...views.entries()].find(([,slot])=>slot.view.webContents.id===event.sender.id);
+    if(!owner)throw Error('无法确认下载所属账号');
+    const [accountId]=owner,mediaUrl=new URL(String(payload.url||''));
+    if(!isAllowedExtensionMediaUrl(mediaUrl.href))throw Error('已阻止非豆包媒体域名的下载地址');
+    const filename=sanitizeExtensionFilename(payload.filename);
+    queuePendingExtensionDownload(accountId,mediaUrl.href,filename);
+    try{if(event.sender.isDestroyed())throw Error('豆包页面已关闭');event.sender.downloadURL(mediaUrl.href);return {success:true,queued:true,filename}}
+    catch(error){removePendingExtensionDownload(accountId,mediaUrl.href,filename);throw error}
+  });
   ipcMain.handle('extension:inspect',async()=>{
     const pick=await dialog.showOpenDialog(win,{title:'选择已解压的扩展目录（不会读取你的 Edge 个人数据）',properties:['openDirectory']});
     if(pick.canceled)return {cancelled:true};
     extensionCandidate=inspectManifest(pick.filePaths[0]);return extensionCandidate;
   });
-  ipcMain.handle('extension:status',()=>({candidate:extensionCandidate,loaded:loadedExtensions.get(activeId)||null,account:cfg.accounts.find(a=>a.id===activeId)?.name||''}));
+  ipcMain.handle('extension:status',()=>({candidate:extensionCandidate,loaded:loadedExtensions.get(activeId)||null,bundled:bundledExtensions.get(activeId)||null,account:cfg.accounts.find(a=>a.id===activeId)?.name||''}));
   ipcMain.handle('extension:load',async()=>{
     if(!extensionCandidate)throw Error('请先检查本地扩展源码');
     // Explicit per-session opt-in: only load into the selected account, never into all profiles.

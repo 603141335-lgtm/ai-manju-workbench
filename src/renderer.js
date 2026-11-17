@@ -101,9 +101,13 @@ function renderDownloads(){if(!downloadsState)return;$('downloadPath').textConte
   $('downloadHistory').innerHTML=records.slice(0,7).map(x=>`<button class="downloadItem" data-dl-id="${enc(x.id)}" title="${enc(x.path)}"><span class="fileInfo">${enc(x.file)}</span><span class="downloadState ${enc(x.status)}">${({completed:'完成',progressing:'下载中',cancelled:'取消',interrupted:'中断'}[x.status]||x.status)}</span></button>`).join('')||'暂无下载记录；请在豆包网页使用正常下载入口';
 }
 async function refreshExtension(){extensionState=await B.extensionStatus();renderExtension()}
-function renderExtension(){const c=extensionState?.candidate,l=extensionState?.loaded;const lines=[];
+function renderExtension(){const c=extensionState?.candidate,l=extensionState?.loaded,b=extensionState?.bundled;const lines=[];
+  if(b?.state==='loaded')lines.push(`内置插件：${b.name} v${b.version} · 当前账号已自动加载`);
+  else if(b?.state==='loading')lines.push('内置插件：正在加载到当前账号…');
+  else if(b?.state==='error')lines.push('内置插件加载失败：'+(b.error||'未知错误'));
+  else lines.push('内置插件：等待当前账号浏览器会话启动');
   if(c){lines.push(`${c.name} v${c.version}`);lines.push(`权限：${c.permissions.join('、')||'无'}`);lines.push(`可访问：${c.hosts.join('、')||'未声明'}`);if(c.warnings.length)lines.push('注意：'+c.warnings.join('；'));}
-  if(l)lines.push(`当前账号已载入 ${l.name}，功能尚未通过兼容性验证`);if(!c)lines.push('尚未选择扩展。原 Edge 插件不会自动迁入。');
+  if(l)lines.push(`自定义扩展已载入 ${l.name}，功能尚未通过兼容性验证`);if(!c)lines.push('可选检查其他已解压扩展；内置豆包国际版无需手动选择。');
   $('extensionInfo').textContent=lines.join('\n');$('btnExtTest').disabled=!c;$('btnExtUnload').disabled=!l;
 }
 function showWords(){$('wordCount').textContent=$('promptText').value.length+' 字'}
@@ -637,7 +641,9 @@ async function main(){if(!B){$('webStatus').textContent='此页面仅能在 Elec
   try{
     cfg=await B.getCfg();ws=await B.wsState();expandGroups=new Set(cfg.groups.map(g=>g.id));
     renderGroups();renderWorkspaceShell();applyLayout();await renderImages();refreshHeader();
-    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();const showStartupPromo=initPublicFeatures();initApiSettings();await refreshDownloads();await refreshExtension();
+    initAccounts();initWorkspace();initGlobal();initMention();initOneClickImport();initVoiceBindings();const showStartupPromo=initPublicFeatures();initApiSettings();
+    B.onExtensionStatus?.(status=>{if(status?.accountId===cfg?.activeAccountId){extensionState={...extensionState,bundled:status};renderExtension()}});
+    await refreshDownloads();await refreshExtension();
     if(cfg.activeAccountId)await switchAccount(cfg.activeAccountId);setTimeout(bounds,250);
     await window.DuduLicenseUI?.init();setTimeout(()=>showStartupPromo().catch(error),350);
     if(ws.warning)toast(ws.warning);

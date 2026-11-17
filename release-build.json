@@ -75,6 +75,10 @@
       "filter": [
         "step-*.webp"
       ]
+    },
+    {
+      "from": "extensions/doubao-international",
+      "to": "extensions/doubao-international"
     }
   ],
   "copyright": "Copyright © 2026 独独AI工作台",
