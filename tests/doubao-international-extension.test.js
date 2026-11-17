@@ -19,7 +19,7 @@ test('extension is copied outside ASAR for every persistent account session',()=
   const pkg=JSON.parse(source('package.json')),release=JSON.parse(source('release-build.json'));
   for(const build of [pkg.build,release])assert(build.extraResources.some(x=>x.from==='extensions/doubao-international'&&x.to==='extensions/doubao-international'));
   const main=source('src/main.js');
-  assert(main.includes('persist:doubao_\${id}'));
+  assert(main.includes('persist:doubao_'+String.fromCharCode(36)+'{id}'));
   assert(main.includes('ensureBundledExtension(sess,id)'));
   assert(main.includes('wc.loadURL(DOUBAO_URL)'));
   assert(main.includes('DoubaoCreativeHubPublic'));
@@ -41,7 +41,7 @@ test('upgrade keeps application identity, account partitions and user data path 
   const main=source('src/main.js'),build=JSON.parse(source('release-build.json'));
   assert(main.includes("app.setPath('userData',publicUserDataDir)"));
   assert(main.includes('DoubaoCreativeHubPublic'));
-  assert(main.includes('persist:doubao_\${id}'));
+  assert(main.includes('persist:doubao_'+String.fromCharCode(36)+'{id}'));
   assert.equal(build.appId,'com.manju.doubao.creativehub.public');
   assert.equal(build.nsis.deleteAppDataOnUninstall,false);
 });
