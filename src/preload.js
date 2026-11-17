@@ -107,6 +107,7 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   extensionStatus:()=>ipcRenderer.invoke('extension:status'),
   extensionLoad:()=>ipcRenderer.invoke('extension:load'),
   extensionUnload:()=>ipcRenderer.invoke('extension:unload'),
+  onExtensionStatus:fn=>ipcRenderer.on('extension:accountStatus',(_e,v)=>fn(v)),
   onDownloadChange:fn=>ipcRenderer.on('download:changed',(_e,s)=>fn(s)),
   openData:()=>ipcRenderer.invoke('app:openData'),
   backup:()=>ipcRenderer.invoke('app:backup'),

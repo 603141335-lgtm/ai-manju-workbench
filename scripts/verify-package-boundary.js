@@ -26,6 +26,17 @@ if(core.includes('const CODE = /')||core.includes('const REFHEADER=')){
 if(!core.includes('_0x')||core.length>35000)throw Error('Production Rust bridge is not protected or has unexpectedly large plaintext core');
 if(!main.includes('_0x'))throw Error('Main Electron process is not obfuscated');
 if(!preload.includes("contextBridge"))throw Error('Preload binding missing');
+for(const file of ['src/doubao-preload.js','src/extension-download-guard.js']){
+ if(!read(file).trim())throw Error('Bundled Doubao download bridge is missing: '+file);
+}
+const extensionDir=path.join('extensions','doubao-international');
+const extensionFiles=['manifest.json','content.js','forwarder.js','background.js','icon.png','popup.html','popup.css','popup.js'];
+for(const file of extensionFiles){
+ const expected=fs.readFileSync(path.join(root,extensionDir,file));
+ const packaged=path.join(resources,extensionDir,file);
+ if(!fs.existsSync(packaged)||!fs.readFileSync(packaged).equals(expected))
+  throw Error('Bundled Doubao extension resource missing or changed: '+file);
+}
 if(!html.includes('独独AI工作台'))throw Error('New brand missing from packaged HTML');
 const actions=html.match(/<div class="topactions">([\s\S]*?)<\/div>/);
 if(!actions||actions[1].includes('btnData'))throw Error('Deprecated top-right data directory button still packaged');

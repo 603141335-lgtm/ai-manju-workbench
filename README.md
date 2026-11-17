@@ -70,3 +70,12 @@ npm start
 - v1.1.0稳定分支和%APPDATA%\DoubaoCreativeHubPublic不变。免费试用从服务器首次成功请求计时，不会清空本地历史项目。
 - 本版采用DPAPI软件密钥方案，尚未使用TPM硬件不可导出密钥、商业加壳和Windows数字签名，不承诺绝对防破解。
 Trigger v1.2.0 Windows release build
+
+## V1.3 开发分支：内置豆包国际版扩展
+
+- 已将「豆包国际版」扩展作为未打包目录放入 `extensions/doubao-international`；正式安装包通过 `extraResources` 放在 `resources/extensions`，供 Electron 每个持久化豆包账号会话加载。
+- 扩展在豆包网页导航前加载；每个账号继续使用原有 `persist:doubao_<账号ID>` 会话，不共享 Cookie。
+- Electron 未实现 Chrome `downloads` API 的完整兼容，因此内置扩展通过受限消息桥接调用工作台原生下载通道；下载仍走现有 DownloadManager、集段归档和尾帧流程。
+- 原数据目录 `%APPDATA%\DoubaoCreativeHubPublic`、应用 ID、账号分区和下载历史路径保持不变。
+- 上游：`chuansd/doubao-international`，提交 `75600f49bc307f42b5be818408650889a639ce25`。本分支仅为 Electron 下载兼容增加桥接，不修改你 Edge 中已安装的原扩展。
+- Electron 扩展 API 并非完整 Chrome API；最终仍需在 Windows 登录环境实测图片与视频下载。

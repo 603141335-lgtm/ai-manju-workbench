@@ -82,14 +82,14 @@
           <div class="nativeHandle" id="dragHandle" draggable="true" title="按住并拖动到豆包网页上传区域">☷ 按住这里拖动选中图片到豆包</div>
           <div class="imageActions"><button id="btnExportImages" class="ghost">备用上传文件夹</button><button id="btnCopyImage" class="ghost">复制单张</button><button id="btnRevealImage" class="ghost">定位图片</button></div>
           <div class="downloadSection" id="downloadSection">
-            <div class="assetHeader"><strong>⬇ 下载管理</strong><span class="tiny" id="downloadStatus">官方网页下载 · 本地归档</span></div>
-            <p class="downloadHint">在豆包网页内使用其提供的下载入口，完成的文件会自动按项目 / 集 / 段 / 账号归档。这里不会自动生成无水印资源。</p>
+            <div class="assetHeader"><strong>⬇ 下载管理</strong><span class="tiny" id="downloadStatus">豆包国际版无水印下载 · 自动归档</span></div>
+            <p class="downloadHint">生成结果出现「下载无水印视频 / 下载原图」按钮后点击即可，工作台会自动接管下载并按项目 / 集 / 段 / 账号归档。</p>
             <div class="downloadRow"><button class="primary" id="btnDownloadFolder">打开下载目录</button><button class="ghost" id="btnDownloadChoose">修改保存位置</button></div>
             <div class="downloadPath" id="downloadPath" title="下载保存目录"></div>
-            <div class="extBox"><div class="extTitle">扩展兼容试验 <span class="tag unverified">需单独验证</span></div>
-              <p class="downloadHint">可选你已信任的解压版扩展进行权限检查；不自动安装，也不保证 Electron 支持它的下载功能。</p>
+            <div class="extBox"><div class="extTitle">豆包国际版插件 <span class="tag">内置自动加载</span></div>
+              <p class="downloadHint">工作台启动时自动加载到每个独立豆包账号。无水印图片/视频下载由工作台原生下载通道接管，并继续按项目 / 集 / 段 / 账号归档；自定义扩展仍可单独测试。</p>
               <div class="downloadRow"><button id="btnExtInspect" class="ghost">检查扩展</button><button id="btnExtTest" class="ghost" disabled>测试载入当前账号</button><button id="btnExtUnload" class="ghost" disabled>卸载扩展</button></div>
-              <div class="extInfo" id="extensionInfo">尚未选择扩展。原 Edge 插件不会自动迁入。</div>
+              <div class="extInfo" id="extensionInfo">正在检测内置豆包国际版插件…</div>
               <button class="textBtn" id="btnEdgeDownload">在对应 Edge 中使用已有插件</button>
             </div>
             <div class="recentTitle">最近下载 <button class="textBtn" id="btnDownloadRefresh">刷新记录</button></div>

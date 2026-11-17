@@ -1,13 +1,13 @@
 {
   "name": "doubao-creative-hub",
-  "version": "1.2.0",
+  "version": "1.3.1",
   "private": true,
-  "description": "独独AI工作台 v1.1.0：远程图文教程与社群管理、按账号独立后台导入、Rust保护与科幻安装器",
+  "description": "独独AI工作台 v1.3.1：内置豆包国际版无水印素材下载桥接、原账号持久会话与完整数据备份",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/*.test.js",
-    "check": "node scripts/prepare-test-assets.js && node --check src/account-config-store.js && node --check scripts/start-local-dev.cjs && node --check src/api-settings.js && node --check src/thumbnail-cache.js && node --check src/notice-service.js && node --check src/license-client.js && node --check src/license-ui.js && node --check src/tutorial-content.js && node --check src/tutorial-media.js && node --check src/tutorial-ui.js && node --check src/task-journal.js && node --check src/video-mode.js && node --check src/main.js && node --check src/preload.js && node --check src/community-qr.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/mention-core.js && node --check src/mention-page.js && node --check src/mention-runner.js && node --check src/inline-mention-page.js && node --check src/import-page.js && node --check src/import-engine.js && node --check src/import-core.js && node --check src/voice-page.js && node --check src/voice-bindings.js && node --check src/tailframe.js && node --check src/reference-labels.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
+    "check": "node scripts/prepare-test-assets.js && node --check src/account-config-store.js && node --check scripts/start-local-dev.cjs && node --check src/api-settings.js && node --check src/thumbnail-cache.js && node --check src/notice-service.js && node --check src/license-client.js && node --check src/license-ui.js && node --check src/tutorial-content.js && node --check src/tutorial-media.js && node --check src/tutorial-ui.js && node --check src/task-journal.js && node --check src/video-mode.js && node --check src/main.js && node --check src/preload.js && node --check src/doubao-preload.js && node --check src/extension-download-guard.js && node --check extensions/doubao-international/background.js && node --check extensions/doubao-international/content.js && node --check extensions/doubao-international/forwarder.js && node --check src/community-qr.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/mention-core.js && node --check src/mention-page.js && node --check src/mention-runner.js && node --check src/inline-mention-page.js && node --check src/import-page.js && node --check src/import-engine.js && node --check src/import-core.js && node --check src/voice-page.js && node --check src/voice-bindings.js && node --check src/tailframe.js && node --check src/reference-labels.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
     "dist:win": "node scripts/prepare-public-notice.js && node scripts/prepare-feed.js && electron-builder --win nsis --x64 --config release-build.json --publish never",
     "brand:generate": "node scripts/generate-brand-icon.js",
     "check:hardened": "node scripts/verify-hardened.js && npm run native:verify",
@@ -19,7 +19,8 @@
     "tutorial:generate": "python scripts/generate-tutorial-screenshots.py",
     "cloud:check": "node --check cloud-content/src/worker.js && node --check cloud-content/src/admin-page.js",
     "license:check": "node --check license-service/src/worker.mjs && node --check license-service/src/admin-ui.mjs && node --test license-service/tests/*.test.mjs",
-    "license:prepare": "node scripts/prepare-license.js"
+    "license:prepare": "node scripts/prepare-license.js",
+    "check:extension": "node --check src/extension-download-guard.js && node --check src/doubao-preload.js && node --test tests/extension-download-guard.test.js tests/doubao-international-extension.test.js tests/backup-workbench-userdata.test.js"
   },
   "devDependencies": {
     "electron": "44.10.2",
@@ -105,6 +106,10 @@
         "filter": [
           "step-*.webp"
         ]
+      },
+      {
+        "from": "extensions/doubao-international",
+        "to": "extensions/doubao-international"
       }
     ],
     "copyright": "Copyright © 2026 独独AI工作台",
