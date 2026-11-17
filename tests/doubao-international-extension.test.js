@@ -11,6 +11,7 @@ test('bundled Doubao extension is an unpacked MV3 extension limited to Doubao do
   assert.equal(manifest.manifest_version,3);
   assert.equal(manifest.name,'豆包国际版');
   assert.deepEqual(manifest.host_permissions,['https://www.doubao.com/*','https://www.dola.com/*']);
+  assert(!manifest.permissions.includes('downloads'));
   assert(!manifest.host_permissions.includes('<all_urls>'));
   assert(manifest.content_scripts.some(x=>x.js.includes('content.js')&&x.world==='MAIN'));
   assert(manifest.content_scripts.some(x=>x.js.includes('forwarder.js')));
