@@ -128,19 +128,7 @@ function removePendingExtensionDownload(accountId,url,filename){
   const index=list.findIndex(x=>x.filename===filename);if(index>=0)list.splice(index,1);
   if(list.length)pendingExtensionDownloads.set(key,list);else pendingExtensionDownloads.delete(key);
 }
-function isAllowedExtensionPage(raw){
-  try{const u=new URL(raw);return u.protocol==='https:'&&EXTENSION_PAGE_HOSTS.has(u.hostname)}catch{return false}
-}
-function isAllowedExtensionMediaUrl(raw){
-  try{const u=new URL(raw);return u.protocol==='https:'&&!u.username&&!u.password&&EXTENSION_MEDIA_SUFFIXES.some(s=>u.hostname===s||u.hostname.endsWith('.'+s))}catch{return false}
-}
-function sanitizeExtensionFilename(value){
-  const raw=String(value||('doubao_'+Date.now()+'.mp4')).split(/[\\/]/).pop();
-  const safe=raw.replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').slice(0,160).replace(/[. ]+$/,'');
-  const ext=path.extname(safe).toLowerCase();
-  if(!['.mp4','.mov','.webm','.mkv','.png','.jpg','.jpeg','.webp','.gif'].includes(ext))throw Error('扩展下载文件类型不受支持');
-  return safe||('doubao_'+Date.now()+ext);
-}
+const {isAllowedExtensionPage,isAllowedExtensionMediaUrl,sanitizeExtensionFilename}=require('./extension-download-guard');
 async function ensureBundledExtension(sess,accountId){
   if(bundledExtensions.get(accountId)?.state==='loaded')return bundledExtensions.get(accountId);
   if(bundledExtensionPromises.has(accountId))return bundledExtensionPromises.get(accountId);
