@@ -1,0 +1,9 @@
+DuduAI Workbench V1.3 / Windows Installer Builder V6
+
+Fix: Electron v44.10.2 Windows runtime download TypeError: fetch failed.
+Now uses lockfile-pinned node_modules/electron/install.js with HTTPS mirror fallback.
+Offline browser ZIP imports are SHA256 verified using pinned electron/checksums.json.
+GUI file picker accepts manual ZIP; environment/check actions do not claim an EXE exists.
+No production Worker, D1, merchant keys, or account user data are changed.
+Tests: 150 desktop passed / 4 skipped, 59 license passed, 11 Python GUI passed.
+Windows NSIS EXE is not compiled here. Run the builder on Windows and verify.

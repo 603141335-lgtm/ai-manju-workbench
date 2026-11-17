@@ -1,0 +1,124 @@
+{
+  "name": "doubao-creative-hub",
+  "version": "1.3.0",
+  "private": true,
+  "description": "独独AI工作台 V1.3 - Windows 桌面端及运营中心授权连接（独立安装）",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts/prepare-test-assets.js && node --check src/account-config-store.js && node --check scripts/start-local-dev.cjs && node --check src/api-settings.js && node --check src/thumbnail-cache.js && node --check src/notice-service.js && node --check src/license-client.js && node --check src/license-ui.js && node --check src/tutorial-content.js && node --check src/tutorial-media.js && node --check src/tutorial-ui.js && node --check src/task-journal.js && node --check src/video-mode.js && node --check src/main.js && node --check src/preload.js && node --check src/community-qr.js && node --check src/renderer.js && node --check src/workspace.js && node --check src/mention-core.js && node --check src/mention-page.js && node --check src/mention-runner.js && node --check src/inline-mention-page.js && node --check src/import-page.js && node --check src/import-engine.js && node --check src/import-core.js && node --check src/voice-page.js && node --check src/voice-bindings.js && node --check src/tailframe.js && node --check src/reference-labels.js && node --check src/parser.js && node --check src/navigation.js && node --check src/downloads.js && npm test",
+    "dist:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-release-win.ps1",
+    "brand:generate": "node scripts/generate-brand-icon.js",
+    "check:hardened": "node scripts/verify-hardened.js && npm run native:verify",
+    "verify:brand": "node --test tests/v100-runtime-smoke.test.js",
+    "installer:art": "node scripts/generate-installer-art.js",
+    "native:replace": "node scripts/replace-with-native.js",
+    "native:verify": "node -e \"if(require('./native/dudu_core.node').securityBuildInfo()!=='dudu-native-core-1.0.1')process.exit(1)\" && node --test tests/v101-native-core.test.js",
+    "verify:release": "node scripts/verify-package-boundary.js",
+    "tutorial:generate": "python scripts/generate-tutorial-screenshots.py",
+    "cloud:check": "node --check cloud-content/src/worker.js && node --check cloud-content/src/admin-page.js",
+    "license:check": "node --check license-service/src/worker.mjs && node --check license-service/src/admin-ui.mjs && node --test license-service/tests/*.test.mjs",
+    "license:prepare": "node scripts/prepare-license.js",
+    "release:preflight": "node scripts/release-preflight.js",
+    "release:guard": "node scripts/release-security-scan.js",
+    "release:check": "node --test tests/release-package.test.js"
+  },
+  "devDependencies": {
+    "electron": "44.10.2",
+    "electron-builder": "26.0.12",
+    "javascript-obfuscator": "4.1.1",
+    "@resvg/resvg-js": "2.6.2",
+    "@electron/asar": "3.4.1"
+  },
+  "build": {
+    "appId": "com.manju.doubao.creativehub.public",
+    "productName": "独独AI工作台",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "assets/branding/**/*",
+      "native/*.node",
+      "package.json",
+      "!src/canvas/**",
+      "!src/**/workspace.json",
+      "!src/**/config.json",
+      "!src/**/download-settings.json",
+      "!src/**/voice-bindings.json",
+      "!src/**/Cookies",
+      "!src/**/User Data/**",
+      "!src/**/*.sqlite",
+      "!src/**/*.sqlite3",
+      "!src/**/*.db",
+      "!src/**/.env*",
+      "!src/**/*.local.json",
+      "!**/*.map",
+      "!**/*.pdb"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "DuduAI-Workbench-Setup-v${version}-x64.${ext}",
+      "icon": "assets/app.ico",
+      "executableName": "独独AI工作台"
+    },
+    "compression": "maximum",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "assets/app.ico",
+      "uninstallerIcon": "assets/app.ico",
+      "installerSidebar": "assets/installer/sidebar.bmp",
+      "installerHeader": "assets/installer/header.bmp",
+      "uninstallerSidebar": "assets/installer/sidebar.bmp"
+    },
+    "extraResources": [
+      {
+        "from": "vendor/bin",
+        "to": "bin",
+        "filter": [
+          "ffmpeg.exe",
+          "ffprobe.exe",
+          "COPYING.LGPLv2.1",
+          "FFMPEG_NOTICE.txt"
+        ]
+      },
+      {
+        "from": "assets/tutorial",
+        "to": "tutorial",
+        "filter": [
+          "step-*.webp"
+        ]
+      }
+    ],
+    "copyright": "Copyright © 2026 独独AI工作台",
+    "asarUnpack": [
+      "native/*.node"
+    ]
+  },
+  "allowScripts": {
+    "electron": true
+  },
+  "dependencies": {
+    "electron-updater": "6.6.2"
+  }
+}

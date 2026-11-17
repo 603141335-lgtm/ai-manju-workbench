@@ -1,0 +1,150 @@
+name: Build Dudu AI Workbench v1.2.0 Signed Trial and Permanent Licenses
+concurrency:
+  group: "dudu-v120-${{ github.ref }}"
+  cancel-in-progress: true
+on:
+  push:
+    branches: [feature/dudu-ai-v1.2.0-license]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Generate chosen bean-style vector icon
+        run: npm run brand:generate
+      - name: Generate installer graphics (NSIS 164x314 + 150x57)
+        run: npm run installer:art
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate 12 actual workbench UI screenshots with red circles and baked watermark
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python -m pip install --disable-pip-version-check playwright Pillow
+          python -m playwright install chromium
+          python scripts/generate-tutorial-screenshots.py
+      - name: Validate Cloudflare content backend source
+        run: npm run cloud:check
+      - name: Test independent Cloudflare D1 licensing backend
+        run: npm run license:check
+      - name: Verify source, brand, data and 25-account invariants
+        run: npm run check
+      - name: Legacy v0.9.4 continuity before hardening
+        run: node --test tests/v094.test.js
+      - name: Prior 0.9.5-0.9.9 feature regressions before hardening
+        run: node --test tests/v095-public.test.js tests/v096-optimized.test.js tests/v097-video-api.test.js tests/v098-concise-mentions.test.js tests/v099-community-inline.test.js tests/v100-runtime-smoke.test.js
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native-core/target
+          key: dudu-rust-windows-v120-${{ hashFiles('native-core/Cargo.toml') }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve Rust dependency lockfile for this build
+        run: cargo generate-lockfile --manifest-path native-core/Cargo.toml
+      - name: Validate Rust native core unit tests
+        run: cargo test --manifest-path native-core/Cargo.toml --locked
+      - name: Compile optimized Rust reference core into Windows N-API addon
+        run: |
+          cargo build --manifest-path native-core/Cargo.toml --release --locked
+          New-Item -ItemType Directory -Force -Path native | Out-Null
+          if(-not (Test-Path native-core/target/release/dudu_core.dll)){throw 'Rust library not compiled'}
+          Copy-Item native-core/target/release/dudu_core.dll native/dudu_core.node -Force
+          if((Get-Item native/dudu_core.node).Length -lt 10000){throw 'Rust .node output suspiciously small'}
+      - name: Strip readable reference parser from release JS
+        run: npm run native:replace
+      - name: Validate N-API parity, exact IDs, UI and installer art
+        run: npm run native:verify
+      - name: Obfuscate remaining production code in temporary CI checkout
+        run: node scripts/harden.js
+      - name: Verify obfuscated business modules and native Doubao DOM compatibility
+        run: npm run check:hardened
+      - name: Fetch official-third-party LGPL FFmpeg Windows binaries for tailframes
+        run: |
+          New-Item -ItemType Directory -Force -Path vendor/bin | Out-Null
+          $url='https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip'
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP/ffmpeg-win64-lgpl.zip" -MaximumRedirection 10
+          Expand-Archive -Path "$env:RUNNER_TEMP/ffmpeg-win64-lgpl.zip" -DestinationPath "$env:RUNNER_TEMP/ffmpeg-bundle" -Force
+          foreach ($name in @('ffmpeg.exe','ffprobe.exe')) {
+            $match=Get-ChildItem "$env:RUNNER_TEMP/ffmpeg-bundle" -Filter $name -File -Recurse | Select-Object -First 1
+            if(-not $match){throw "Missing $name from LGPL FFmpeg build"}
+            Copy-Item $match.FullName "vendor/bin/$name" -Force
+          }
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv2.1' -OutFile vendor/bin/COPYING.LGPLv2.1
+          Copy-Item docs/FFMPEG_NOTICE.txt vendor/bin/FFMPEG_NOTICE.txt
+          & "$env:GITHUB_WORKSPACE/vendor/bin/ffmpeg.exe" -version | Select-Object -First 1
+          Add-Content $env:GITHUB_PATH "$env:GITHUB_WORKSPACE/vendor/bin"
+      - name: Verify actual tail-frame extraction (bundled FFmpeg)
+        run: node --test tests/v090.test.js
+      - name: Configure optional public HTTPS tutorial and community content service
+        env:
+          DUDU_LICENSE_URL: ${{ vars.DUDU_LICENSE_URL }}
+          DUDU_CONTENT_URL: ${{ vars.DUDU_CONTENT_URL }}
+          DOUBAO_NOTICE_URL: ${{ vars.DOUBAO_NOTICE_URL }}
+        run: node scripts/prepare-public-notice.js
+      - name: Prepare optional public update feed
+        env:
+          DOUBAO_UPDATE_URL: ${{ vars.DOUBAO_UPDATE_URL }}
+        run: node scripts/prepare-feed.js
+      - name: Configure production license endpoint and public verifier
+        if: ${{ vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
+        env:
+          DUDU_LICENSE_URL: ${{ vars.DUDU_LICENSE_URL }}
+          DUDU_LICENSE_PUBLIC_KEY_B64: ${{ vars.DUDU_LICENSE_PUBLIC_KEY_B64 }}
+        run: npm run license:prepare
+      - name: Build Windows NSIS Setup
+        if: ${{ vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: npx electron-builder --win nsis --x64 --config ./release-build.json --publish never
+      - name: Verify actual released ASAR and native addon confidentiality boundary
+        if: ${{ vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
+        run: npm run verify:release
+      - name: Package separate 12-step tutorial images for the owner's cloud admin
+        if: ${{ vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
+        run: |
+          $images=@(Get-ChildItem assets/tutorial -Filter 'step-*.webp' -File)
+          if($images.Count -ne 12){throw 'Exactly 12 tutorial images are required'}
+          Compress-Archive -Path assets/tutorial/step-*.webp -DestinationPath release/DuduAI-Tutorial-12-v1.2.0.zip -Force
+      - name: Verify installer and SHA256
+        if: ${{ vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
+        run: |
+          $exe = @(Get-ChildItem release -Filter '独独AI工作台-Setup-v1.2.0-x64.exe' -File)
+          if($exe.Count -ne 1 -or $exe[0].Length -lt 15000000){throw 'NSIS installer not generated'}
+          $hash=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash
+          "$hash  $($exe[0].Name)" | Set-Content release/SHA256SUMS.txt
+          Get-Content release/SHA256SUMS.txt
+          $sig=Get-AuthenticodeSignature $exe[0].FullName
+          Write-Host "Windows Authenticode signature status: $($sig.Status)"
+          if($sig.SignerCertificate){Write-Host "Signer subject: $($sig.SignerCertificate.Subject)"}else{Write-Warning 'Installer is NOT digitally signed; JS obfuscation is not code signing.'}
+      - name: Publish private GitHub Release (avoids Actions artifact quota)
+        if: ${{ vars.DUDU_LICENSE_URL != '' && vars.DUDU_LICENSE_PUBLIC_KEY_B64 != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dudu-ai-workbench-v1.2.0
+          target_commitish: feature/dudu-ai-v1.2.0-license
+          name: 独独AI工作台 v1.2.0（24小时试用·单设备永久卡密·Rust授权验证）
+          prerelease: true
+          body: |
+            独独AI工作台 v1.2.0：24小时试用与永久卡密授权，服务器签发Ed25519离线凭证；后台未部署或缺少公钥则不生成正式安装包。12张实际工作台界面演示数据截图（红框及内嵌水印），云端教程与社群公告管理源码、备用微信 du6du66、教程弹窗与左右翻页。账号独立后台上传任务，切换账号不再自动取消；原生蓝色@需要原账号前台焦点时等待回到对应账号。保留原Rust核心、ASAR成品逆向检查、科幻NSIS安装器和历史数据目录。Cloudflare后台需本人部署和配置 DUDU_CONTENT_URL，未部署时使用本地教程。真实豆包网页登录流程与覆盖安装需Windows实机验收。没有商业加壳许可证或签名证书时不声称已部署。
+          files: |
+            release/独独AI工作台-Setup-v1.2.0-x64.exe
+            release/SHA256SUMS.txt
+            release/DuduAI-Tutorial-12-v1.2.0.zip
+            release/*.blockmap
+          fail_on_unmatched_files: true

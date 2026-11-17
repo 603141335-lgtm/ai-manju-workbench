@@ -1,0 +1,35 @@
+name: License Service Tests
+on:
+  pull_request:
+    paths:
+      - 'license-service/**'
+      - '.github/workflows/license-service-tests.yml'
+  push:
+    branches:
+      - feature/dudu-ai-v1.2.0-license
+      - feature/v13-local-mock-test-env
+    paths:
+      - 'license-service/**'
+      - '.github/workflows/license-service-tests.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: license-service/package-lock.json
+      - name: Install locked dependencies
+        working-directory: license-service
+        run: npm ci --no-audit --no-fund
+      - name: Syntax checks
+        working-directory: license-service
+        run: npm run check
+      - name: Unit and integration tests
+        working-directory: license-service
+        run: npm test

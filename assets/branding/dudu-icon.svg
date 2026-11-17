@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+<linearGradient id="ivory" x1=".12" y1=".08" x2=".85" y2=".95"><stop stop-color="#fffefb"/><stop offset=".8" stop-color="#f7f2ed"/><stop offset="1" stop-color="#dfd8d2"/></linearGradient>
+<linearGradient id="coal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#454648"/><stop offset=".75" stop-color="#242628"/><stop offset="1" stop-color="#15171b"/></linearGradient>
+<linearGradient id="lime" x1=".1" y1=".8" x2="1" y2=".1"><stop stop-color="#94c73f"/><stop offset=".55" stop-color="#afcf4d"/><stop offset="1" stop-color="#d8ef64"/></linearGradient>
+<filter id="soft"><feGaussianBlur stdDeviation="10"/></filter>
+</defs>
+<!-- An original clean vector adaptation of the user-selected bean duo. The source checkerboard is excluded. -->
+<g transform="translate(54 55)">
+<path d="M 609 305 C 735 240 842 340 830 444 C 825 490 792 541 769 574 L 718 516 C 763 449 773 389 710 361 C 688 352 654 352 623 364 Z" fill="url(#lime)"/>
+<path d="M 127 567 C 100 708 235 789 398 762 C 440 755 479 742 520 714 C 491 752 486 790 529 807 C 398 842 220 845 121 759 C 80 721 77 638 127 567 Z" fill="url(#lime)"/>
+<path d="M 153 717 L 202 724 L 201 773 L 147 764 Z M 243 744 L 293 743 L 293 786 L 240 788 Z M 330 740 L 384 724 L 400 771 L 349 783 Z" fill="#fffefa" opacity=".98"/>
+<path d="M 155 594 C 101 521 104 435 147 342 C 194 236 278 148 368 110 C 455 73 551 84 595 150 C 641 216 615 314 552 347 C 491 380 425 370 384 404 C 349 433 347 491 309 558 C 273 615 203 641 155 594 Z" fill="url(#ivory)"/>
+<path d="M 336 443 C 342 365 387 347 447 343 C 507 339 542 313 570 282 C 566 362 518 417 440 437 C 398 448 375 471 362 520 C 350 550 334 568 318 576 C 345 518 326 483 336 443 Z" fill="#292b2d"/>
+<g transform="rotate(-19 429 266)">
+<rect x="402" y="220" width="33" height="77" rx="17" fill="#25272a"/>
+<rect x="492" y="219" width="34" height="79" rx="17" fill="#25272a"/>
+</g>
+<path d="M 490 629 C 472 548 513 448 593 409 C 682 359 775 404 799 496 C 822 588 785 693 704 732 C 620 776 514 744 490 629 Z" fill="url(#coal)"/>
+<g transform="rotate(18 654 549)">
+<rect x="595" y="510" width="31" height="68" rx="16" fill="#f7f6f3"/>
+<rect x="674" y="506" width="31" height="67" rx="16" fill="#f7f6f3"/>
+</g>
+<path d="M 457 465 Q 445 453 445 476 L 446 557 Q 448 576 464 567 L 536 525 Q 549 515 536 506 Z" fill="url(#lime)"/>
+<path d="M 789 172 L 801 208 Q 806 218 818 221 L 851 233 L 818 244 Q 806 250 801 261 L 789 295 L 776 261 Q 772 248 762 245 L 730 233 L 762 222 Q 775 217 778 205 Z" fill="url(#lime)"/>
+</g>
+</svg>

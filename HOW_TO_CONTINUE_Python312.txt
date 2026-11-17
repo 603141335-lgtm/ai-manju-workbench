@@ -1,0 +1,19 @@
+﻿DuduAI V1.3 Python 3.12 Build Fix
+================================
+
+Your current build error: Python 3.12 missing. All previous 5 release tests passed.
+
+RECOMMENDED (full updated source builder):
+1. Extract this ZIP into a NEW clean folder. Do not overwrite original source, and do not delete AppData.
+2. Double-click INSTALL_Python312.cmd. It only installs Python if you explicitly type YES.
+3. Double-click CHECK_Build_Tools.cmd. Python should show [OK].
+4. Double-click BUILD_Windows_EXE.cmd to continue the NSIS installer build.
+5. Enter only the real production Worker HTTPS URL and the public Ed25519 verifier key when prompted. Never enter private keys or admin tokens.
+6. Successful output: release\DuduAI-Workbench-Setup-v1.3.0-x64.exe.
+
+If WinGet is unavailable, install Python 3.12 manually from:
+https://www.python.org/downloads/windows/
+
+Installer is NOT present in this ZIP. Windows build and live Worker verification are still required.
+
+Only installer/developer scripts changed. No production D1, Worker, licensing keys, account sessions, or app user data were modified.

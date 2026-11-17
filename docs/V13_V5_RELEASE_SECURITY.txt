@@ -1,0 +1,10 @@
+V1.3 isolated Windows build security (V5)
+
+- This source distribution excludes private keys, administrator tokens and .dev.vars.
+- Public Cloudflare Worker URL and Ed25519 SPKI public key may be embedded in the release; these are NOT secrets.
+- The release script creates a temporary build copy under %TEMP%, never mutates the original source tree.
+- Build does not deploy D1 / Worker, send payments, clear device sessions or reset customer data.
+- Generated Windows installers require a live remote attestation to match the entered public key.
+- The original AppData profile is preserved on upgrade/uninstall.
+- The temporary staging folder is retained upon failure for diagnosis and deleted automatically on success.
+- Production payment activation, SmartScreen trust, and Windows GUI smoke test require independent real-world acceptance.

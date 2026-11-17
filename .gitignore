@@ -2,6 +2,9 @@ node_modules/
 dist/
 build/
 release/
+build-cache/
+build-logs/
+native-core/target/
 *.exe
 *.zip
 *.7z
@@ -15,3 +18,30 @@ workbench.json
 参考图/
 素材/
 剧本/
+
+# Private card signing keys. These must NEVER enter any Git repository.
+license-service/.private/
+license-service/wrangler.local.toml
+license-service/.dev.vars*
+license-service/.private/test-state/
+license-service/.wrangler/
+# Local runtime profiles and personal data must never enter a public build
+workspace.json
+config.json
+notice-cache.json
+download-settings.json
+voice-bindings.json
+Cookies
+User Data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+private-backups/

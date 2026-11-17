@@ -1,0 +1,84 @@
+{
+  "appId": "com.manju.doubao.creativehub.public",
+  "productName": "独独AI工作台",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "src/**/*",
+    "assets/branding/**/*",
+    "native/*.node",
+    "package.json",
+    "!src/canvas/**",
+    "!src/**/workspace.json",
+    "!src/**/config.json",
+    "!src/**/download-settings.json",
+    "!src/**/voice-bindings.json",
+    "!src/**/Cookies",
+    "!src/**/User Data/**",
+    "!src/**/*.sqlite",
+    "!src/**/*.sqlite3",
+    "!src/**/*.db",
+    "!src/**/.env*",
+    "!src/**/*.local.json",
+    "!**/*.map",
+    "!**/*.pdb"
+  ],
+  "asar": true,
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "DuduAI-Workbench-Setup-v${version}-x64.${ext}",
+    "icon": "assets/app.ico",
+    "executableName": "独独AI工作台"
+  },
+  "compression": "maximum",
+  "electronFuses": {
+    "runAsNode": false,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "enableEmbeddedAsarIntegrityValidation": true,
+    "onlyLoadAppFromAsar": true
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "deleteAppDataOnUninstall": false,
+    "installerIcon": "assets/app.ico",
+    "uninstallerIcon": "assets/app.ico",
+    "installerSidebar": "assets/installer/sidebar.bmp",
+    "installerHeader": "assets/installer/header.bmp",
+    "uninstallerSidebar": "assets/installer/sidebar.bmp"
+  },
+  "extraResources": [
+    {
+      "from": "vendor/bin",
+      "to": "bin",
+      "filter": [
+        "ffmpeg.exe",
+        "ffprobe.exe",
+        "COPYING.LGPLv2.1",
+        "FFMPEG_NOTICE.txt"
+      ]
+    },
+    {
+      "from": "assets/tutorial",
+      "to": "tutorial",
+      "filter": [
+        "step-*.webp"
+      ]
+    }
+  ],
+  "copyright": "Copyright © 2026 独独AI工作台",
+  "asarUnpack": [
+    "native/*.node"
+  ]
+}

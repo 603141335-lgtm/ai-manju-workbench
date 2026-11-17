@@ -1,0 +1,36 @@
+{
+  "release": "DuduAI Workbench V1.3 | Builder V6 Electron network + offline SHA256 recovery",
+  "tests": {
+    "desktop_js": {
+      "passed": 150,
+      "failed": 0,
+      "skipped": 4,
+      "command": "npm run check"
+    },
+    "license_service": {
+      "passed": 59,
+      "failed": 0,
+      "skipped": 0,
+      "command": "npm run license:check"
+    },
+    "gui_python": {
+      "passed": 11,
+      "failed": 0,
+      "command": "python tests/v5-release-gui.test.py && python -m unittest discover -s tests -p test_v6_electron_gui.py"
+    },
+    "electron_new_js": {
+      "passed": 6,
+      "failed": 0,
+      "command": "node --test tests/electron-download-fallback.test.js (included in desktop_js count)"
+    },
+    "preflight": {
+      "result": "PASS",
+      "command": "node scripts/release-preflight.js"
+    }
+  },
+  "windows_nsis_installer": "NOT BUILT: this execution environment is Linux; user Windows run required",
+  "remote_worker_attestation": "NOT VERIFIED in this run; mandatory in build before release",
+  "original_source_modified": false,
+  "production_credentials_included": false,
+  "runtime_mirror_and_manual_zip": "Implemented; actual Windows downloads and zip extraction NOT verified here"
+}

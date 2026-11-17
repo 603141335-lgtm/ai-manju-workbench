@@ -1,0 +1,13 @@
+name = "dudu-ai-license-v13-test"
+main = "src/worker.mjs"
+compatibility_date = "2026-11-01"
+workers_dev = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dudu-license-v13-test"
+database_id = "00000000-0000-4000-8000-000000000013"
+
+[vars]
+PRODUCT_ID = "dudu-ai-workbench"
+DUDU_TEST_MODE = "local-only"

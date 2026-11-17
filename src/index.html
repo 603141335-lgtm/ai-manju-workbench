@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data:; script-src 'self'; style-src 'self'; img-src 'self' file: data: https:; connect-src 'none'; object-src 'none'; frame-src 'none'"/>
+  <title>独独AI工作台｜内嵌豆包浏览器工作台</title>
+  <link rel="stylesheet" href="./style.css"/>
+  <script src="./community-qr.js" defer></script>
+  <script src="./renderer.js" defer></script>
+  <script src="./tutorial-ui.js" defer></script>
+  <script src="./license-ui.js" defer></script>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topbar">
+    <button class="apiHeadBtn" id="btnApi" title="配置 API 服务商、模型与 Key">API 接口</button>
+    <div class="brand"><img class="brandLogo" src="../assets/branding/dudu-icon.svg" alt="独独AI工作台标志"/><div><strong>独独AI工作台</strong><small>AI漫剧创作 · 多账号融合工作台</small></div><span class="vbadge" id="appVersionBadge">v1.3.0</span></div>
+    <div class="topcenter" id="topCenter">正在读取本地工作区…</div>
+    <div class="topactions"><button class="ghost compact" id="btnLicense" title="查看24小时试用和永久卡密">🎫 授权中心 <span id="licenseStatusMini">验证中</span></button><button class="ghost compact" id="btnTutorial" title="按步骤查看图文教程">📖 使用教程</button><button class="ghost compact" id="btnTaskCenter" title="查看后台账号任务">后台任务 <span id="taskCounter" class="noticeDot" hidden>0</span></button><button class="ghost compact" id="btnNotice" title="联网公告与社群信息">社群·公告 <span id="noticeDot" class="noticeDot" hidden>●</span></button><button class="ghost" id="btnCheckUpdate" hidden title="当前公开版使用社群公告手动下载安装更新">检查更新</button><button class="primary" id="btnInstallUpdate" hidden>安装更新</button><button class="ghost" id="btnBackup">账号备份</button><button class="iconBtn" id="btnHelp" aria-label="帮助">?</button></div>
+  </header>
+  <main class="layout" id="layout">
+    <aside class="sidebar" id="accountsPanel">
+      <div class="panelhead"><div><div class="section-kicker">ACCOUNT MANAGER</div><h2>账号目录</h2></div><button class="smallBtn" id="btnAddGroup">＋ 分组</button></div>
+      <div class="infoNote">各豆包账号单独保存登录状态，换号不影响右侧剧集和素材。</div>
+      <div id="groupList" class="groupList"></div>
+      <div class="backgroundTasks" id="taskCenter" hidden>
+        <div class="taskCenterTitle"><strong>后台导入任务</strong><button class="textBtn" id="btnTaskHide">收起</button></div>
+        <div id="backgroundTaskList" class="backgroundTaskList">当前没有正在运行的任务。</div>
+      </div>
+      <div class="sidefooter"><div class="quotarow"><label for="targetCount">每账号目标视频数</label><input id="targetCount" type="number" min="1" max="99" value="2"/></div>
+        <div class="minirow"><button id="btnMarkDone" class="ghost compact">＋ 完成1条</button><button id="btnNext" class="primary">下一个账号 →</button></div>
+        <div class="resetRow"><button id="btnUndoDone" class="textBtn">撤销1条</button><button id="btnReset" class="textBtn">重置全部计数</button></div>
+        <div class="footNote">这是手动计数，不读取豆包会员额度。</div>
+      </div>
+    </aside>
+    <div class="resizer vertical" id="leftResizer" title="调整账号栏宽度"></div>
+    <section class="workspaceColumn" id="workspaceColumn">
+      <div class="topWorkspace" id="topWorkspace">
+        <section class="browserPanel" id="browserPanel">
+          <div class="browserhead"><div class="navBtns"><button class="iconBtn" data-nav="back" title="后退">←</button><button class="iconBtn" data-nav="forward" title="前进">→</button><button class="iconBtn" data-nav="reload" title="刷新豆包">↻</button><button class="iconBtn" data-nav="home" title="首页">⌂</button></div><div class="address"><span class="secure">●</span><span id="addressText">doubao.com</span></div><button class="iconBtn" data-nav="zoomOut">−</button><span class="zoomLabel">网页</span><button class="iconBtn" data-nav="zoomIn">＋</button><button class="ghost compact" id="btnMaxBrowser">专注</button></div>
+          <div class="webHost" id="webHost"><div class="underlay">正在加载真实豆包网页，请在网页里登录后开始制作。</div></div>
+          <div class="browserfoot"><span id="webStatus">正在初始化浏览器…</span><button id="btnVideoRetry" class="linkBtn" title="重新识别当前豆包的视频模式">重查视频模式</button><button id="btnVideoManual" class="linkBtn" hidden title="网页已在视频生成，但检测器未识别时人工确认">人工确认模式</button><button id="btnEdge" class="linkBtn" title="兼容备用：打开对应 Edge 配置文件">用 Edge 打开</button></div>
+        </section>
+        <div class="resizer vertical" id="rightResizer" title="调整素材区域宽度"></div>
+        <aside class="assetsPanel" id="assetsPanel">
+          <div class="panelhead tight"><div><div class="section-kicker">CREATIVE ASSETS</div><h2>提示词与参考图</h2></div><button class="smallBtn" id="btnToggleBottom">收起底栏</button></div>
+          <div class="selectorRow"><select id="rightEpisode" aria-label="右栏剧集选择"></select><select id="rightSegment" aria-label="右栏分段选择"></select></div>
+          <div class="promptActions"><button class="primary" id="btnPull">⚡ 拉取本段</button><button class="ghost" id="btnCopyText">复制完整提示词</button><button class="ghost" id="btnPullImages">刷新参考图</button></div>
+          <div class="draftTabRow" role="group" aria-label="提示词视图"><button class="draftTab active" id="btnShowOriginal">原始提示词</button><button class="draftTab" id="btnShowDraft">发送稿预览</button><span id="draftSyncStatus">发送稿待生成</span></div>
+          <div class="assetLabel"><strong>本段提示词（可编辑）</strong><span id="wordCount">0 字</span></div>
+          <textarea id="promptText" spellcheck="false" placeholder="请在下方导入 TXT/MD 剧集，或粘贴多集提示词；本段原文会完整显示在这里。"></textarea>
+          <textarea id="draftPreviewText" spellcheck="false" readonly hidden aria-label="发送稿预览"></textarea>
+          <div class="draftActions" id="draftActions" hidden><span id="draftPreviewInfo">发送稿只用于导入，不修改原始剧本</span><button class="smallBtn" id="btnCopyDraft">复制发送稿</button><button class="smallBtn" id="btnSyncDraft">仅同步文字到豆包</button></div>
+          <div class="promptFooter"><span id="promptSaveStatus">原文按段保存，不自动改写</span><button class="textBtn" id="btnEditCodes">校正参考图编号</button></div>
+          <section class="mentionWidget" id="importWidget" aria-label="一键导入提示词和图片">
+            <div class="mentionRow"><button class="mentionPrimary" id="btnOneClickImport" title="按原参考图编号顺序上传图片，并在每行原文后插入豆包原生蓝色@">⚡ 一键导入：提示词＋参考图＋@</button><button class="smallBtn" id="btnImportPreflight">预检</button><button class="smallBtn" id="btnImportConfirm" hidden>确认当前图片</button><button class="smallBtn" id="btnImportCancel" hidden>取消</button></div>
+            <div class="mentionNote" id="importNote">自动读取右侧本段提示词和参考图库，优先一次批量上传本段参考图；不新增图1/图2等映射，只在原参考图编号说明后插入原生@；成片尾帧仍优先。不自动发送。</div>
+            <div class="mentionProgress" id="importProgress" aria-live="polite" hidden></div>
+            <div class="mentionDetails" id="importDetails" hidden></div>
+          </section>
+          <section class="mentionWidget" id="mentionWidget" aria-label="旧版一键艾特（保留兼容入口）" hidden>
+            <div class="mentionRow"><button class="mentionPrimary" id="btnMention" title="识别聊天框的参考图编号，从本地图库上传，并尝试豆包原生艾特">@ 一键上传并艾特</button><button class="smallBtn" id="btnMentionCheck">重新检查</button><button class="smallBtn" id="btnMentionCancel" hidden>取消</button></div>
+            <div class="mentionNote" id="mentionNote">先把提示词输入豆包聊天框；自动选择文件≠网页上传成功，只有确认附件与原生引用才标记通过。不会自动发送。</div>
+            <div class="mentionProgress" id="mentionProgress" aria-live="polite" hidden></div>
+            <div class="mentionDetails" id="mentionDetails" hidden></div>
+          </section>
+          <section class="tailframePanel" id="tailframePanel">
+            <div class="tailframeTop"><strong>🎞 跨段连续性｜上一段尾帧</strong><button class="smallBtn" id="btnTailChoose">选择上一段成片</button></div>
+            <div class="tailframeContent" id="tailframeContent">正在检查前一段的成片…</div>
+          </section>
+          <section class="voicePanel" id="voicePanel" aria-label="人物图片与音色绑定">
+            <div class="assetHeader"><div><strong>🎙 人物声音绑定</strong><span class="tiny" id="voiceCount">本段 0 段</span></div><button class="smallBtn" id="btnBindVoice">＋ 绑定人物声音</button></div>
+            <div class="voiceHint">把 A15 等人物参考图绑定 WAV/MP3。可保存多种声音样本，并指定默认音色；一键导入会按本段图片编号自动选择。原声音文件不会复制到账号目录。</div>
+            <div id="voiceList" class="voiceList">选择剧集、段落后展示已绑定声音。</div>
+          </section>
+          <div class="assetHeader"><div><strong>参考图片</strong><span class="tiny" id="imgCount">0/0 张</span></div><button class="smallBtn" id="btnAddImages">＋ 补充图片</button></div>
+          <div class="imageGuide" id="imageGuide">点击选图，Ctrl 多选、Shift 连选；按住图片或蓝色拖动条可拖到豆包网页。</div>
+          <div class="imageGrid" id="imageGrid"></div>
+          <div id="imageWarning" class="imageWarning" hidden></div>
+          <div class="selectionInfo"><span id="selectionCount">已选择 0 张</span><button class="textBtn" id="btnAllImages">全选本段</button><button class="textBtn" id="btnClearImages">清空选择</button></div>
+          <div class="nativeHandle" id="dragHandle" draggable="true" title="按住并拖动到豆包网页上传区域">☷ 按住这里拖动选中图片到豆包</div>
+          <div class="imageActions"><button id="btnExportImages" class="ghost">备用上传文件夹</button><button id="btnCopyImage" class="ghost">复制单张</button><button id="btnRevealImage" class="ghost">定位图片</button></div>
+          <div class="downloadSection" id="downloadSection">
+            <div class="assetHeader"><strong>⬇ 下载管理</strong><span class="tiny" id="downloadStatus">官方网页下载 · 本地归档</span></div>
+            <p class="downloadHint">在豆包网页内使用其提供的下载入口，完成的文件会自动按项目 / 集 / 段 / 账号归档。这里不会自动生成无水印资源。</p>
+            <div class="downloadRow"><button class="primary" id="btnDownloadFolder">打开下载目录</button><button class="ghost" id="btnDownloadChoose">修改保存位置</button></div>
+            <div class="downloadPath" id="downloadPath" title="下载保存目录"></div>
+            <div class="extBox"><div class="extTitle">扩展兼容试验 <span class="tag unverified">需单独验证</span></div>
+              <p class="downloadHint">可选你已信任的解压版扩展进行权限检查；不自动安装，也不保证 Electron 支持它的下载功能。</p>
+              <div class="downloadRow"><button id="btnExtInspect" class="ghost">检查扩展</button><button id="btnExtTest" class="ghost" disabled>测试载入当前账号</button><button id="btnExtUnload" class="ghost" disabled>卸载扩展</button></div>
+              <div class="extInfo" id="extensionInfo">尚未选择扩展。原 Edge 插件不会自动迁入。</div>
+              <button class="textBtn" id="btnEdgeDownload">在对应 Edge 中使用已有插件</button>
+            </div>
+            <div class="recentTitle">最近下载 <button class="textBtn" id="btnDownloadRefresh">刷新记录</button></div>
+            <div class="downloadHistory" id="downloadHistory">暂无下载记录</div>
+          </div>
+        </aside>
+      </div>
+      <div class="resizer horizontal" id="bottomResizer" title="调整下方剧集导航高度"></div>
+      <section class="timeline" id="timeline">
+        <div class="timelineTop"><div class="projectName">▣ <span id="projectName">我的AI漫剧项目</span></div><span class="timelineInfo" id="timelineInfo">请先导入剧集</span>
+          <div class="projectTools"><button id="btnImportFiles" class="smallBtn actionPriority">＋ 批量导入文档</button><button id="btnAutoSplit" class="smallBtn actionPriority">⚡ 自动分段</button><button id="btnPaste" class="smallBtn">粘贴整集</button><button id="btnImportOld" class="smallBtn">迁入旧项目</button><button id="btnChooseFolder" class="smallBtn actionPriority">▧ 参考图文件夹</button><button id="btnMoreTools" class="smallBtn">更多 ▾</button></div>
+        </div>
+        <div id="episodeTreePanel" class="episodeTreePanel"><div class="treeScroll" id="episodeTreeList" aria-label="剧集与段落目录"><div class="emptySeg">导入剧集后，在这里逐集展开段落。</div></div></div>
+        <!-- legacy strip retained as a hidden compatibility target for installed workspaces -->
+        <div class="segmentStrip" id="segmentStrip" hidden></div>
+        <div class="timelineFooter"><div class="stats" id="projectStats">0 集 · 0 段</div><div class="segmentEditActions" hidden></div><div class="segmentNavigation"><button id="btnPrevEp" class="ghost compact">← 上一集</button><button id="btnNextEp" class="ghost compact">下一集 →</button><button id="btnPrevSeg" class="ghost compact">← 上一段</button><button id="btnNextSeg" class="primary compact">下一段 →</button></div></div>
+      </section>
+    </section>
+  </main>
+  <footer class="statusbar"><span>● 本地桌面版 · 不需要 127.0.0.1 网页服务</span><span id="bottomSummary">账号隔离 · 提示词原文不压缩 · 图片按编号绑定</span></footer>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="noticeHint" class="noticeHint" hidden><span id="noticeHintText">官方公告更新</span><button id="noticeHintOpen" class="smallBtn">查看</button><button id="noticeHintClose" class="iconBtn" aria-label="关闭提醒">×</button></div>
+<dialog id="apiDialog" class="noticeDialog apiDialog">
+  <div class="dialogbody">
+    <div class="dialoghead"><h2>API 接口 · 本地设置</h2><button class="iconBtn" id="apiClose" aria-label="关闭 API 设置">×</button></div>
+    <p class="apiIntro">支持 OpenAI 兼容的文本接口，用于独立 API 测试；不改变豆包网页版登录和视频生成。API Key 只保存在当前电脑的 Windows 加密存储中。</p>
+    <label for="apiProvider">接口服务商</label>
+    <select id="apiProvider">
+      <option value="openai">OpenAI（文本 API）</option>
+      <option value="deepseek">DeepSeek</option>
+      <option value="volcengine">火山方舟 / 豆包 API</option>
+      <option value="custom">自定义 OpenAI 兼容接口</option>
+    </select>
+    <label for="apiEndpoint">API 基础地址（HTTPS）</label>
+    <input id="apiEndpoint" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false"/>
+    <label for="apiModel">模型 ID</label>
+    <input id="apiModel" placeholder="例如 deepseek-chat 或你的推理接入点 ID" autocomplete="off" spellcheck="false"/>
+    <label for="apiKey">API Key</label>
+    <input id="apiKey" type="password" placeholder="输入新的 Key；留空则保留已保存的 Key" autocomplete="new-password" spellcheck="false"/>
+    <p id="apiKeyStatus" class="noticeSource">尚未设置 API Key</p>
+    <div class="apiButtons"><button id="apiSave" class="primary">保存 API 设置</button><button id="apiCheck" class="ghost">测试连接（/models）</button><button id="apiClearKey" class="ghost">删除已存 Key</button></div>
+    <div class="apiTestArea">
+      <label for="apiTestPrompt">文字模型测试（手动发送，可能产生 Token 费用）</label>
+      <textarea id="apiTestPrompt" rows="3" maxlength="4000" placeholder="例如：请用一句话介绍你自己。此处文字仅在点击发送后传给配置的 API。"></textarea>
+      <button class="ghost" id="apiAsk">发送测试请求</button>
+      <pre id="apiTestResult" class="apiResult" aria-live="polite">尚未测试</pre>
+    </div>
+    <p class="noticePrivacy">API 配置对每位用户独立。软件不自动发送漫剧项目、提示词、参考图、豆包账号或 Cookie 到 API。密钥加密后落在当前 Windows 用户目录里，不会被打入对外分享的安装包。</p>
+    <div class="dialogActions"><button id="apiDone" class="primary">返回工作台</button></div>
+  </div>
+</dialog>
+<dialog id="noticeDialog" class="noticeDialog communityDialog" aria-labelledby="communityHeadline">
+  <div class="communityShell">
+    <header class="communityHeader">
+      <div><div class="communityEyebrow">✦ 独独AI工作台 · 官方创作者社群</div>
+        <h2 id="communityHeadline">加入 AI 漫剧创作交流群</h2>
+        <p id="communitySubtitle">交流创作经验 · 关注最新工具与漫剧资讯</p>
+      </div>
+      <button id="btnNoticeClose" class="iconBtn" aria-label="关闭社群弹窗">×</button>
+    </header>
+    <div class="communityMain">
+      <section class="communityBenefits" aria-label="社群交流内容">
+        <div class="communityPromoTitle"><span class="communityLiveDot"></span> 正在招募 AI 漫剧创作者</div>
+        <p id="noticeCommunityDesc" class="communityLead">创作交流、工具更新与制作经验分享</p>
+        <ul class="communityBenefitList" id="communityBenefitList">
+          <li>交流分镜、提示词和漫剧制作经验</li>
+          <li>关注 AI 漫剧新工具和行业动态</li>
+          <li>工作台更新、教程与实战技巧分享</li>
+        </ul>
+        <div class="communityContact">
+          <div><span class="contactLabel">添加微信交流 / 二维码过期可联系</span><strong id="noticeWechat">du4du44</strong></div>
+          <button id="btnNoticeCopy" class="primary" title="复制微信号">复制微信号</button>
+        </div>
+        <div class="communityBackupContact"><span>备用微信：<strong id="noticeBackupWechat">du6du66</strong></span><button class="textBtn" id="btnNoticeCopyBackup">复制备用号</button></div>
+        <div class="communityButtons">
+          <button id="btnNoticeDone" class="primary communityEnter">进入工作台</button><button id="btnCommunityTutorial" class="ghost communityTutorialBtn">📖 新手图文教程 · 从第一步开始</button>
+          <button id="btnNoticeQQ" class="ghost" hidden>QQ群入口</button>
+        </div>
+        <label class="communitySkip"><input type="checkbox" id="communityNoStartup"/>以后启动不再自动弹出（可随时从右上角打开）</label>
+      </section>
+      <section class="communityQrPanel" aria-label="微信社群二维码">
+        <div class="qrTitle" id="noticeCommunity">AI 漫剧创作交流群</div>
+        <div class="qrCanvas">
+          <img id="noticeQR" alt="AI 漫剧交流群微信二维码" loading="eager" referrerpolicy="no-referrer" hidden/>
+          <div id="qrPlaceholder" class="qrPlaceholder">二维码暂不可用<br/>请添加微信 du4du44</div>
+        </div>
+        <strong id="qrStatus" class="qrStatus">扫码入群 · 交流 AI 漫剧</strong>
+        <span class="qrExpiry" id="qrExpiry">二维码有限期，过期后请添加微信</span>
+        <button id="btnNoticeQR" class="textBtn" hidden>在浏览器中查看二维码</button>
+      </section>
+    </div>
+    <div class="communityFooter">
+      <div class="communityUpdates">
+        <div class="communityUpdateItem"><span class="noticeKicker">版本更新</span><strong id="noticeRelease">当前版本 v1.3.0</strong><p id="noticeReleaseNotes">点击公告可了解新功能。</p><button id="btnNoticeDownload" class="smallBtn" hidden>下载最新版</button></div>
+        <div class="communityUpdateItem"><span class="noticeKicker">官方公告</span><strong id="noticeTitle">创作资讯</strong><p id="noticeBody">一起分享工具与创作经验。</p></div>
+      </div>
+      <div class="communityMeta"><span id="noticeSource" class="noticeSource">正在读取本地公告…</span><button id="btnNoticeRefresh" class="textBtn">刷新公告</button></div>
+      <p class="noticePrivacy">公告仅获取公开展示内容，不上传你的豆包登录状态、Cookie、剧本、参考图和视频素材。</p>
+    </div>
+  </div>
+</dialog>
+<dialog id="helpDialog"><div class="dialogbody"><div class="dialoghead"><h2>独独AI工作台｜使用说明</h2><button id="closeHelp" class="iconBtn">×</button></div><p>① 左边选择豆包账号，网页会保持每个账号自己独立的登录状态。首次需逐一完成豆包官方登录。</p><p>② 下方导入 TXT/MD、多集完整提示词，或只读迁入旧「AI漫剧素材工作台」的 JSON 备份。设置参考图总目录。</p><p>③ 底部每集单独一整行，点击集名展开分段，点击段落切换；点右上角「已完成」自动缩成小卡。高级隐藏/锁定在「更多」菜单。点击段落右边同步完整原文和编号匹配的图片；复制到豆包输入框，按住图片或蓝色拖动条尝试多图上传。</p><p>④ 网站若不接受跨嵌入视图的拖拽，可点「备用上传文件夹」：软件会导出本段原图和提示词，打开文件夹后使用豆包网页原生上传控件选择图片。</p><p>⑤ 每段可记录待制作、已完成、待重做。上锁后只能查看、复制和导出。下载管理自动归档网页官方下载文件。换账号不会切换剧集与段落。</p><p class="warningText">跨 WebContentsView 原生多图上传是否支持以 Windows 豆包网站实测为准。不会读取账号密码、导出 Cookie 或绕过平台限制。</p><div class="dialogActions"><button id="closeHelpBottom" class="primary">明白了</button></div></div></dialog>
+<dialog id="voiceDialog"><div class="dialogbody"><div class="dialoghead"><h2>绑定人物声音到参考图</h2><button id="btnVoiceClose" class="iconBtn">×</button></div>
+    <p>先选择人物图号、填写角色名，再选择本机 WAV/MP3 声音样本。每个人物可以有多个样本，默认仅自动使用选定的一个。</p>
+    <label for="voiceCodeSelect">对应人物图片</label><select id="voiceCodeSelect" class="voiceSelect"></select>
+    <label for="voiceNameInput">人物名称 / 声音标签</label><input id="voiceNameInput" maxlength="45" placeholder="例如：杜不凡（沉稳男声）" />
+    <p class="tiny">Seedance 2.0 参考音频：每段2—15秒、同一任务最多3段、总长最多15秒；模型限制不等于豆包聊天框已经支持音频上传。</p>
+    <div class="dialogActions"><button class="ghost" id="btnVoiceCancel">取消</button><button class="primary" id="btnVoiceChoose">选择音频并绑定</button></div></div></dialog>
+<dialog id="pasteDialog"><div class="dialogbody"><div class="dialoghead"><h2>粘贴完整多集提示词</h2><button id="closePaste" class="iconBtn">×</button></div><p>按“第X集｜标题”“第X段｜标题”识别，每段原文存储；导入不影响旧项目。</p><textarea id="pasteText" placeholder="将一集或多集完整提示词粘贴到这里" spellcheck="false"></textarea><div class="dialogActions"><button id="submitPaste" class="primary">解析并加入项目</button></div></div></dialog>
+<dialog id="toolsDialog"><div class="dialogbody"><div class="dialoghead"><h2>项目管理</h2><button id="closeTools" class="iconBtn">×</button></div><div class="toolGrid"><button id="btnCleanupViews" class="ghost" title="会先确认再关闭无任务的后台页面，不删除账号 Cookie">清理闲置后台网页</button><button id="btnRescan" class="ghost">重扫参考图目录</button><button id="btnProjectBackup" class="ghost">备份漫剧项目</button><button id="btnProjectRestore" class="ghost">恢复漫剧项目</button><button id="btnExportSegment" class="ghost">导出当前段</button><button id="btnProjectName" class="ghost">重命名当前项目</button><button id="btnShowPaths" class="ghost">查看素材统计</button><button id="btnData" class="ghost" title="仅打开本机用户数据目录，不上传任何文件">打开本地数据目录</button></div><details class="advancedLegacy"><summary>高级项目管理：隐藏、锁定及旧数据兼容</summary>
+<div class="legacyActions"><button id="btnEpisodeTree" class="smallBtn" hidden>剧集目录</button><span id="episodeMiniStat" class="tiny"></span>
+<button id="btnHideDone" class="smallBtn">批量隐藏已完成（旧版）</button><button id="btnShowHidden" class="smallBtn">显示已隐藏</button>
+<button id="btnHideEpisode" class="smallBtn">隐藏本集</button><button id="btnLockEpisode" class="smallBtn">锁定本集</button>
+<button id="btnHideSegment" class="smallBtn">隐藏本段</button><button id="btnLockSegment" class="smallBtn">锁定本段</button>
+<div class="segmentStatus">当前段状态：<select id="statusSelect"><option value="pending">待制作</option><option value="done">已完成</option><option value="redo">待重做</option></select></div></div></details>
+<pre id="assetStats" class="assetStats"></pre></div></dialog>
+<dialog id="tutorialDialog" class="tutorialDialog" aria-labelledby="tutorialHeading">
+  <div class="tutorialShell">
+    <div class="tutorialTop"><div><span class="tutorialKicker">DUDU AI WORKBENCH · GUIDE</span><h2 id="tutorialHeading">独独AI工作台｜图文使用教程</h2><p id="tutorialSubtitle">按步骤了解账号、剧集、素材和一键导入</p></div><button class="iconBtn" id="btnTutorialClose" aria-label="关闭教程">×</button></div>
+    <div class="tutorialMedia"><img id="tutorialSlideImage" alt="教程步骤示意图" hidden/><div id="tutorialImagePlaceholder" class="tutorialImagePlaceholder">正在加载教程图片…</div></div>
+    <div class="tutorialDetail"><strong id="tutorialStepTitle">第一步</strong><p id="tutorialStepDesc"></p></div>
+    <div class="tutorialFoot"><button class="ghost" id="btnTutorialSkip">跳过教程</button><div id="tutorialProgress" class="tutorialProgress">01 / 12</div><div class="tutorialButtons"><button class="ghost" id="btnTutorialPrev">上一步</button><button class="primary" id="btnTutorialNext">下一步 →</button></div></div>
+    <div class="tutorialWatermark">独独AI，让制作变得简单。 · 更多AI软件跟技巧 请添加：du4du44 · 备用号：du6du66</div>
+  </div>
+</dialog>
+
+<dialog id="licenseDialog" class="licenseDialog" aria-labelledby="licenseTitle">
+ <div class="licenseShell">
+  <div class="licenseHeader"><div><span>✦ DUDU AI · LICENSE CENTER</span><h2 id="licenseTitle">独独AI工作台 · 创作者授权中心</h2><p>首次使用免费体验24小时，添加微信免费领取永久卡密</p></div><strong>🔒</strong></div>
+  <div class="licenseStatusBox"><div><strong id="licenseState">正在检查本机授权…</strong><small id="licenseCountdown"></small></div><span>设备编号：<span id="licenseDevice">—</span></span></div>
+  <section class="licensePane"><h3>🎁 首次免费试用24小时</h3><p>从首次联网成功激活起计时。重装软件不会重新赠送，试用期内正常使用制作功能。</p><button class="primary" id="btnLicenseTrial">开始免费体验</button></section>
+  <section class="licensePane"><h3>🎫 永久卡密激活</h3><div class="licenseForm"><input id="licenseCode" placeholder="DUDU-XXXXX-XXXXX-XXXXX-XXXXX" spellcheck="false" autocomplete="off" maxlength="45"/><button class="primary" id="btnLicenseActivate">激活永久使用权</button></div><p class="licenseNote">请复制后台“生成永久卡密”后上方显示的 DUDU 卡密；下方列表中的卡密管理 ID 不能激活。</p></section>
+  <section class="licensePane"><h3>📝 免费申请永久授权</h3><p>提交后由独独AI管理员人工审核，通过后自动绑定本机，无需手动输入卡密。</p><input id="licenseApplyContact" maxlength="80" placeholder="微信号 / 联系方式（必填）"/><textarea id="licenseApplyReason" rows="2" maxlength="400" placeholder="申请说明（选填）"></textarea><button class="primary" id="btnLicenseApply">提交免费申请</button><p id="licenseApplicationStatus" class="licenseNote">尚未提交申请</p></section>
+  <section class="licensePane"><h3>🛒 购买永久授权</h3><div class="licenseForm"><select id="licenseProduct"><option value="">正在读取商品…</option></select><select id="licensePayment"><option value="wechat">微信支付</option><option value="alipay">支付宝</option></select><button class="primary" id="btnLicenseBuy">创建订单并付款</button></div><p id="licenseOrderStatus" class="licenseNote">付款成功后自动绑定本机，返回此窗口刷新授权即可。</p></section>
+  <section class="licensePane"><div class="licenseOrderHeading"><h3>🧾 最近订单</h3><button class="smallBtn" id="btnLicenseOrdersRefresh">刷新订单</button></div><div id="licenseOrdersList" class="licenseOrdersList"><p class="licenseNote">正在读取本机订单…</p></div></section>
+  <section class="licensePane"><h3>💬 联系官方客服</h3><div class="licenseContacts"><span>主微信：<b>du4du44</b> <button class="smallBtn" id="btnLicenseWechat">复制</button></span><span>备用：<b>du6du66</b> <button class="smallBtn" id="btnLicenseBackupWechat">复制</button></span></div></section>
+  <p id="licenseMessage" aria-live="polite">正在检查授权…</p>
+  <div class="licenseFooter"><button class="ghost" id="btnLicenseAdmin" disabled title="需要先配置授权服务">运营管理中心 ↗</button><button class="ghost" id="btnLicenseRefresh">联网验证 / 更新授权</button><button class="ghost" id="btnLicenseReadonly">只读进入 · 查看与备份项目</button></div>
+  <small class="licenseNote">试用到期不会删除你的本地账号、剧本、参考图或成片。授权按设备绑定，换机请联系管理员。</small>
+ </div>
+</dialog>
+</body>
+</html>

@@ -1,0 +1,16 @@
+FFmpeg third-party binary notice / FFmpeg 第三方组件说明
+
+This installer bundles a separately executable ffmpeg.exe and ffprobe.exe from
+BtbN/FFmpeg-Builds win64 LGPL variant. They are not authored by this application.
+FFmpeg project: https://ffmpeg.org/
+Binary distribution and corresponding build source/configuration:
+https://github.com/BtbN/FFmpeg-Builds
+https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest
+FFmpeg source: https://github.com/FFmpeg/FFmpeg
+Licensing information: https://ffmpeg.org/legal.html
+Included license text: COPYING.LGPLv2.1
+
+The exact compilation configuration can be printed by running the bundled
+ffmpeg.exe -buildconf. The author of this application is responsible for making
+sure all third-party distribution obligations are satisfied before commercial
+redistribution. This notice does not grant rights beyond the actual licenses.

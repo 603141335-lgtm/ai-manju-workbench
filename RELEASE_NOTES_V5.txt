@@ -1,0 +1,7 @@
+DuduAI Workbench V1.3 - Full Source and Windows Installer Builder V5
+
+Integrated V2 Python detection and V3 Chinese staging path fixes.
+New persistent Windows GUI build center and automatic failure logs.
+No Cloudflare Worker/D1 updates. Existing account userData preserved.
+This ZIP is NOT a compiled EXE. Build on your Windows x64 PC first.
+Final installer target: release/DuduAI-Workbench-Setup-v1.3.0-x64.exe

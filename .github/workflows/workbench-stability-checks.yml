@@ -1,0 +1,44 @@
+name: DuduAI Workbench Stability Checks
+on:
+  push:
+    branches:
+      - feature/v13-workbench-stability-audit
+      - feature/v13-workbench-admin-integration
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'license-service/**'
+      - 'package.json'
+      - 'START_DUDUAI_LOCAL_TEST.bat'
+      - '.github/workflows/workbench-stability-checks.yml'
+permissions:
+  contents: read
+jobs:
+  javascript-and-license:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install desktop dependencies (root ZIP has no lockfile)
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+      - name: Syntax, account persistence and workbench regression checks
+        shell: pwsh
+        run: npm run check
+      - name: Install backend lockfile dependencies
+        shell: pwsh
+        working-directory: license-service
+        run: npm ci --no-audit --no-fund
+      - name: Backend syntax and security checks
+        shell: pwsh
+        working-directory: license-service
+        run: npm run check
+      - name: Backend unit and integration tests
+        shell: pwsh
+        working-directory: license-service
+        run: npm test
