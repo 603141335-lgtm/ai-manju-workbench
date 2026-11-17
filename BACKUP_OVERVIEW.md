@@ -19,7 +19,7 @@
 
 仓库只保存源码和公开配置。管理员令牌、签名私钥、支付密钥、Cloudflare 凭据、实时 D1 数据、用户电脑上的项目与账号数据、构建缓存和安装包均未上传。恢复正式服务时，需要从另行保管的安全备份恢复这些私密数据，并按 `license-service/OPS_CENTER_SETUP.md` 核对部署。**不要重新生成签名密钥来替代原有密钥，否则已发放的授权无法正常续签。**
 
-腾讯云 CloudBase 静态托管地址是 `https://marginal-wildfowl-d9dw2q0e469ceb-1526863510.tcloudbaseapp.com/`；用户提供的存储标识是 `aa86-static-marginal-wildfowl-d9dw2q0e469ceb-1526863510`。2026-11-16 检查时，其首页、`/index.html` 和 `/admin` 返回 404；本次交接源码中没有找到这个独立站点的源文件。当前可用的运营后台网页在 `license-service/src/admin-ui.mjs`，并随 Cloudflare Worker 部署。若要恢复 CloudBase 站点，需要静态网站托管的文件清单或原网页源码。
+腾讯云 CloudBase 静态托管地址是 `https://marginal-wildfowl-d9dw2q0e469ceb-1526863510.tcloudbaseapp.com/`；用户提供的存储标识是 `aa86-static-marginal-wildfowl-d9dw2q0e469ceb-1526863510`。2026-11-17 用户提供的文件管理截图显示根目录为空，之前访问首页也返回 404，说明没有旧网页文件可导出。`cloudbase-site/index.html` 是新建的入口页，上传到 CloudBase 根目录后会打开当前 Cloudflare 运营后台。当前可用的后台网页源码在 `license-service/src/admin-ui.mjs`，并随 Cloudflare Worker 部署。
 
 ## 恢复入口
 
