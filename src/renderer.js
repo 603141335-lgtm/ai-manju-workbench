@@ -352,6 +352,7 @@ function renderBackgroundTasks(){
  for(const [id,status] of all){
   const card=document.createElement('div');card.className='accountTaskCard';
   const name=document.createElement('strong');name.textContent=(cfg?.accounts||[]).find(a=>a.id===id)?.name||'未知账号';
+  const meta=document.createElement('small');meta.className='taskMeta';meta.textContent=(status.taskId?'任务 '+String(status.taskId).slice(0,18)+' · ':'')+'阶段 '+String(status.phase||status.state||'idle')+(status.requiresAttention?' · 需要处理':'');
   const detail=document.createElement('p');detail.textContent=String(status.message||'').slice(0,240);
   const row=document.createElement('div');row.className='taskActions';
   const show=document.createElement('button');show.className='smallBtn';show.textContent='切换查看';show.onclick=()=>safe(()=>switchAccount(id));row.append(show);
@@ -363,7 +364,7 @@ function renderBackgroundTasks(){
   }
   const state=document.createElement('span');state.className='taskStatus';state.textContent=({'running':'运行中','waiting-focus':'等待原账号','review':'待确认','done':'已结束','cancelled':'已取消','error':'异常','interrupted':'上次中断'}[status.state]||status.state||'空闲');
   const top=document.createElement('div');top.className='taskTitle';top.append(name,state);
-  card.append(top,detail,row);area.append(card);
+  card.append(top,meta,detail,row);area.append(card);
  }
 }
 function updateBackgroundTask(info){
