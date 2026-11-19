@@ -318,8 +318,8 @@ function initWorkspace(){
     const ep=getEp(),seg=getSeg();if(!ep||!seg){toast('请先选择要关联的剧集和片段');return;}
     const episodeLabel=`第${ep.number||ws.workspace.episodes.indexOf(ep)+1}集`,segmentLabel=`第${seg.n}段`;
     ws=await B.wsLinkVideo(ep.id,seg.id,link.dataset.dlLink);renderWorkspaceShell();await renderImages();bounds();
-    const currentEpisode=ws.workspace.episodes.find(x=>x.id===ep.id),next=currentEpisode?.segments.find(x=>x.n>seg.n&&x.status!=='done');
-    if(next)await chooseSegment(ep.id,next.id);
+    const flat=ws.workspace.episodes.flatMap(item=>item.segments.map(part=>({ep:item,seg:part}))),currentIndex=flat.findIndex(x=>x.ep.id===ep.id&&x.seg.id===seg.id),next=flat.slice(currentIndex+1).find(x=>x.seg.status!=='done');
+    if(next)await chooseSegment(next.ep.id,next.seg.id);
     toastAction(`已关联至 ${episodeLabel} ${segmentLabel}，已标记完成`,'撤销',async()=>{ws=await B.wsUndoLinkVideo(ep.id,seg.id);renderWorkspaceShell();await renderImages();bounds();toast('已撤销视频关联')});
     return;
    }
