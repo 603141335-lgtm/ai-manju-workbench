@@ -1,5 +1,5 @@
 'use strict';
-const {app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, clipboard, nativeImage, session, safeStorage} = require('electron');
+const {app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, clipboard, nativeImage, session, safeStorage, Tray, Menu} = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -45,7 +45,7 @@ function loadLicenseRuntimeConfig(){
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
 const LIVE_LIMITS=Object.freeze({light:1,balanced:2,performance:3});
-let noticeService=null,noticeTimer=null,tutorialMedia=null,taskJournal=null,licenseClient=null,pruneInProgress=false;
+let noticeService=null,noticeTimer=null,tutorialMedia=null,taskJournal=null,licenseClient=null,pruneInProgress=false,quotaTimer=null,preloadRunning=false,tray=null,isQuitting=false;
 function guardedHandle(channel,handler){ipcMain.handle(channel,(...args)=>{if(!licenseClient)throw Error('授权中心尚未初始化');licenseClient.requireValid();return handler(...args)})}
 const protectedAccounts=new Set();
 const activeDownloads=new Map();
@@ -66,6 +66,30 @@ function save(){
 function readCfg(){
  cfgFile=path.join(app.getPath('userData'),'config.json');
  return readOrCreateAccountConfig(cfgFile,()=>createInitialData(randomUUID));
+}
+function quotaCycleDate(timestamp=Date.now(),resetHour=0){
+ const date=new Date(timestamp),hour=Math.max(0,Math.min(23,Math.round(Number(resetHour)||0)));
+ if(date.getHours()<hour)date.setDate(date.getDate()-1);
+ return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+function normalizeAccountSettings(){
+ let changed=false;
+ for(const a of cfg.accounts){
+  if(!a.quota||typeof a.quota!=='object'){a.quota={status:'available',markedDate:null,resetHour:0};changed=true;}
+  if(!['available','exhausted'].includes(a.quota.status)){a.quota.status='available';changed=true;}
+  const hour=Math.max(0,Math.min(23,Math.round(Number(a.quota.resetHour)||0)));
+  if(a.quota.resetHour!==hour){a.quota.resetHour=hour;changed=true;}
+  if(typeof a.preloadPinned!=='boolean'){a.preloadPinned=false;changed=true;}
+  if(a.quota.status==='exhausted'&&a.quota.markedDate!==quotaCycleDate(Date.now(),hour)){a.quota.status='available';a.quota.markedDate=null;changed=true;}
+ }
+ if(changed)save();
+}
+function refreshQuotaStates(){
+ let changed=false;
+ for(const a of cfg.accounts){const q=a.quota||(a.quota={status:'available',markedDate:null,resetHour:0});const hour=Math.max(0,Math.min(23,Math.round(Number(q.resetHour)||0)));
+  if(q.status==='exhausted'&&q.markedDate!==quotaCycleDate(Date.now(),hour)){q.status='available';q.markedDate=null;changed=true;}
+ }
+ if(changed){save();tell('accounts:changed',cfg);}
 }
 function loadAssetAliases(){
  const file=path.join(app.getPath('userData'),'asset-aliases.json');
@@ -409,8 +433,11 @@ function registerHandlers(){
   guardedHandle('group:add',(_e,name)=>update(()=>{cfg.groups.push({id:randomUUID(),name:normalizeName(name),edgeProfile:'Default'})}));
   guardedHandle('group:rename',(_e,id,name)=>update(()=>{const g=cfg.groups.find(g=>g.id===id);if(!g)throw Error('分组不存在');g.name=normalizeName(name)}));
   ipcMain.handle('group:edge',(_e,id,p)=>update(()=>{const g=cfg.groups.find(g=>g.id===id);if(!g||!allowedEdgeProfile(p))throw Error('Edge 配置无效');g.edgeProfile=p}));
-  guardedHandle('account:add',(_e,groupId,name)=>update(()=>{if(!cfg.groups.some(g=>g.id===groupId))throw Error('分组不存在');cfg.accounts.push({id:randomUUID(),groupId,name:normalizeName(name),done:0})}));
+  guardedHandle('account:add',(_e,groupId,name)=>update(()=>{if(!cfg.groups.some(g=>g.id===groupId))throw Error('分组不存在');cfg.accounts.push({id:randomUUID(),groupId,name:normalizeName(name),done:0,quota:{status:'available',markedDate:null,resetHour:0},preloadPinned:false})}));
   guardedHandle('account:rename',(_e,id,name)=>update(()=>{account(id).name=normalizeName(name)}));
+  guardedHandle('account:quotaToggle',(_e,id)=>update(()=>{const a=account(id),q=a.quota||(a.quota={status:'available',markedDate:null,resetHour:0}),cycle=quotaCycleDate(Date.now(),q.resetHour);if(q.status==='exhausted'&&q.markedDate===cycle){q.status='available';q.markedDate=null;}else{q.status='exhausted';q.markedDate=cycle;}}));
+  guardedHandle('account:quotaResetHour',(_e,id,value)=>update(()=>{const a=account(id),q=a.quota||(a.quota={status:'available',markedDate:null,resetHour:0});const hour=Number(value);if(!Number.isInteger(hour)||hour<0||hour>23)throw Error('每日额度刷新时间必须是 0–23 点');q.resetHour=hour;if(q.status==='exhausted'&&q.markedDate!==quotaCycleDate(Date.now(),hour)){q.status='available';q.markedDate=null;}}));
+  guardedHandle('account:preloadToggle',(_e,id)=>{const result=update(()=>{const a=account(id);a.preloadPinned=!a.preloadPinned});if(account(id).preloadPinned)preloadPinnedAccounts();return result});
   guardedHandle('account:remove',(_e,id)=>{
     if(!cfg.accounts.some(a=>a.id===id))throw Error('账号不存在');
     if(cfg.accounts.length<=1)throw Error('至少保留一个账号');
