@@ -1,10 +1,11 @@
 /* Doubao Import Mini v0.1 — standalone reference parsing & mapping (original implementation). */
 (function(global){
   'use strict';
-  const CODE = /(?:^|[^A-Z0-9])((?:AG|BL|A|B|C|E)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/ig;
+  const CODE = /(?:^|[^A-Z0-9])((?:AG|BL|A|B|C|E|I)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/ig;
   const FILES = /\.(png|jpe?g|webp)$/i;
   const unique = arr => [...new Set(arr)];
-  function norm(v){return String(v || '').toUpperCase().trim().replace(/[＿－–—]/g, '-');}
+  const aliasApi=typeof module==='object'&&module.exports?require('./asset-aliases'):null;
+  function norm(v){const clean=String(v || '').toUpperCase().trim().replace(/[＿－–—]/g, '-');return aliasApi?aliasApi.resolveAssetCode(clean):clean;}
   function tokens(v){const out=[];const t=String(v||'').toUpperCase();let m; const reg=new RegExp(CODE.source,'gi');while((m=reg.exec(t))!==null){out.push(norm(m[1])); if(reg.lastIndex===m.index)reg.lastIndex++;}return unique(out);}
   function parseCodes(text){
     const lines=String(text||'').split(/\r?\n/), blocks=[];
