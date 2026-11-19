@@ -9,6 +9,7 @@ const {spawn} = require('node:child_process');
 const {createInitialData,normalizeName,safeBounds,allowedImage,allowedEdgeProfile} = require('./store');
 const {saveAccountConfig,readOrCreateAccountConfig}=require('./account-config-store');
 const {configureAssetAliases,getDefaultAssetAliases}=require('./asset-aliases');
+const {quotaCycleDate,normalizeQuota,shouldResetQuota}=require('./account-quota');
 const {WorkspaceStore} = require('./workspace');
 const {parseMultiEpisode} = require('./parser');
 const {DownloadManager,inspectManifest}=require('./downloads');
@@ -67,28 +68,19 @@ function readCfg(){
  cfgFile=path.join(app.getPath('userData'),'config.json');
  return readOrCreateAccountConfig(cfgFile,()=>createInitialData(randomUUID));
 }
-function quotaCycleDate(timestamp=Date.now(),resetHour=0){
- const date=new Date(timestamp),hour=Math.max(0,Math.min(23,Math.round(Number(resetHour)||0)));
- if(date.getHours()<hour)date.setDate(date.getDate()-1);
- return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-}
 function normalizeAccountSettings(){
  let changed=false;
  for(const a of cfg.accounts){
-  if(!a.quota||typeof a.quota!=='object'){a.quota={status:'available',markedDate:null,resetHour:0};changed=true;}
-  if(!['available','exhausted'].includes(a.quota.status)){a.quota.status='available';changed=true;}
-  const hour=Math.max(0,Math.min(23,Math.round(Number(a.quota.resetHour)||0)));
-  if(a.quota.resetHour!==hour){a.quota.resetHour=hour;changed=true;}
+  const normalized=normalizeQuota(a.quota||{});
+  if(JSON.stringify(a.quota)!==JSON.stringify(normalized)){a.quota=normalized;changed=true;}
   if(typeof a.preloadPinned!=='boolean'){a.preloadPinned=false;changed=true;}
-  if(a.quota.status==='exhausted'&&a.quota.markedDate!==quotaCycleDate(Date.now(),hour)){a.quota.status='available';a.quota.markedDate=null;changed=true;}
+  if(shouldResetQuota(a.quota)){a.quota.status='available';a.quota.markedDate=null;changed=true;}
  }
  if(changed)save();
 }
 function refreshQuotaStates(){
  let changed=false;
- for(const a of cfg.accounts){const q=a.quota||(a.quota={status:'available',markedDate:null,resetHour:0});const hour=Math.max(0,Math.min(23,Math.round(Number(q.resetHour)||0)));
-  if(q.status==='exhausted'&&q.markedDate!==quotaCycleDate(Date.now(),hour)){q.status='available';q.markedDate=null;changed=true;}
- }
+ for(const a of cfg.accounts){const q=a.quota||(a.quota={status:'available',markedDate:null,resetHour:0});if(shouldResetQuota(q)){q.status='available';q.markedDate=null;changed=true;}}
  if(changed){save();tell('accounts:changed',cfg);}
 }
 function loadAssetAliases(){
