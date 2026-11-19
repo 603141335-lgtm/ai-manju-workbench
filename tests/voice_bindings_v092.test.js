@@ -27,7 +27,7 @@ test('3段/总15秒限制，单段无效与缺文件都阻止',()=>{
 test('v0.9.9: voice instructions remain without extra numbered image lines',()=>{
  const original='第1段｜测试｜15秒\n需要参考图：A15、A32\n连续性参考：测试镜头\n0—3秒｜台词：不改动！\n限制：无背景音乐、无字幕\n';
  const out=core.composeText(original,[{code:'A15',file:{name:'A15.png'}},{code:'A32',file:{name:'A32.png'}}],0,[{code:'A15',label:'杜不凡声音',filename:path.basename(f1),imageIndex:1},{code:'A32',label:'老关声音',filename:path.basename(f3),imageIndex:2}]);
- assert(out.startsWith(original));
+ assert(out.startsWith('【蓝色参考图引用区】\nA15\nA32\n\n【原始提示词】\n'+original));
  assert(out.includes('音频1 = A15')&&out.includes('音频2 = A32'));
  assert(out.includes('A15中的人物使用音频1'));
  assert(out.includes('台词：不改动！'));
