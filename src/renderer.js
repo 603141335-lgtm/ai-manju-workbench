@@ -225,7 +225,7 @@ function initAccounts(){const list=$('groupList');list.addEventListener('click',
   $('targetCount').onchange=()=>safe(async()=>{cfg=await B.setTarget($('targetCount').value);renderGroups();refreshHeader()});
   $('performanceModeSelect').onchange=()=>safe(async()=>{const result=await B.setPerformance($('performanceModeSelect').value);renderPerformance(result);toast(`后台常驻上限已调整为 ${result.limit} 个网页；并发导入上限 ${result.importLimit}`)});
   $('btnPerfCleanup').onclick=()=>safe(async()=>{const result=await B.cleanupMemory();renderPerformance(result);toast('空闲网页清理检查已完成')});
-  B.getPerformance().then(renderPerformance).catch(()=>{});B.onPerformanceChanged(renderPerformance);
+  B.getPerformance().then(renderPerformance).catch(()=>{});B.onPerformanceChanged(renderPerformance);B.onAccountsChanged(value=>{cfg=value;renderGroups();refreshHeader()});
   $('btnNext').onclick=()=>safe(nextAccount);
   $('btnMarkDone').onclick=()=>safe(async()=>{cfg=await B.progress(cfg.activeAccountId,1);renderGroups();refreshHeader();toast('当前账号手动完成计数 +1')});
   $('btnUndoDone').onclick=()=>safe(async()=>{cfg=await B.progress(cfg.activeAccountId,-1);renderGroups();refreshHeader()});
