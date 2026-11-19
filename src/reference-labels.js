@@ -26,7 +26,7 @@ function extractReferenceLabels(prompt){
    if(labels[code]&&labels[code]!==name){conflicts.push({code,first:labels[code],second:name});delete labels[code];continue;}
    if(!conflicts.some(x=>x.code===code))labels[code]=name;
   }
-  const aliasOnly=/(^|[^A-Z0-9_-])((?:I)\\d{2,3})(?=$|[^A-Z0-9])/ig;let aliasHit;
+  const aliasOnly=/(^|[^A-Z0-9_-])((?:I)\d{2,3})(?=$|[^A-Z0-9])/ig;let aliasHit;
   while((aliasHit=aliasOnly.exec(body))!==null){
    const code=normCode(aliasHit[2]),name=resolveAssetLabel(aliasHit[2]);
    if(!name||conflicts.some(x=>x.code===code))continue;
