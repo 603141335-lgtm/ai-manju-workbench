@@ -554,6 +554,13 @@ function registerHandlers(){
   guardedHandle('ws:editText',async(_e,eid,sid,text)=>{await workspace.editText(eid,sid,text);return workspace.snapshot()});
   guardedHandle('ws:editCodes',async(_e,eid,sid,codes)=>{await workspace.editCodes(eid,sid,codes);return workspace.snapshot()});
   guardedHandle('ws:status',async(_e,eid,sid,status,aid)=>{await workspace.setStatus(eid,sid,status,aid);return workspace.snapshot()});
+  guardedHandle('ws:linkVideo',async(_e,eid,sid,downloadId)=>{
+    const record=downloads.history.find(x=>x.id===downloadId);
+    if(!record||record.status!=='completed'||record.type!=='视频')throw Error('请选择已经下载完成的视频记录');
+    if(!exists(record.path))throw Error('下载的视频文件已不存在，请刷新下载记录');
+    await workspace.linkVideo(eid,sid,record.path,activeId,record.id);return workspace.snapshot();
+  });
+  guardedHandle('ws:undoLinkVideo',async(_e,eid,sid)=>{await workspace.undoLinkVideo(eid,sid);return workspace.snapshot()});
   guardedHandle('ws:hidden',(_e,eid,sid,hidden)=>workspace.setHidden(eid,sid,hidden));
   guardedHandle('ws:locked',(_e,eid,sid,locked)=>workspace.setLocked(eid,sid,locked));
   ipcMain.handle('ws:showHidden',(_e,show)=>workspace.setShowHidden(show));
