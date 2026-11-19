@@ -11,7 +11,7 @@ const file=code=>{const f=path.join(dir,code+'.png');fs.writeFileSync(f,'pixels'
 test('v0.9.9: tailframe has a single meaningful prefix; original reference text is not rewritten',()=>{
  const original='第3段｜第3场｜15秒\n需要参考图：A15、A32\n连续性参考：上一镜结束动作\n0—3秒｜台词：不要改变！\n限制：禁止字幕\n';
  const out=core.composeText(original,[{code:'尾帧',kind:'tail',file:{name:'尾帧.png'}},{code:'A15',file:{name:'A15.png'}},{code:'A32',file:{name:'A32.png'}}]);
- assert.equal(out,'上一段尾帧参考：\n'+original);
+ assert.equal(out,'【蓝色参考图引用区】\n上一段尾帧参考：\nA15\nA32\n\n【原始提示词】\n'+original);
  assert(!out.includes('图1锁定人物'));
  assert(!out.includes('图2锁定人物'));
 });
