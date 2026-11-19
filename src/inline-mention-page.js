@@ -19,11 +19,11 @@ function focusReferenceSlot(payload){
  if(topScoped){
   const marker='【蓝色参考图引用区】',start=content.indexOf(marker);
   if(start<0)return {ok:false,message:'没有找到置顶的蓝色参考图引用区'};
-  from=start+marker.length;const boundary=content.indexOf('\\n\\n',from);if(boundary>=0)to=boundary;
+  from=start+marker.length;const boundary=content.indexOf('\n\n',from);if(boundary>=0)to=boundary;
  }else if(scoped){
   from=content.search(/(?:需要参考图|所需参考图|引用参考图|参考图(?:编号|列表)?)/);
   if(from<0)return {ok:false,message:'没有找到原文中的需要参考图栏目'};
-  const afterSection=content.slice(from).search(/(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\\s*[:：]/);
+  const afterSection=content.slice(from).search(/(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\s*[:：]/);
   if(afterSection>=0)to=from+afterSection;
  }
  const pos=content.indexOf(anchor,from);
@@ -54,13 +54,13 @@ function inspectInlineReference(payload){
  const all=editor.textContent||'';
  let scopedBlocks=blocks;
  if(payload?.scope==='top-reference'){
-  const marker='【蓝色参考图引用区】',start=all.indexOf(marker),boundary=start>=0?all.indexOf('\\n\\n',start+marker.length):-1;
+  const marker='【蓝色参考图引用区】',start=all.indexOf(marker),boundary=start>=0?all.indexOf('\n\n',start+marker.length):-1;
   if(start<0)return {lineFound:false,verified:false,message:'置顶的蓝色参考图引用区不存在'};
   const end=boundary>=0?boundary:all.length;
   scopedBlocks=blocks.filter(el=>{const t=el.textContent||'';if(!t.includes(anchor))return false;const pos=all.indexOf(t);return pos>=start&&pos<end});
  }else if(payload?.scope==='reference'){
   const refStart=blocks.findIndex(el=>/(?:需要参考图|所需参考图|引用参考图|参考图(?:编号|列表)?)/.test(el.textContent||''));
-  const nextSection=refStart>=0?blocks.findIndex((el,i)=>i>refStart&&/^(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\\s*[:：]/.test((el.textContent||'').trim())):-1;
+  const nextSection=refStart>=0?blocks.findIndex((el,i)=>i>refStart&&/^(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\s*[:：]/.test((el.textContent||'').trim())):-1;
   scopedBlocks=refStart>=0?blocks.slice(refStart,nextSection>refStart?nextSection:undefined):[];
  }
  const matches=scopedBlocks.filter(el=>(el.textContent||'').includes(anchor))
@@ -85,8 +85,8 @@ function clearPendingInlineAt(payload){
  while((node=walker.nextNode())){const s=node.nodeValue||'';texts.push({node,start:text.length,end:text.length+s.length});text+=s;}
  const topScoped=payload?.scope==='top-reference',scoped=payload?.scope==='reference';
  let scopeFrom=0,end=text.length;
- if(topScoped){const marker='【蓝色参考图引用区】',start=text.indexOf(marker);if(start<0)return false;scopeFrom=start+marker.length;const boundary=text.indexOf('\\n\\n',scopeFrom);if(boundary>=0)end=boundary;}
- else if(scoped){scopeFrom=text.search(/(?:需要参考图|所需参考图|引用参考图|参考图(?:编号|列表)?)/);if(scopeFrom<0)return false;const endSection=text.slice(scopeFrom).search(/(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\\s*[:：]/);if(endSection>=0)end=scopeFrom+endSection;}
+ if(topScoped){const marker='【蓝色参考图引用区】',start=text.indexOf(marker);if(start<0)return false;scopeFrom=start+marker.length;const boundary=text.indexOf('\n\n',scopeFrom);if(boundary>=0)end=boundary;}
+ else if(scoped){scopeFrom=text.search(/(?:需要参考图|所需参考图|引用参考图|参考图(?:编号|列表)?)/);if(scopeFrom<0)return false;const endSection=text.slice(scopeFrom).search(/(?:连续性参考|场景与站位|画风|限制|分镜|音效|台词|对白)\s*[:：]/);if(endSection>=0)end=scopeFrom+endSection;}
  const start=text.indexOf(anchor,scopeFrom);
  if(start<0||start+anchor.length>end)return false;
  const duplicate=text.indexOf(anchor,start+anchor.length);if(duplicate>=0&&duplicate<end)return false;
