@@ -15,6 +15,13 @@ test('源自独立插件的编号识别：只读取参考图栏目，A01/A01-01�
  assert.deepEqual(p.codes,['A01','A01-01','AG14']);assert.equal(p.blocked,false);
  assert.equal(p.items[1].file.name,'A01-01.png');
 });
+test('中英文标点紧邻编号仍能识别，字母数字相邻内容不会误匹配',()=>{
+ const parsed=core.parseCodes('需要参考图：A02，A03。B12（C05）、E11；AG14:BL02\\n场景与站位：A99 不应混入参考图栏目');
+ assert.deepEqual(parsed.codes,['A02','A03','B12','C05','E11','AG14','BL02']);
+ const invalid=core.tokens('XA02 A02abc A030');
+ assert.deepEqual(invalid,[]);
+});
+
 test('重复版本、缺图、超过九张会阻止自动操作',()=>{
  const versions=[{...fixtures[2],versions:[fixtures[2].file,{name:'A15 other',path:'/tmp/A15-2.png'}]}];
  assert.equal(createPlan({prompt:'需要参考图：A15',rows:versions}).items[0].status,'conflict');
