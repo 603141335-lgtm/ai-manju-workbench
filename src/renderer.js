@@ -32,18 +32,30 @@ async function confirmAction(title,message){return new Promise(resolve=>{
   const end=x=>{d.close();d.remove();B.setOverlay(false);resolve(x)};no.onclick=()=>end(false);yes.onclick=()=>end(true);d.addEventListener('cancel',e=>{e.preventDefault();end(false)});modal(d);
 })}
 async function refreshCfg(){cfg=await B.getCfg();renderGroups();refreshHeader()}
+function accountEpisodeProgress(accountId){
+ const episodes=ws?.workspace?.episodes||[];
+ const episode=[...episodes].reverse().find(ep=>ep.segments.some(seg=>seg.accountId===accountId));
+ if(!episode)return '待分配剧集';
+ const done=episode.segments.filter(seg=>seg.accountId===accountId&&seg.status==='done').length;
+ const number=episode.number||episodes.indexOf(episode)+1;
+ return `第${number}集 · ${done}/${episode.segments.length}段`;
+}
 function renderGroups(){if(!cfg)return;
-  const list=$('groupList');list.innerHTML=cfg.groups.map(g=>{
-    const items=cfg.accounts.filter(a=>a.groupId===g.id);const open=expandGroups.has(g.id);const done=items.filter(a=>a.done>=cfg.target).length;
-    return `<div class="group ${open?'expanded':''}" data-group="${enc(g.id)}"><div class="groupHead" tabindex="0"><span class="groupName">${open?'▾':'▸'} ${enc(g.name)} <span class="tiny">${done}/${items.length}</span></span><span class="groupButtons"><button data-action="edge-config" data-gid="${enc(g.id)}" class="groupBtn" title="选择Edge配置">E</button><button data-action="rename-group" data-gid="${enc(g.id)}" class="groupBtn" title="重命名分组">✎</button><button data-action="add-account" data-gid="${enc(g.id)}" class="groupBtn" title="增加豆包账号">＋</button></span></div><div class="groupAccounts">${items.map(a=>`<button class="account ${a.id===cfg.activeAccountId?'active':''}" data-id="${enc(a.id)}" title="点击切换账号"><span class="accountName"><span class="dot">${['running','waiting-focus','review'].includes(taskStateByAccount.get(a.id)?.state)?'🟢':'●'}</span> ${enc(a.name)}</span><span class="accountCount">${a.done}/${cfg.target}</span><span class="tiny" data-action="rename-account" data-id="${enc(a.id)}" title="修改名称或移除">⋯</span></button>`).join('')}</div></div>`;
-  }).join('');$('targetCount').value=cfg.target;}
+ const list=$('groupList');list.innerHTML=cfg.groups.map(g=>{
+  const items=cfg.accounts.filter(a=>a.groupId===g.id),open=expandGroups.has(g.id),done=items.filter(a=>a.done>=cfg.target).length;
+  return `<div class="group ${open?'expanded':''}" data-group="${enc(g.id)}"><div class="groupHead" tabindex="0"><span class="groupName">${open?'▾':'▸'} ${enc(g.name)} <span class="tiny">${done}/${items.length}</span></span><span class="groupButtons"><button data-action="edge-config" data-gid="${enc(g.id)}" class="groupBtn" title="选择Edge配置">E</button><button data-action="rename-group" data-gid="${enc(g.id)}" class="groupBtn" title="重命名分组">✎</button><button data-action="add-account" data-gid="${enc(g.id)}" class="groupBtn" title="增加豆包账号">＋</button></span></div><div class="groupAccounts">${items.map(a=>{
+   const exhausted=a.quota?.status==='exhausted',task=taskStateByAccount.get(a.id)?.state;
+   return `<button class="account ${a.id===cfg.activeAccountId?'active':''}" data-id="${enc(a.id)}" title="点击切换账号"><span class="accountMeta"><span class="accountName"><span class="dot">${['running','waiting-focus','review'].includes(task)?'●':'○'}</span><span class="quotaLight ${exhausted?'exhausted':'available'}" data-action="quota-toggle" data-id="${enc(a.id)}" title="${exhausted?'今日已标记用完，点击恢复':'今日可用，点击标记用完'}">●</span> ${enc(a.name)}</span><small class="accountEpisode">${enc(accountEpisodeProgress(a.id))}</small></span><span class="accountControls"><span class="preloadPin ${a.preloadPinned?'pinned':''}" data-action="preload-toggle" data-id="${enc(a.id)}" title="${a.preloadPinned?'取消后台预加载':'固定为后台预加载账号'}">📌</span><span class="accountCount">${a.done}/${cfg.target}</span><span class="tiny" data-action="quota-hour" data-id="${enc(a.id)}" title="设置每日额度刷新时间">◷</span><span class="tiny" data-action="rename-account" data-id="${enc(a.id)}" title="修改名称或移除">⋯</span></span></button>`;
+  }).join('')}</div></div>`;
+ }).join('');$('targetCount').value=cfg.target;
+}
 function refreshHeader(){if(!cfg)return;const reached=cfg.accounts.filter(a=>a.done>=cfg.target).length;
   $('topCenter').textContent=`${cfg.groups.length} 个浏览器组 · ${cfg.accounts.length} 个独立账号位 · ${reached} 个达到手动目标`;
   $('addressText').textContent=`doubao.com / ${getAccount()?.name||'当前账号'}`;
   $('bottomSummary').textContent=`${getAccount()?.name||'—'} · 每号目标 ${cfg.target} 条 · ${ws?.workspace?.episodes?.length||0} 集`;
 }
 async function switchAccount(id){await flushPrompt();const x=await safe(()=>B.selectAccount(id));if(!x)return;cfg.activeAccountId=id;const group=getGroup();if(group)expandGroups.add(group.id);renderGroups();refreshHeader();$('webStatus').textContent='正在进入独立的豆包登录会话…';await refreshExtension();bounds();refreshSelectedImportStatus();renderBackgroundTasks();}
-async function nextAccount(){const all=cfg.groups.flatMap(g=>cfg.accounts.filter(a=>a.groupId===g.id));if(!all.length)return;const cur=all.findIndex(a=>a.id===cfg.activeAccountId), rotated=[...all.slice(cur+1),...all.slice(0,cur+1)];await switchAccount(rotated.find(a=>a.done<cfg.target)?.id||all[(cur+1)%all.length].id)}
+async function nextAccount(){const all=cfg.groups.flatMap(g=>cfg.accounts.filter(a=>a.groupId===g.id));if(!all.length)return;const cur=all.findIndex(a=>a.id===cfg.activeAccountId),rotated=[...all.slice(cur+1),...all.slice(0,cur+1)],candidate=rotated.find(a=>a.done<cfg.target&&a.quota?.status!=='exhausted');if(candidate)await switchAccount(candidate.id);else toast('没有可分配的绿灯账号；请检查额度标记或手动选择账号')}
 function bounds(){requestAnimationFrame(()=>{const rect=$('webHost').getBoundingClientRect();if(rect.width>=100&&rect.height>=100)B.bounds({x:rect.left,y:rect.top,width:rect.width,height:rect.height})})}
 function applyLayout(){const v=ws?.workspace?.layout;if(!v)return;const root=document.documentElement;root.style.setProperty('--rightw',v.rightWidth+'px');root.style.setProperty('--bottomh',v.bottomHeight+'px');$('timeline').style.display=v.bottomCollapsed?'none':'';$('bottomResizer').style.display=v.bottomCollapsed?'none':'';$('btnToggleBottom').textContent=v.bottomCollapsed?'展开底栏':'收起底栏';bounds()}
 function renderWorkspaceShell(){if(!ws)return;const data=ws.workspace,ep=getEp(),seg=getSeg();
@@ -76,7 +88,7 @@ function renderWorkspaceShell(){if(!ws)return;const data=ws.workspace,ep=getEp()
   $('btnHideSegment').textContent=seg?.hidden?'恢复本段':'隐藏本段';
   $('btnLockSegment').textContent=seg?.locked?'解锁本段':'锁定本段';
   renderEpisodeTree();
-  selected=new Set(seg?.selectedPaths||[]);lastAnchor=-1;refreshHeader();
+  selected=new Set(seg?.selectedPaths||[]);lastAnchor=-1;refreshHeader();renderGroups();
 }
 function renderEpisodeTree(){
  if(!ws)return;
@@ -199,6 +211,9 @@ function initAccounts(){const list=$('groupList');list.addEventListener('click',
     if(action==='add-account'){const name=await ask('新增账号名称',`豆包 ${String(cfg.accounts.length+1).padStart(2,'0')}`);if(name)await safe(async()=>{cfg=await B.addAccount(gid,name);renderGroups();refreshHeader()})}
     if(action==='rename-group'){const g=cfg.groups.find(g=>g.id===gid),name=await ask('修改分组名称',g.name);if(name)await safe(async()=>{cfg=await B.renameGroup(gid,name);renderGroups()})}
     if(action==='edge-config'){const g=cfg.groups.find(g=>g.id===gid),name=await ask('Edge 配置文件：Default 或 Profile 1 等',g.edgeProfile);if(name)await safe(async()=>{cfg=await B.setEdge(gid,name);toast('备用 Edge 配置已保存')})}
+    if(action==='quota-toggle')await safe(async()=>{cfg=await B.quotaToggle(id);renderGroups();refreshHeader();toast(cfg.accounts.find(x=>x.id===id)?.quota?.status==='exhausted'?'已标记今日额度用完':'已恢复绿灯，可参与任务分配')});
+    if(action==='quota-hour'){const a=cfg.accounts.find(x=>x.id===id),value=await ask('每日额度刷新时间（0–23 点）',String(a.quota?.resetHour??0));if(value!==null){const hour=Number(value);if(!Number.isInteger(hour)||hour<0||hour>23){toast('请输入 0–23 的整数');return;}await safe(async()=>{cfg=await B.quotaResetHour(id,hour);renderGroups();toast('每日额度刷新时间已设置为 '+hour+':00')})}}
+    if(action==='preload-toggle')await safe(async()=>{cfg=await B.preloadToggle(id);renderGroups();toast(cfg.accounts.find(x=>x.id===id)?.preloadPinned?'已加入后台预加载队列':'已取消后台预加载固定')});
     if(action==='rename-account'){const a=cfg.accounts.find(a=>a.id===id),name=await ask('账号名称（输入 - 移除账号位）',a.name);if(name==='-'&&await confirmAction('移除账号位？','仅从目录移除，不删除系统中的登录信息；请先确认当前账号。'))await safe(async()=>{cfg=await B.removeAccount(id);renderGroups();refreshHeader()});else if(name&&name!=='-')await safe(async()=>{cfg=await B.renameAccount(id,name);renderGroups()})}
     return;
   }
