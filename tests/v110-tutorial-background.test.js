@@ -47,8 +47,8 @@ test('v1.1.0: actual Electron selection no longer globally cancels one-click imp
  assert(main.includes('const importEnginesByAccount=new Map()'));
  assert(main.includes('getAccountImportEngine(id)'));
  assert(main.includes('activeImportAccounts.has(id)'));
- assert(main.includes('canStart:()=>reservedImportSlots.has(id)&&reservedImportSlots.size<=2'));
- assert(main.includes('if(reservedImportSlots.size>=2)'));
+ assert(main.includes('canStart:()=>reservedImportSlots.has(id)&&reservedImportSlots.size<=(LIVE_LIMITS[cfg?.performanceMode]||LIVE_LIMITS.balanced)'));
+ assert(main.includes('if(reservedImportSlots.size>=maxImports)'));
  assert(main.includes('reservedImportSlots.add(accountId)'));
  assert(main.includes('reservedImportSlots.delete(accountId)'));
  assert(!main.includes('mentionRunner?.cancel();importEngine?.cancel()'));
