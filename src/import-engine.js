@@ -3,6 +3,7 @@
  * Reuses tested independent extension's reference parsing and File/DataTransfer method.
  */
 const fs=require('node:fs');
+const {randomUUID}=require('node:crypto');
 const path=require('node:path');
 const {parseCodes,composeText,referenceSlots}=require('./import-core');
 const {isAllowedDoubaoUrl,codeInName}=require('./mention-core');
@@ -35,7 +36,7 @@ function createPlan({prompt='',rows=[],chosenPaths={},limit=9,tail=null,labels={
  }
  return {codes,items,tailStatus:tail||{state:'none'},source:parsed.origin,limit,blocked:items.length===0||items.length>limit||items.some(x=>x.status!=='ready')||['error','stale','missing'].includes(tail?.state),overLimit:items.length>limit,originalChars:prompt.length};
 }
-function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},isForeground=()=>true,canStart=()=>true,onStart=()=>{},onFinish=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450}={}){
+function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=>({}),getCurrentSelection=()=>null,getTailForSegment=()=>null,getVoiceForImages=()=>({items:[],blocked:false,errors:[],totalSeconds:0}),notify=()=>{},isForeground=()=>true,canStart=()=>true,onStart=()=>{},onFinish=()=>{},pause=sleep,uploadTimeoutMs=25000,intervalMs=450,foregroundTimeoutMs=5*60*1000,reviewTimeoutMs=5*60*1000}={}){
  let running=null;
  let taskSnapshot=null;
  const emit=(state,message,ctx,extra={})=>{
@@ -45,12 +46,29 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
  async function awaitForeground(ctx){
    if(isForeground(ctx.accountId))return;
    emit('waiting-focus','图片及音频操作已保留；账号在后台，等待切回本账号执行豆包原生蓝色@',ctx,{requiresAttention:true});
+   const deadline=Date.now()+foregroundTimeoutMs;
    while(!isForeground(ctx.accountId)){
      ensure(ctx);
-     await pause(750);
+     const remaining=deadline-Date.now();
+     if(remaining<=0)throw Error('等待切回当前账号超过 '+Math.ceil(foregroundTimeoutMs/60000)+' 分钟，任务已安全停止；已上传的附件会保留，请检查网页后重试');
+     await pause(Math.min(750,remaining));
    }
    ensure(ctx);
    emit('running','已切回账号，继续验证原生蓝色@',ctx,{requiresAttention:false});
+ }
+ function awaitReview(ctx,message,extra={}){
+  return new Promise(resolve=>{
+   let settled=false;
+   const finish=(approved,reason)=>{
+    if(settled)return;settled=true;clearTimeout(timer);
+    if(ctx.approve===approve)ctx.approve=null;
+    resolve({approved:approved===true,reason});
+   };
+   const approve=value=>finish(value===true,value===true?'confirmed':'rejected');
+   const timer=setTimeout(()=>finish(false,'timeout'),reviewTimeoutMs);
+   ctx.approve=approve;
+   emit('review',`${message}（${Math.ceil(reviewTimeoutMs/60000)}分钟未确认将自动停止）`,ctx,extra);
+  });
  }
  function getStatus(){return taskSnapshot||{state:'idle',message:'当前账号没有导入任务'};}
  function busy(){return !!running;}
@@ -233,7 +251,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
       if(pre.tailStatus?.state==='extracting')throw Error('上一段视频尾帧仍在提取中，请等候提取完成后重试，避免遗漏图1');
     }
    if(pre.blocked)throw Error(pre.referenceErrors?.length?'原文参考图定位异常：'+pre.referenceErrors.join('；'):pre.voiceErrors?.length?'声音绑定异常：'+pre.voiceErrors.join('；'):pre.overLimit?'参考图加上上一段尾帧超过9张，请先核对':'存在缺图、重号、格式问题或尾帧异常，先在右侧修正');
-  if(!canStart())throw Error('最多允许两个账号同时执行导入，请等一个账号完成后重试');
+  if(!canStart())throw Error('当前性能模式允许的并发导入名额已满，请等待其他账号任务结束');
   const a=currentActive(),seg=getSegment(episodeId,segmentId),ctx={episodeId,segmentId,accountId:a.accountId,wc:a.webContents,url:a.webContents.getURL(),cancelled:false,rows:pre.items.map(x=>({code:x.code,state:'matched',message:'本地参考图已匹配'}))};
   const before=await probe(ctx.wc);
   if(before.prompt?.trim()&&before.prompt.trim()!==seg.text.trim()&&before.prompt.trim()!==pre.previewText.trim()&&!replaceDraft)throw Error('豆包聊天框有不同草稿，须先确认是否覆盖');
@@ -243,7 +261,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   for(const filename of before.names){if(!pre.items.some(x=>sameFilename(x.file.name,filename)))throw Error('聊天框已有其他附件，无法保证图号顺序，请先清空附件');}
   if(before.thumbs.length>before.names.length&&before.thumbs.length)throw Error('当前聊天框有无法识别名称的图片，请先清空附件，防止图号错位');
   if(before.names.some((name,i)=>!pre.items[i]||!sameFilename(name,pre.items[i].file.name)))throw Error('当前聊天附件顺序和本段参考图顺序不同，请先清空或另开聊天，避免图1、图2错位');
-  ctx.taskId='import-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+  ctx.taskId='import-'+randomUUID();
   running=ctx;onStart(ctx);emit('running','已绑定当前豆包账号与原始段落，切换其他账号不会取消本任务',ctx);
   const finished=[];let manualConfirmed=0,autoConfirmed=0,textFilled=false;
   try{
@@ -266,9 +284,8 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
      emit('running',batch.message,ctx);
     }else if(batch.state==='needs-review'){
      for(let i=0;i<pre.items.length;i++){ctx.rows[i].state='needs-review';ctx.rows[i].message='批量上传待核对附件顺序';}
-     emit('review',`请核对豆包聊天框的${pre.items.length}张缩略图：${pre.items.map(x=>x.code).join('、')}，按这一顺序排列后点击“确认当前图片”`,ctx,{batch:true});
-     const decision=new Promise(resolve=>{ctx.approve=resolve;});const approved=await decision;ctx.approve=null;ensure(ctx);
-     if(!approved)throw Error('批量图片核对已取消；为避免错位未写入提示词');
+     const decision=await awaitReview(ctx,`请核对豆包聊天框的${pre.items.length}张缩略图：${pre.items.map(x=>x.code).join('、')}，按这一顺序排列后点击“确认当前图片”`,{batch:true});ensure(ctx);
+     if(!decision.approved)throw Error(decision.reason==='timeout'?'等待批量图片人工核对超过时限，任务已安全停止；已上传附件保留，请检查后重试':'批量图片核对已取消；为避免错位未写入提示词');
      for(let i=0;i<pre.items.length;i++){ctx.rows[i].state='manual-confirmed';ctx.rows[i].message='整批图片顺序经用户人工核对';finished.push(pre.items[i]);}
      manualConfirmed=pre.items.length;batchCompleted=true;previous=await probe(ctx.wc);
     }else if(batch.state==='uncertain'||batch.state==='error'){
@@ -295,11 +312,9 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
     const actual=await waitUpload(ctx,x,previous);r.state=actual.state;r.message=actual.message;emit('running',`${x.code}: ${actual.message}`,ctx);
     if(actual.state==='uncertain'&&actual.message.includes('新缩略图')){
      r.state='needs-review';r.message='网页出现新缩略图，但无法核对文件名。请核对豆包聊天框中最新图片是 '+x.code+' 后点击「确认当前图片」。';
-     const decision=new Promise(resolve=>{ctx.approve=resolve;});
-     emit('review',r.message,ctx,{code:x.code});
-     const approved=await decision;ctx.approve=null;
+     const decision=await awaitReview(ctx,r.message,{code:x.code});
      ensure(ctx);
-     if(!approved)throw Error('你取消了本张图片人工核对；未继续批量上传');
+     if(!decision.approved)throw Error(decision.reason==='timeout'?'等待 '+x.code+' 图片人工核对超过时限，任务已安全停止；已上传附件保留':'你取消了本张图片人工核对；未继续批量上传');
      r.state='manual-confirmed';r.message='用户人工核对了本张图和顺序；不属于软件自动验证';manualConfirmed++;
      emit('running',`${x.code} 已人工确认，继续下一张`,ctx);
     }else if(actual.state!=='uploaded')throw Error(`暂停在 ${x.code}：${actual.message}`);
