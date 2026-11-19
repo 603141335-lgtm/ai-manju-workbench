@@ -205,10 +205,12 @@ async function preloadPinnedAccounts(){
  if(preloadRunning||!cfg)return;
  preloadRunning=true;
  try{
-  const max=performanceState().limit,reserveActive=activeId?0:1;
+  const initialPerf=performanceState(),max=initialPerf.limit,reserveActive=activeId?0:1;
   const candidates=cfg.accounts.filter(a=>a.preloadPinned&&a.id!==activeId&&!views.has(a.id));
   for(const a of candidates){
+   const perf=performanceState();
    if(views.size>=Math.max(0,max-reserveActive))break;
+   if(perf.memoryMb>=perf.memoryLimitMb){tell('app:toast','系统内存达到预加载安全阈值，已暂停继续预热；可关闭其他程序或切换轻量模式');break;}
    const slot=configureView(a.id);views.set(a.id,slot);
    tell('web:status',{id:a.id,status:'后台预加载中…'});
    const ready=await waitForPageReady(slot.view.webContents,20000);
@@ -227,8 +229,9 @@ function performanceState(){
   const mode=LIVE_LIMITS[cfg?.performanceMode]?cfg.performanceMode:'balanced';
   const metrics=app.getAppMetrics()||[];
   const memoryKb=metrics.reduce((sum,m)=>sum+Math.max(0,m.memory?.workingSetSize||0),0);
+  const totalMemoryMb=Math.round(os.totalmem()/1024/1024),memoryLimitMb=Math.round(totalMemoryMb*0.7);
   return {
-    mode,limit:LIVE_LIMITS[mode],importLimit:IMPORT_LIMITS[mode],liveViews:views.size,memoryMb:Math.round(memoryKb/1024),
+    mode,limit:LIVE_LIMITS[mode],importLimit:IMPORT_LIMITS[mode],liveViews:views.size,memoryMb:Math.round(memoryKb/1024),memoryLimitMb,totalMemoryMb,
     protectedCount:protectedAccounts.size,
     activeProtected:protectedAccounts.has(activeId),
     activeDownloads:[...activeDownloads.values()].reduce((a,b)=>a+b,0),
