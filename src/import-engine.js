@@ -97,7 +97,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
     const entry=slotByCode.get(item.code);
     if(!entry||located.ambiguous.includes(item.code)){
       plan.referenceErrors.push(item.code+' 原参考图说明无法唯一定位，已停止以防止艾特错位');
-    }else item.refAnchor=entry.anchor;
+    }else item.refAnchor=String(item.code)+(item.label?' '+item.label:'');
   }
   if(plan.referenceErrors.length)plan.blocked=true;
   if(parsedLabels.conflicts.length){plan.blocked=true;plan.labelErrors=parsedLabels.conflicts.map(x=>x.code+' 人物名称冲突：'+x.first+'/'+x.second);}
@@ -178,7 +178,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   // refuses ambiguous matches instead of falling back to the editor end.
   const anchor=customAnchor||item.refAnchor;
   if(!anchor)return {state:'mapping',message:'找不到原始参考图编号对应的唯一说明行'};
-  const params={anchor,code:item.code,filename:item.file.name,index:index+1,scope:(customAnchor||item.kind==='tail')?'all':'reference'};
+  const params={anchor,code:item.code,filename:item.file.name,index:index+1,scope:customAnchor?'all':'top-reference'};
   const before=await evalFn(wc,inlinePage.inspectInlineReference,params);
   if(before.verified)return {state:'native',message:'已存在正确的内联原生 @ 标签'};
   const caret=await evalFn(wc,inlinePage.focusReferenceSlot,params);
