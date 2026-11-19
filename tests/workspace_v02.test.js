@@ -19,7 +19,7 @@ test('导入多集，切段编辑，完成状态记录，关闭重启仍保持',
  assert.deepEqual(again.data.episodes[0].segments[0].codes,['A01','A01-01']);
 });
 test('关联已完成视频会标记段落完成，重启保留关联且可撤销',async()=>{
- const store=await create();await store.addText('第1集｜视频关联测试\\n第1段｜第一段\\n需要参考图：A01');
+ const store=await create();await store.addText('第1集｜视频关联测试\n第1段｜第一段\\n需要参考图：A01');
  const {ep,seg}=store.current(),video=path.join(tmp,'final.mp4');await fsp.writeFile(video,Buffer.from([0,0,0,1,102,116,121,112]));
  await store.linkVideo(ep.id,seg.id,video,'account-1','download-1');
  assert.equal(seg.status,'done');assert.equal(seg.linkedVideoPath,video);assert.equal(seg.linkedDownloadId,'download-1');assert.equal(seg.isCollapsed,true);
