@@ -596,7 +596,8 @@ function registerHandlers(){
     const accountId=activeId;
     if(!accountId)throw Error('尚未选择账号');
     if(reservedImportSlots.has(accountId))throw Error('当前账号已有一个导入任务；请等待或取消，防止同一聊天输入框被同时改写');
-    if(reservedImportSlots.size>=2)throw Error('默认最多两个账号并行导入，请等一个账号结束后再开始');
+    const maxImports=LIVE_LIMITS[cfg?.performanceMode]||LIVE_LIMITS.balanced;
+    if(reservedImportSlots.size>=maxImports)throw Error(`当前性能模式最多允许 ${maxImports} 个账号并行导入，请等待任务完成或调整性能模式`);
     reservedImportSlots.add(accountId);
     try{
       const mode=await ensureVideoMode(accountId);
@@ -708,7 +709,7 @@ function getAccountImportEngine(id){
     getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),
     getVoiceForImages:items=>voiceBindings.plan(items),
     isForeground:accountId=>activeId===accountId&&!overlayShown,
-    canStart:()=>reservedImportSlots.has(id)&&reservedImportSlots.size<=2,
+    canStart:()=>reservedImportSlots.has(id)&&reservedImportSlots.size<=(LIVE_LIMITS[cfg?.performanceMode]||LIVE_LIMITS.balanced),
     onStart:ctx=>{activeImportAccounts.add(ctx.accountId);tell('perf:changed',performanceState())},
     onFinish:ctx=>{activeImportAccounts.delete(ctx.accountId);tell('perf:changed',performanceState())},
     notify:info=>{
