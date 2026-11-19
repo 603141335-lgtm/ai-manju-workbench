@@ -1,10 +1,11 @@
 /* Doubao Import Mini v0.1 — standalone reference parsing & mapping (original implementation). */
 (function(global){
   'use strict';
-  const CODE = /(?:^|[^A-Z0-9])((?:AG|BL|A|B|C|E)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/ig;
+  const CODE = /(?:^|[^A-Z0-9])((?:AG|BL|A|B|C|E|I)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/ig;
   const FILES = /\.(png|jpe?g|webp)$/i;
   const unique = arr => [...new Set(arr)];
-  function norm(v){return String(v || '').toUpperCase().trim().replace(/[＿－–—]/g, '-');}
+  const aliasApi=typeof module==='object'&&module.exports?require('./asset-aliases'):null;
+  function norm(v){const clean=String(v || '').toUpperCase().trim().replace(/[＿－–—]/g, '-');return aliasApi?aliasApi.resolveAssetCode(clean):clean;}
   function tokens(v){const out=[];const t=String(v||'').toUpperCase();let m; const reg=new RegExp(CODE.source,'gi');while((m=reg.exec(t))!==null){out.push(norm(m[1])); if(reg.lastIndex===m.index)reg.lastIndex++;}return unique(out);}
   function parseCodes(text){
     const lines=String(text||'').split(/\r?\n/), blocks=[];
@@ -18,7 +19,7 @@
         // Number-only lines or "A: A15" style, not arbitrary prose.
         const content=t.replace(/^[A-Z]{1,3}\s*[:：]/i,'').trim();
         if(!tokens(content).length)break;
-        if(/[。！？]/.test(content))break;
+        // Chinese sentence punctuation is also a valid delimiter inside a reference list.
         part.push(content);
       }
       blocks.push(part.join(' '));
@@ -29,10 +30,10 @@
   function codeFromFile(file){
     const fullname=(file?.name||'').replace(FILES,'');
     const name=fullname.replace(/^[\s【\[(（]+/,'');
-    const m=name.match(/^((?:AG|BL|A|B|C|E)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/i);
+    const m=name.match(/^((?:AG|BL|A|B|C|E|I)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/i);
     if(m)return norm(m[1]);
     const folders=String(file?.webkitRelativePath||'').split('/').slice(0,-1).reverse();
-    for(const f of folders){const mm=f.match(/^((?:AG|BL|A|B|C|E)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/i);if(mm)return norm(mm[1]);}
+    for(const f of folders){const mm=f.match(/^((?:AG|BL|A|B|C|E|I)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/i);if(mm)return norm(mm[1]);}
     return null;
   }
   function buildPlan(prompt, files){
@@ -90,8 +91,8 @@
   }
   function composeText(prompt,items,offset=0,voices=[]){
     const raw=String(prompt||'');
-    const tail=(items||[]).some(x=>x.kind==='tail'||x.code==='尾帧');
-    const head=tail?'上一段尾帧参考：\n':'';
+    const referenceLines=(items||[]).map(x=>x.kind==='tail'||x.code==='尾帧'?'上一段尾帧参考：':String(x.topAnchor||x.code||'')+(x.label&&!x.topAnchor?' '+String(x.label):'')).filter(Boolean).join('\n');
+    const head=referenceLines?'【蓝色参考图引用区】\n'+referenceLines+'\n\n【原始提示词】\n':'';
     const voiceText=voices.length?'\n【人物音色绑定｜参考音频】\n'+voices.map((v,i)=>
       '音频'+(i+1)+' = '+v.code+(v.characterName?' '+v.characterName:'')+
       '（'+String(v.label||'人物声音').replace(/[\r\n]/g,' ')+'：'+

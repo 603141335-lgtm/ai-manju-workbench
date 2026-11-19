@@ -15,6 +15,14 @@ test('源自独立插件的编号识别：只读取参考图栏目，A01/A01-01�
  assert.deepEqual(p.codes,['A01','A01-01','AG14']);assert.equal(p.blocked,false);
  assert.equal(p.items[1].file.name,'A01-01.png');
 });
+test('中英文标点紧邻编号仍能识别，字母数字相邻内容不会误匹配',()=>{
+ const parsed=core.parseCodes('需要参考图：A02，A03。B12（C05）、E11；AG14:BL02\n场景与站位：A99 不应混入参考图栏目');
+ assert.deepEqual(parsed.codes,['A02','A03','B12','C05','E11','AG14','BL02']);
+ assert.equal(core.codeFromFile({name:'I02.png'}),'A02');
+ const invalid=core.tokens('XA02 A02abc A0300');
+ assert.deepEqual(invalid,[]);
+});
+
 test('重复版本、缺图、超过九张会阻止自动操作',()=>{
  const versions=[{...fixtures[2],versions:[fixtures[2].file,{name:'A15 other',path:'/tmp/A15-2.png'}]}];
  assert.equal(createPlan({prompt:'需要参考图：A15',rows:versions}).items[0].status,'conflict');
@@ -26,7 +34,7 @@ test('重复版本、缺图、超过九张会阻止自动操作',()=>{
 test('图号映射严格按参考图顺序，完整保留原文（含末尾换行）',()=>{
  const original='需要参考图：A15、A32、AG14\n0—3秒｜对白完整\n';
  const s=core.composeText(original,fixtures.slice(2,5));
- assert.equal(s,original,'不新增图号行，也不修改原文正文');
+ assert.equal(s,'【蓝色参考图引用区】\nA15\nA32\nAG14\n\n【原始提示词】\n'+original,'蓝色原生@引用区置顶，原始提示词正文逐字保留');
 });
 test('网页已经有不同草稿时，未明确同意禁止覆写和上传',async()=>{
  let uploads=0;

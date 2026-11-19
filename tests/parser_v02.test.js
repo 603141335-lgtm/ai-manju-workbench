@@ -8,6 +8,12 @@ test('旧 v3.2 编号解析：A01 与 A01-01 必须精确区分',()=>{
  assert.equal(parseFilenameCode('A01_正面.png'), 'A01');
  assert.equal(parseFilenameCode('图片.png',['BL06 宴会层']), 'BL06');
 });
+test('用户指定的 I02 旧编号映射到 A02，并保留杜老师名称',()=>{
+ assert.equal(normCode('I02'),'A02');
+ assert.deepEqual(extractCodes('I02，A03。B12'),['A02','A03','B12']);
+ const {extractReferenceLabels}=require('../src/reference-labels');
+ assert.deepEqual(extractReferenceLabels('需要参考图：I02').labels,{A02:'杜老师'});
+});
 test('只从参考图栏目识别编号，台词中的代码不污染',()=>{
  const r=detectSegmentCodes('第5段｜道具与对白\n需要参考图：A02、A15、B11、C02\n连续性参考：杜不凡立在原位。\n0—5秒｜画面墙上显示 A37 的字样');
  assert.deepEqual(r.codes,['A02','A15','B11','C02']);assert.equal(r.method,'栏目识别');

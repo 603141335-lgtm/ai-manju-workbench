@@ -1,9 +1,10 @@
 /* v3.2 reference code parsing preserved from ai-manju-workbench/app/parser.js */
 'use strict';
-const codeRe=/(^|[^A-Za-z0-9])((?:AG|BL|[ABCDEK])\s*[-_ ]?\s*\d{1,4}(?:\s*[-_－]\s*\d{1,3})?)(?![A-Za-z0-9]|[-_－]\d)/gi;
+const {resolveAssetCode}=require('./asset-aliases');
+const codeRe=/(^|[^A-Za-z0-9])((?:AG|BL|[ABCDEIK])\s*[-_ ]?\s*\d{1,4}(?:\s*[-_－]\s*\d{1,3})?)(?![A-Za-z0-9]|[-_－]\d)/gi;
 const refHeader=/(?:需要参考图|使用参考图|参考图编号|本段参考图|本镜参考图|参考图片|参考图|引用图片|引用参考图|参考素材)/i;
 function normalizeScanText(s){return String(s||'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF\u2060]/g,'');}
-function normCode(s){const clean=normalizeScanText(s).toUpperCase().replace(/\s+/g,'').replace(/[－_]/g,'-');const m=clean.match(/^(AG|BL|[ABCDEK])-?(\d{1,4})(?:-(\d{1,3}))?$/);if(!m)return clean;const base=m[2].length<=2?m[2].padStart(2,'0'):m[2];return m[1]+base+(m[3]!==undefined?'-'+m[3].padStart(2,'0'):'');}
+function normCode(s){const clean=normalizeScanText(s).toUpperCase().replace(/\s+/g,'').replace(/[－_]/g,'-');const m=clean.match(/^(AG|BL|[ABCDEIK])-?(\d{1,4})(?:-(\d{1,3}))?$/);const normalized=!m?clean:m[1]+(m[2].length<=2?m[2].padStart(2,'0'):m[2])+(m[3]!==undefined?'-'+m[3].padStart(2,'0'):'');return resolveAssetCode(normalized);}
 function extractCodes(str){const out=[],used=new Set();const normalized=normalizeScanText(str);const re=new RegExp(codeRe.source,'gi');for(const m of normalized.matchAll(re)){const c=normCode(m[2]);if(!used.has(c)){used.add(c);out.push(c);}}return out;}
 function stripLineMarkup(str){return normalizeScanText(str).trim().replace(/^(?:#{1,6}\s*|[>•*\-]+\s*|\d+[.．、)）]\s*)+/g,'').replace(/[*`]/g,'').trim();}
 function detectSegmentCodes(txt){

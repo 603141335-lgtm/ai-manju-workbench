@@ -10,7 +10,7 @@ const inline=require('../src/inline-mention-page');
 test('v0.9.9: keep only original numbered references, never fabricate 图N lines',()=>{
  const original='第3段｜标题｜15秒\n需要参考图：A01、A01-01、A15\n连续性参考：保持不变\n0—3秒｜台词：不要改！\n';
  const items=['A01','A01-01','A15'].map(code=>({code,file:{name:code+'.png'}}));
- assert.equal(core.composeText(original,items),original);
+ assert.equal(core.composeText(original,items),'【蓝色参考图引用区】\nA01\nA01-01\nA15\n\n【原始提示词】\n'+original);
  const slots=core.referenceSlots(original);
  assert.deepEqual(slots.slots.map(x=>x.code),['A01','A01-01','A15']);
  assert.equal(slots.ambiguous.length,0);

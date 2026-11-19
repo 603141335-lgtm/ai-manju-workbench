@@ -28,9 +28,9 @@
         <div class="taskCenterTitle"><strong>后台导入任务</strong><button class="textBtn" id="btnTaskHide">收起</button></div>
         <div id="backgroundTaskList" class="backgroundTaskList">当前没有正在运行的任务。</div>
       </div>
-      <div class="sidefooter"><div class="quotarow"><label for="targetCount">每账号目标视频数</label><input id="targetCount" type="number" min="1" max="99" value="2"/></div>
+      <div class="sidefooter"><div class="quotarow"><label for="performanceModeSelect">后台浏览器上限</label><select id="performanceModeSelect" title="轻量2个、均衡4个、性能6个常驻网页"><option value="light">轻量 · 2个</option><option value="balanced">均衡 · 4个</option><option value="performance">性能 · 6个</option></select></div><div class="quotarow"><label for="targetCount">每账号目标视频数</label><input id="targetCount" type="number" min="1" max="99" value="2"/></div>
         <div class="minirow"><button id="btnMarkDone" class="ghost compact">＋ 完成1条</button><button id="btnNext" class="primary">下一个账号 →</button></div>
-        <div class="resetRow"><button id="btnUndoDone" class="textBtn">撤销1条</button><button id="btnReset" class="textBtn">重置全部计数</button></div>
+        <div class="resetRow"><button id="btnUndoDone" class="textBtn">撤销1条</button><button id="btnReset" class="textBtn">重置全部计数</button></div><div class="resetRow"><button id="btnPerfCleanup" class="textBtn">释放空闲网页</button><span id="performanceSummary" class="tiny">网页 0/4 · 内存 -- MB</span></div>
         <div class="footNote">这是手动计数，不读取豆包会员额度。</div>
       </div>
     </aside>

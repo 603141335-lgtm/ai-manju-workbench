@@ -6,6 +6,7 @@ const {randomUUID}=require('node:crypto');
 const {parseMultiEpisode,parseFilenameCode,detectSegmentCodes,normCode,safeName}=require('./parser');
 const {firstVisible, isVisible}=require('./navigation');
 const EXTS=new Set(['.png','.jpg','.jpeg','.webp','.bmp','.gif','.avif','.tif','.tiff']);
+const VIDEO_EXTS=new Set(['.mp4','.mov','.webm','.mkv','.avi']);
 const id=()=>randomUUID();
 const MAX_SEGMENTS=20000;
 const unique=a=>[...new Set(a)];
@@ -26,7 +27,7 @@ function scrub(input){
     const episode={id:String(e.id||id()),number:Number.isInteger(e.number)?e.number:null,title:String(e.title||'未命名剧集').slice(0,350),original:String(e.original||''),preamble:String(e.preamble||''),hidden:!!e.hidden,locked:!!e.locked,segments:[]};
     if(Array.isArray(e.segments))for(const s of e.segments.slice(0,Math.min(budget,900))){
       const text=String(s.text??s.prompt??'');if(text.length>300000)continue;
-      episode.segments.push({id:String(s.id||id()),n:Number.isFinite(Number(s.n))?Number(s.n):episode.segments.length+1,title:String(s.title||s.name||'未命名段落').slice(0,350),text,codes:unique((Array.isArray(s.codes)?s.codes:detectSegmentCodes(text).codes).map(c=>normCode(String(c))).filter(Boolean)).slice(0,100),method:String(s.method||'栏目识别'),manual:!!s.manual,hidden:!!s.hidden,locked:!!s.locked,status:['pending','done','redo'].includes(s.status)?s.status:'pending',completedAt:typeof s.completedAt==='string'?s.completedAt:null,accountId:typeof s.accountId==='string'?s.accountId:null,selectedPaths:Array.isArray(s.selectedPaths)?unique(s.selectedPaths.filter(x=>typeof x==='string')).slice(0,100):[],manualPaths:Array.isArray(s.manualPaths)?unique(s.manualPaths.filter(x=>typeof x==='string'&&isImage(x))).slice(0,150):[],continuityBlocked:!!s.continuityBlocked,previousSegmentId:typeof s.previousSegmentId==='string'?s.previousSegmentId:(episode.segments.at(-1)?.id||null)});
+      episode.segments.push({id:String(s.id||id()),n:Number.isFinite(Number(s.n))?Number(s.n):episode.segments.length+1,title:String(s.title||s.name||'未命名段落').slice(0,350),text,codes:unique((Array.isArray(s.codes)?s.codes:detectSegmentCodes(text).codes).map(c=>normCode(String(c))).filter(Boolean)).slice(0,100),method:String(s.method||'栏目识别'),manual:!!s.manual,hidden:!!s.hidden,locked:!!s.locked,status:['pending','done','redo'].includes(s.status)?s.status:'pending',completedAt:typeof s.completedAt==='string'?s.completedAt:null,accountId:typeof s.accountId==='string'?s.accountId:null,selectedPaths:Array.isArray(s.selectedPaths)?unique(s.selectedPaths.filter(x=>typeof x==='string')).slice(0,100):[],manualPaths:Array.isArray(s.manualPaths)?unique(s.manualPaths.filter(x=>typeof x==='string'&&isImage(x))).slice(0,150):[],continuityBlocked:!!s.continuityBlocked,previousSegmentId:typeof s.previousSegmentId==='string'?s.previousSegmentId:(episode.segments.at(-1)?.id||null),linkedVideoPath:typeof s.linkedVideoPath==='string'&&path.isAbsolute(s.linkedVideoPath)?s.linkedVideoPath:null,linkedDownloadId:typeof s.linkedDownloadId==='string'?s.linkedDownloadId:null,linkedAt:typeof s.linkedAt==='string'?s.linkedAt:null,isCollapsed:!!s.isCollapsed,linkUndo:s.linkUndo&&typeof s.linkUndo==='object'?{status:['pending','done','redo'].includes(s.linkUndo.status)?s.linkUndo.status:'pending',accountId:typeof s.linkUndo.accountId==='string'?s.linkUndo.accountId:null,completedAt:typeof s.linkUndo.completedAt==='string'?s.linkUndo.completedAt:null,linkedVideoPath:typeof s.linkUndo.linkedVideoPath==='string'&&path.isAbsolute(s.linkUndo.linkedVideoPath)?s.linkUndo.linkedVideoPath:null,linkedDownloadId:typeof s.linkUndo.linkedDownloadId==='string'?s.linkUndo.linkedDownloadId:null,linkedAt:typeof s.linkUndo.linkedAt==='string'?s.linkUndo.linkedAt:null,isCollapsed:!!s.linkUndo.isCollapsed}:null});
     }
     budget-=episode.segments.length;o.episodes.push(episode);
   }
@@ -190,6 +191,22 @@ class WorkspaceStore{
      await this.save();return this.snapshot();
    }
    async setStatus(eid,sid,status,accountId){if(!['pending','done','redo'].includes(status))throw Error('状态无效');const {ep,seg}=this.findSegment(eid,sid);this.assertUnlocked(ep,seg);seg.status=status;seg.accountId=status==='done'?accountId:null;seg.completedAt=status==='done'?new Date().toISOString():null;await this.save();}
+  async linkVideo(eid,sid,filePath,accountId,downloadId){
+    const {seg}=this.findSegment(eid,sid);this.assertUnlocked(this.findSegment(eid,sid).ep,seg);
+    if(typeof filePath!=='string'||!path.isAbsolute(filePath)||!VIDEO_EXTS.has(path.extname(filePath).toLowerCase()))throw Error('只能关联本地 MP4/MOV/WebM/MKV/AVI 视频文件');
+    const stat=fs.statSync(filePath);if(!stat.isFile()||stat.size<1)throw Error('视频文件不存在或为空');
+    seg.linkUndo={status:seg.status,accountId:seg.accountId||null,completedAt:seg.completedAt||null,linkedVideoPath:seg.linkedVideoPath||null,linkedDownloadId:seg.linkedDownloadId||null,linkedAt:seg.linkedAt||null,isCollapsed:!!seg.isCollapsed};
+    seg.linkedVideoPath=filePath;seg.linkedDownloadId=String(downloadId||'').slice(0,100)||null;seg.linkedAt=new Date().toISOString();
+    seg.status='done';seg.accountId=typeof accountId==='string'?accountId:null;seg.completedAt=seg.linkedAt;seg.isCollapsed=true;
+    await this.save();return this.snapshot();
+  }
+  async undoLinkVideo(eid,sid){
+    const {seg}=this.findSegment(eid,sid);this.assertUnlocked(this.findSegment(eid,sid).ep,seg);
+    if(!seg.linkUndo)throw Error('没有可撤销的视频关联记录');
+    const previous=seg.linkUndo;seg.status=previous.status;seg.accountId=previous.accountId;seg.completedAt=previous.completedAt;
+    seg.linkedVideoPath=previous.linkedVideoPath;seg.linkedDownloadId=previous.linkedDownloadId;seg.linkedAt=previous.linkedAt;seg.isCollapsed=previous.isCollapsed;delete seg.linkUndo;
+    await this.save();return this.snapshot();
+  }
   async setSelection(eid,sid,paths){const {seg}=this.findSegment(eid,sid);if(!Array.isArray(paths))throw Error('图片选择无效');const allowed=this.resolveSegment(eid,sid).filter(r=>r.file&&!r.missing).map(r=>r.file.path);seg.selectedPaths=unique(paths.filter(p=>typeof p==='string'&&allowed.includes(p))).slice(0,100);await this.save();}
   async chooseVersion(code,file){code=normCode(code);const versions=this.assetIndex.byCode.get(code)||[];
     if(this.data.episodes.some(e=>(e.locked||e.segments.some(s=>s.locked&&s.codes.includes(code)))&&e.segments.some(s=>s.codes.includes(code))))throw Error('有锁定的剧集或分段引用了这个编号；请先解锁');

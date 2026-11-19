@@ -9,6 +9,11 @@ const getEp=()=>ws?.workspace?.episodes?.find(e=>e.id===ws.workspace.activeEpiso
 const getSeg=()=>getEp()?.segments?.find(s=>s.id===ws.workspace.activeSegmentId)||null;
 const statusText=s=>({pending:'待制作',done:'已完成',redo:'待重做'}[s]||'待制作');
 function toast(m){const box=$('toast');box.textContent=String(m);box.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>box.classList.remove('show'),3200)}
+function toastAction(message,label,action){
+ const box=$('toast');box.replaceChildren();const textNode=document.createElement('span');textNode.textContent=String(message);
+ const button=document.createElement('button');button.className='toastUndo';button.textContent=String(label);button.onclick=async()=>{clearTimeout(toastTimer);box.classList.remove('show','has-action');box.replaceChildren();await safe(action)};
+ box.append(textNode,button);box.classList.add('show','has-action');clearTimeout(toastTimer);toastTimer=setTimeout(()=>{box.classList.remove('show','has-action');box.replaceChildren()},5000);
+}
 function error(e){console.error(e);toast('操作失败：'+(e?.message||e))}
 async function safe(fn){try{return await fn()}catch(e){error(e);return null}}
 function modal(d){B.setOverlay(true);d.showModal();d.addEventListener('close',()=>B.setOverlay(false),{once:true})}
@@ -27,18 +32,31 @@ async function confirmAction(title,message){return new Promise(resolve=>{
   const end=x=>{d.close();d.remove();B.setOverlay(false);resolve(x)};no.onclick=()=>end(false);yes.onclick=()=>end(true);d.addEventListener('cancel',e=>{e.preventDefault();end(false)});modal(d);
 })}
 async function refreshCfg(){cfg=await B.getCfg();renderGroups();refreshHeader()}
+function accountEpisodeProgress(accountId){
+ const episodes=ws?.workspace?.episodes||[];
+ const episode=[...episodes].reverse().find(ep=>ep.segments.some(seg=>seg.accountId===accountId));
+ if(!episode)return '待分配剧集';
+ const done=episode.segments.filter(seg=>seg.accountId===accountId&&seg.status==='done').length;
+ const number=episode.number||episodes.indexOf(episode)+1;
+ return `第${number}集 · ${done}/${episode.segments.length}段`;
+}
 function renderGroups(){if(!cfg)return;
-  const list=$('groupList');list.innerHTML=cfg.groups.map(g=>{
-    const items=cfg.accounts.filter(a=>a.groupId===g.id);const open=expandGroups.has(g.id);const done=items.filter(a=>a.done>=cfg.target).length;
-    return `<div class="group ${open?'expanded':''}" data-group="${enc(g.id)}"><div class="groupHead" tabindex="0"><span class="groupName">${open?'▾':'▸'} ${enc(g.name)} <span class="tiny">${done}/${items.length}</span></span><span class="groupButtons"><button data-action="edge-config" data-gid="${enc(g.id)}" class="groupBtn" title="选择Edge配置">E</button><button data-action="rename-group" data-gid="${enc(g.id)}" class="groupBtn" title="重命名分组">✎</button><button data-action="add-account" data-gid="${enc(g.id)}" class="groupBtn" title="增加豆包账号">＋</button></span></div><div class="groupAccounts">${items.map(a=>`<button class="account ${a.id===cfg.activeAccountId?'active':''}" data-id="${enc(a.id)}" title="点击切换账号"><span class="accountName"><span class="dot">${['running','waiting-focus','review'].includes(taskStateByAccount.get(a.id)?.state)?'🟢':'●'}</span> ${enc(a.name)}</span><span class="accountCount">${a.done}/${cfg.target}</span><span class="tiny" data-action="rename-account" data-id="${enc(a.id)}" title="修改名称或移除">⋯</span></button>`).join('')}</div></div>`;
-  }).join('');$('targetCount').value=cfg.target;}
+ const list=$('groupList');list.innerHTML=cfg.groups.map(g=>{
+  const items=cfg.accounts.filter(a=>a.groupId===g.id),open=expandGroups.has(g.id),done=items.filter(a=>a.done>=cfg.target).length;
+  return `<div class="group ${open?'expanded':''}" data-group="${enc(g.id)}"><div class="groupHead" tabindex="0"><span class="groupName">${open?'▾':'▸'} ${enc(g.name)} <span class="tiny">${done}/${items.length}</span></span><span class="groupButtons"><button data-action="edge-config" data-gid="${enc(g.id)}" class="groupBtn" title="选择Edge配置">E</button><button data-action="rename-group" data-gid="${enc(g.id)}" class="groupBtn" title="重命名分组">✎</button><button data-action="add-account" data-gid="${enc(g.id)}" class="groupBtn" title="增加豆包账号">＋</button></span></div><div class="groupAccounts">${items.map(a=>{
+   const exhausted=a.quota?.status==='exhausted',task=taskStateByAccount.get(a.id)?.state;
+   return `<button class="account ${a.id===cfg.activeAccountId?'active':''}" data-id="${enc(a.id)}" title="点击切换账号"><span class="accountMeta"><span class="accountName"><span class="dot">${['running','waiting-focus','review'].includes(task)?'●':'○'}</span><span class="quotaLight ${exhausted?'exhausted':'available'}" data-action="quota-toggle" data-id="${enc(a.id)}" title="${exhausted?'今日已标记用完，点击恢复':'今日可用，点击标记用完'}">●</span> ${enc(a.name)}</span><small class="accountEpisode">${enc(accountEpisodeProgress(a.id))}</small></span><span class="accountControls"><span class="preloadPin ${a.preloadPinned?'pinned':''}" data-action="preload-toggle" data-id="${enc(a.id)}" title="${a.preloadPinned?'取消后台预加载':'固定为后台预加载账号'}">📌</span><span class="accountCount">${a.done}/${cfg.target}</span><span class="tiny" data-action="quota-hour" data-id="${enc(a.id)}" title="设置每日额度刷新时间">◷</span><span class="tiny" data-action="rename-account" data-id="${enc(a.id)}" title="修改名称或移除">⋯</span></span></button>`;
+  }).join('')}</div></div>`;
+ }).join('');$('targetCount').value=cfg.target;
+}
+function renderPerformance(state){if(!state)return;const el=$('performanceSummary');if(el)el.textContent=`网页 ${state.liveViews}/${state.limit} · 内存 ${state.memoryMb}/${state.memoryLimitMb} MB · 并发导入 ${state.importLimit}`;const select=$('performanceModeSelect');if(select)select.value=state.mode||cfg?.performanceMode||'balanced';}
 function refreshHeader(){if(!cfg)return;const reached=cfg.accounts.filter(a=>a.done>=cfg.target).length;
   $('topCenter').textContent=`${cfg.groups.length} 个浏览器组 · ${cfg.accounts.length} 个独立账号位 · ${reached} 个达到手动目标`;
   $('addressText').textContent=`doubao.com / ${getAccount()?.name||'当前账号'}`;
   $('bottomSummary').textContent=`${getAccount()?.name||'—'} · 每号目标 ${cfg.target} 条 · ${ws?.workspace?.episodes?.length||0} 集`;
 }
 async function switchAccount(id){await flushPrompt();const x=await safe(()=>B.selectAccount(id));if(!x)return;cfg.activeAccountId=id;const group=getGroup();if(group)expandGroups.add(group.id);renderGroups();refreshHeader();$('webStatus').textContent='正在进入独立的豆包登录会话…';await refreshExtension();bounds();refreshSelectedImportStatus();renderBackgroundTasks();}
-async function nextAccount(){const all=cfg.groups.flatMap(g=>cfg.accounts.filter(a=>a.groupId===g.id));if(!all.length)return;const cur=all.findIndex(a=>a.id===cfg.activeAccountId), rotated=[...all.slice(cur+1),...all.slice(0,cur+1)];await switchAccount(rotated.find(a=>a.done<cfg.target)?.id||all[(cur+1)%all.length].id)}
+async function nextAccount(){const all=cfg.groups.flatMap(g=>cfg.accounts.filter(a=>a.groupId===g.id));if(!all.length)return;const cur=all.findIndex(a=>a.id===cfg.activeAccountId),rotated=[...all.slice(cur+1),...all.slice(0,cur+1)],candidate=rotated.find(a=>a.done<cfg.target&&a.quota?.status!=='exhausted');if(candidate)await switchAccount(candidate.id);else toast('没有可分配的绿灯账号；请检查额度标记或手动选择账号')}
 function bounds(){requestAnimationFrame(()=>{const rect=$('webHost').getBoundingClientRect();if(rect.width>=100&&rect.height>=100)B.bounds({x:rect.left,y:rect.top,width:rect.width,height:rect.height})})}
 function applyLayout(){const v=ws?.workspace?.layout;if(!v)return;const root=document.documentElement;root.style.setProperty('--rightw',v.rightWidth+'px');root.style.setProperty('--bottomh',v.bottomHeight+'px');$('timeline').style.display=v.bottomCollapsed?'none':'';$('bottomResizer').style.display=v.bottomCollapsed?'none':'';$('btnToggleBottom').textContent=v.bottomCollapsed?'展开底栏':'收起底栏';bounds()}
 function renderWorkspaceShell(){if(!ws)return;const data=ws.workspace,ep=getEp(),seg=getSeg();
@@ -71,7 +89,7 @@ function renderWorkspaceShell(){if(!ws)return;const data=ws.workspace,ep=getEp()
   $('btnHideSegment').textContent=seg?.hidden?'恢复本段':'隐藏本段';
   $('btnLockSegment').textContent=seg?.locked?'解锁本段':'锁定本段';
   renderEpisodeTree();
-  selected=new Set(seg?.selectedPaths||[]);lastAnchor=-1;refreshHeader();
+  selected=new Set(seg?.selectedPaths||[]);lastAnchor=-1;refreshHeader();renderGroups();
 }
 function renderEpisodeTree(){
  if(!ws)return;
@@ -85,7 +103,7 @@ function renderEpisodeTree(){
  const list=active?active.segments.filter(x=>data.showHidden||(!active.hidden&&!x.hidden)):[];
  const cards=list.map(seg=>{
    const selected=active.id===data.activeEpisodeId&&seg.id===data.activeSegmentId,done=seg.status==='done';
-   return '<div class="segmentSquare '+(selected?'selected ':'')+(done?'doneCompact':'')+'" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'"><button class="segmentSelect" data-tree-action="segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" type="button" title="'+enc(seg.title)+'"><strong>第'+seg.n+'段</strong><small>'+enc(done?'✓ 已完成':seg.title||'未命名')+'</small></button><div class="segmentSquareActions"><button class="tileDone '+(done?'checked':'')+'" data-tree-action="done" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="'+(done?'撤销完成':'标记完成')+'">'+(done?'✓':'□')+'</button><button class="squareDelete" data-tree-action="delete-segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="删除本段到回收站" aria-label="删除第'+seg.n+'段">×</button></div></div>';
+   return '<div class="segmentSquare '+(selected?'selected ':'')+(done?'doneCompact':'')+'" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'"><button class="segmentSelect" data-tree-action="segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" type="button" title="'+enc(seg.title)+'"><strong>第'+seg.n+'段</strong><small>'+enc(seg.linkedVideoPath?'✓ 已关联视频':done?'✓ 已完成':seg.title||'未命名')+'</small></button><div class="segmentSquareActions"><button class="tileDone '+(done?'checked':'')+'" data-tree-action="done" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="'+(done?'撤销完成':'标记完成')+'">'+(done?'✓':'□')+'</button><button class="squareDelete" data-tree-action="delete-segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="删除本段到回收站" aria-label="删除第'+seg.n+'段">×</button></div></div>';
  }).join('');
  const last=(data.trash||[]).at(-1);
  $('episodeTreeList').innerHTML='<div class="episodeRailHeading"><strong>剧集目录</strong><span>'+(last?'<button type="button" class="smallBtn" data-tree-action="restore" data-trash-id="'+enc(last.id)+'">↶ 撤销上次删除</button>':'')+'</span></div>'+rail+
@@ -98,7 +116,7 @@ async function mutateWorkspace(action){await flushPrompt();const result=await ac
 async function refreshDownloads(){downloadsState=await B.downloadState();renderDownloads()}
 function renderDownloads(){if(!downloadsState)return;$('downloadPath').textContent=downloadsState.root||'未设置下载目录';$('downloadPath').title=downloadsState.root||'';
   const records=downloadsState.history||[];$('downloadStatus').textContent=records.filter(x=>x.status==='completed').length+' 项已完成';
-  $('downloadHistory').innerHTML=records.slice(0,7).map(x=>`<button class="downloadItem" data-dl-id="${enc(x.id)}" title="${enc(x.path)}"><span class="fileInfo">${enc(x.file)}</span><span class="downloadState ${enc(x.status)}">${({completed:'完成',progressing:'下载中',cancelled:'取消',interrupted:'中断'}[x.status]||x.status)}</span></button>`).join('')||'暂无下载记录；请在豆包网页使用正常下载入口';
+  $('downloadHistory').innerHTML=records.slice(0,7).map(x=>`<div class="downloadItem"><button class="downloadOpen" data-dl-open="${enc(x.id)}" title="打开文件：${enc(x.path)}"><span class="fileInfo">${enc(x.file)}</span><span class="downloadState ${enc(x.status)}">${({completed:'完成',progressing:'下载中',cancelled:'取消',interrupted:'中断'}[x.status]||x.status)}</span></button>${x.status==='completed'&&x.type==='视频'?`<button class="downloadLink" data-dl-link="${enc(x.id)}" title="关联到当前选中的剧集和片段">关联此片段</button>`:''}</div>`).join('')||'暂无下载记录；请在豆包网页使用正常下载入口';
 }
 async function refreshExtension(){extensionState=await B.extensionStatus();renderExtension()}
 function renderExtension(){const c=extensionState?.candidate,l=extensionState?.loaded;const lines=[];
@@ -194,6 +212,9 @@ function initAccounts(){const list=$('groupList');list.addEventListener('click',
     if(action==='add-account'){const name=await ask('新增账号名称',`豆包 ${String(cfg.accounts.length+1).padStart(2,'0')}`);if(name)await safe(async()=>{cfg=await B.addAccount(gid,name);renderGroups();refreshHeader()})}
     if(action==='rename-group'){const g=cfg.groups.find(g=>g.id===gid),name=await ask('修改分组名称',g.name);if(name)await safe(async()=>{cfg=await B.renameGroup(gid,name);renderGroups()})}
     if(action==='edge-config'){const g=cfg.groups.find(g=>g.id===gid),name=await ask('Edge 配置文件：Default 或 Profile 1 等',g.edgeProfile);if(name)await safe(async()=>{cfg=await B.setEdge(gid,name);toast('备用 Edge 配置已保存')})}
+    if(action==='quota-toggle')await safe(async()=>{cfg=await B.quotaToggle(id);renderGroups();refreshHeader();toast(cfg.accounts.find(x=>x.id===id)?.quota?.status==='exhausted'?'已标记今日额度用完':'已恢复绿灯，可参与任务分配')});
+    if(action==='quota-hour'){const a=cfg.accounts.find(x=>x.id===id),value=await ask('每日额度刷新时间（0–23 点）',String(a.quota?.resetHour??0));if(value!==null){const hour=Number(value);if(!Number.isInteger(hour)||hour<0||hour>23){toast('请输入 0–23 的整数');return;}await safe(async()=>{cfg=await B.quotaResetHour(id,hour);renderGroups();toast('每日额度刷新时间已设置为 '+hour+':00')})}}
+    if(action==='preload-toggle')await safe(async()=>{cfg=await B.preloadToggle(id);renderGroups();toast(cfg.accounts.find(x=>x.id===id)?.preloadPinned?'已加入后台预加载队列':'已取消后台预加载固定')});
     if(action==='rename-account'){const a=cfg.accounts.find(a=>a.id===id),name=await ask('账号名称（输入 - 移除账号位）',a.name);if(name==='-'&&await confirmAction('移除账号位？','仅从目录移除，不删除系统中的登录信息；请先确认当前账号。'))await safe(async()=>{cfg=await B.removeAccount(id);renderGroups();refreshHeader()});else if(name&&name!=='-')await safe(async()=>{cfg=await B.renameAccount(id,name);renderGroups()})}
     return;
   }
@@ -202,6 +223,9 @@ function initAccounts(){const list=$('groupList');list.addEventListener('click',
 });
   $('btnAddGroup').onclick=()=>safe(async()=>{const name=await ask('新增浏览器组',`浏览器组 ${cfg.groups.length+1}`);if(!name)return;cfg=await B.addGroup(name);expandGroups.add(cfg.groups.at(-1).id);renderGroups();refreshHeader()});
   $('targetCount').onchange=()=>safe(async()=>{cfg=await B.setTarget($('targetCount').value);renderGroups();refreshHeader()});
+  $('performanceModeSelect').onchange=()=>safe(async()=>{const result=await B.setPerformance($('performanceModeSelect').value);renderPerformance(result);toast(`后台常驻上限已调整为 ${result.limit} 个网页；并发导入上限 ${result.importLimit}`)});
+  $('btnPerfCleanup').onclick=()=>safe(async()=>{const result=await B.cleanupMemory();renderPerformance(result);toast('空闲网页清理检查已完成')});
+  B.getPerformance().then(renderPerformance).catch(()=>{});B.onPerformanceChanged(renderPerformance);B.onAccountsChanged(value=>{cfg=value;renderGroups();refreshHeader()});
   $('btnNext').onclick=()=>safe(nextAccount);
   $('btnMarkDone').onclick=()=>safe(async()=>{cfg=await B.progress(cfg.activeAccountId,1);renderGroups();refreshHeader();toast('当前账号手动完成计数 +1')});
   $('btnUndoDone').onclick=()=>safe(async()=>{cfg=await B.progress(cfg.activeAccountId,-1);renderGroups();refreshHeader()});
@@ -288,7 +312,19 @@ function initWorkspace(){
   $('btnProjectName').onclick=()=>safe(async()=>{const name=await ask('修改当前项目名称',ws.workspace.title);if(!name)return;ws=await B.wsRename(name);renderWorkspaceShell();toast('项目名称已保存')});
   $('btnShowPaths').onclick=()=>{$('assetStats').textContent=JSON.stringify(ws.assets,null,2)};
   $('btnDownloadRefresh').onclick=()=>safe(refreshDownloads);
-  $('downloadHistory').onclick=e=>safe(async()=>{const el=e.target.closest('[data-dl-id]');if(el)await B.downloadReveal(el.dataset.dlId)});
+  $('downloadHistory').onclick=e=>safe(async()=>{
+   const link=e.target.closest('[data-dl-link]');
+   if(link){
+    const ep=getEp(),seg=getSeg();if(!ep||!seg){toast('请先选择要关联的剧集和片段');return;}
+    const episodeLabel=`第${ep.number||ws.workspace.episodes.indexOf(ep)+1}集`,segmentLabel=`第${seg.n}段`;
+    ws=await B.wsLinkVideo(ep.id,seg.id,link.dataset.dlLink);renderWorkspaceShell();await renderImages();bounds();
+    const flat=ws.workspace.episodes.flatMap(item=>item.segments.map(part=>({ep:item,seg:part}))),currentIndex=flat.findIndex(x=>x.ep.id===ep.id&&x.seg.id===seg.id),next=flat.slice(currentIndex+1).find(x=>x.seg.status!=='done');
+    if(next)await chooseSegment(next.ep.id,next.seg.id);
+    toastAction(`已关联至 ${episodeLabel} ${segmentLabel}，已标记完成`,'撤销',async()=>{ws=await B.wsUndoLinkVideo(ep.id,seg.id);renderWorkspaceShell();await renderImages();bounds();toast('已撤销视频关联')});
+    return;
+   }
+   const el=e.target.closest('[data-dl-open]');if(el)await B.downloadReveal(el.dataset.dlOpen);
+  });
   $('btnDownloadFolder').onclick=()=>safe(()=>B.downloadOpen());
   $('btnDownloadChoose').onclick=()=>safe(async()=>{const r=await B.downloadChoose();if(!r.cancelled){downloadsState=r;renderDownloads();toast('新下载位置已保存，不会移动或删除原有文件')}});
   $('btnExtInspect').onclick=()=>safe(async()=>{const r=await B.extensionInspect();if(r.cancelled)return;await refreshExtension();toast('扩展文件权限清单已读取；请审查后再决定是否测试载入')});
@@ -316,6 +352,7 @@ function renderBackgroundTasks(){
  for(const [id,status] of all){
   const card=document.createElement('div');card.className='accountTaskCard';
   const name=document.createElement('strong');name.textContent=(cfg?.accounts||[]).find(a=>a.id===id)?.name||'未知账号';
+  const meta=document.createElement('small');meta.className='taskMeta';meta.textContent=(status.taskId?'任务 '+String(status.taskId).slice(0,18)+' · ':'')+'阶段 '+String(status.phase||status.state||'idle')+(status.requiresAttention?' · 需要处理':'');
   const detail=document.createElement('p');detail.textContent=String(status.message||'').slice(0,240);
   const row=document.createElement('div');row.className='taskActions';
   const show=document.createElement('button');show.className='smallBtn';show.textContent='切换查看';show.onclick=()=>safe(()=>switchAccount(id));row.append(show);
@@ -327,7 +364,7 @@ function renderBackgroundTasks(){
   }
   const state=document.createElement('span');state.className='taskStatus';state.textContent=({'running':'运行中','waiting-focus':'等待原账号','review':'待确认','done':'已结束','cancelled':'已取消','error':'异常','interrupted':'上次中断'}[status.state]||status.state||'空闲');
   const top=document.createElement('div');top.className='taskTitle';top.append(name,state);
-  card.append(top,detail,row);area.append(card);
+  card.append(top,meta,detail,row);area.append(card);
  }
 }
 function updateBackgroundTask(info){

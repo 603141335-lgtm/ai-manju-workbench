@@ -24,7 +24,7 @@ test('v0.9.9: no synthetic image lines, original prompt byte-for-byte intact',()
  'A15-01 杜不凡·荧光粉兔耳营业装','A33 钱少东·聚福轩少东',
  'AG18 街口麻婆豆腐斗菜双灶站位','B15 老街十字路口厨艺对决布置','C42 两版麻婆豆腐食材与成品']);
  assert.deepEqual(plan.ambiguous,[]);
- assert.equal(core.composeText(original,codes.map(row)),original);
+ assert.equal(core.composeText(original,codes.map(row)),'【蓝色参考图引用区】\n'+codes.join('\n')+'\n\n【原始提示词】\n'+original);
  assert(!core.composeText(original,codes.map(row)).includes('图1锁定人物'));
 });
 test('v0.9.9: exact original line anchors reach the real import plan',()=>{
@@ -35,7 +35,7 @@ test('v0.9.9: exact original line anchors reach the real import plan',()=>{
  assert.deepEqual(plan.items.map(x=>x.code),codes);
  assert.deepEqual(plan.items.map(x=>x.refAnchor),['C05 食材和成品','B12 主会场','A01小李 青年','A02安安 小女孩']);
  assert.equal(plan.voicePlan.items[0].imageIndex,3);
- assert(plan.previewText.startsWith(text));
+ assert(plan.previewText.includes('【蓝色参考图引用区】'));assert(plan.previewText.includes('【原始提示词】\n'+text));
  assert(plan.previewText.includes('音频1 = A01'));
  assert.equal(plan.blocked,false);
 });
