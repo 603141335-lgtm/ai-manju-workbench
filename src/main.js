@@ -45,7 +45,8 @@ function loadLicenseRuntimeConfig(){
 
 
 const DOUBAO_URL='https://www.doubao.com/chat/';
-const LIVE_LIMITS=Object.freeze({light:1,balanced:2,performance:3});
+const LIVE_LIMITS=Object.freeze({light:2,balanced:4,performance:6});
+const IMPORT_LIMITS=Object.freeze({light:1,balanced:2,performance:3});
 let noticeService=null,noticeTimer=null,tutorialMedia=null,taskJournal=null,licenseClient=null,pruneInProgress=false,quotaTimer=null,preloadRunning=false,tray=null,isQuitting=false;
 function guardedHandle(channel,handler){ipcMain.handle(channel,(...args)=>{if(!licenseClient)throw Error('授权中心尚未初始化');licenseClient.requireValid();return handler(...args)})}
 const protectedAccounts=new Set();
@@ -226,7 +227,7 @@ function performanceState(){
   const metrics=app.getAppMetrics()||[];
   const memoryKb=metrics.reduce((sum,m)=>sum+Math.max(0,m.memory?.workingSetSize||0),0);
   return {
-    mode,limit:LIVE_LIMITS[mode],liveViews:views.size,memoryMb:Math.round(memoryKb/1024),
+    mode,limit:LIVE_LIMITS[mode],importLimit:IMPORT_LIMITS[mode],liveViews:views.size,memoryMb:Math.round(memoryKb/1024),
     protectedCount:protectedAccounts.size,
     activeProtected:protectedAccounts.has(activeId),
     activeDownloads:[...activeDownloads.values()].reduce((a,b)=>a+b,0),
@@ -240,7 +241,7 @@ async function prune(){
   pruneInProgress=true;
   try{
     const candidates=[...views.entries()]
-      .filter(([id])=>id!==activeId&&!protectedAccounts.has(id)&&!activeDownloads.has(id)&&!activeImportAccounts.has(id)&&!reservedImportSlots.has(id))
+      .filter(([id])=>id!==activeId&&!protectedAccounts.has(id)&&!activeDownloads.has(id)&&!activeImportAccounts.has(id)&&!reservedImportSlots.has(id)&&!cfg.accounts.find(a=>a.id===id)?.preloadPinned)
       .sort((a,b)=>a[1].lastUsed-b[1].lastUsed);
     const needed=views.size-max;
     const pick=candidates.slice(0,needed);
@@ -391,7 +392,7 @@ function registerHandlers(){
   ipcMain.handle('perf:set',async(_e,mode)=>{
     if(!Object.prototype.hasOwnProperty.call(LIVE_LIMITS,mode))throw Error('无效的性能模式');
     update(()=>{cfg.performanceMode=mode});
-    const result=performanceState();tell('perf:changed',result);return result;
+    const result=performanceState();tell('perf:changed',result);preloadPinnedAccounts().catch(log);return result;
   });
   ipcMain.handle('perf:cleanup',()=>prune());
   ipcMain.handle('perf:protect',(_e,enabled)=>{
@@ -662,7 +663,7 @@ function registerHandlers(){
     const accountId=activeId;
     if(!accountId)throw Error('尚未选择账号');
     if(reservedImportSlots.has(accountId))throw Error('当前账号已有一个导入任务；请等待或取消，防止同一聊天输入框被同时改写');
-    const maxImports=LIVE_LIMITS[cfg?.performanceMode]||LIVE_LIMITS.balanced;
+    const maxImports=IMPORT_LIMITS[cfg?.performanceMode]||IMPORT_LIMITS.balanced;
     if(reservedImportSlots.size>=maxImports)throw Error(`当前性能模式最多允许 ${maxImports} 个账号并行导入，请等待任务完成或调整性能模式`);
     reservedImportSlots.add(accountId);
     try{
@@ -775,7 +776,7 @@ function getAccountImportEngine(id){
     getTailForSegment:(eid,sid)=>tailframes.status(workspace.data,eid,sid),
     getVoiceForImages:items=>voiceBindings.plan(items),
     isForeground:accountId=>activeId===accountId&&!overlayShown,
-    canStart:()=>reservedImportSlots.has(id)&&reservedImportSlots.size<=(LIVE_LIMITS[cfg?.performanceMode]||LIVE_LIMITS.balanced),
+    canStart:()=>reservedImportSlots.has(id)&&reservedImportSlots.size<=(IMPORT_LIMITS[cfg?.performanceMode]||IMPORT_LIMITS.balanced),
     onStart:ctx=>{activeImportAccounts.add(ctx.accountId);tell('perf:changed',performanceState())},
     onFinish:ctx=>{activeImportAccounts.delete(ctx.accountId);tell('perf:changed',performanceState())},
     notify:info=>{
