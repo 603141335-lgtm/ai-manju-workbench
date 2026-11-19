@@ -9,6 +9,11 @@ const getEp=()=>ws?.workspace?.episodes?.find(e=>e.id===ws.workspace.activeEpiso
 const getSeg=()=>getEp()?.segments?.find(s=>s.id===ws.workspace.activeSegmentId)||null;
 const statusText=s=>({pending:'待制作',done:'已完成',redo:'待重做'}[s]||'待制作');
 function toast(m){const box=$('toast');box.textContent=String(m);box.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>box.classList.remove('show'),3200)}
+function toastAction(message,label,action){
+ const box=$('toast');box.replaceChildren();const textNode=document.createElement('span');textNode.textContent=String(message);
+ const button=document.createElement('button');button.className='toastUndo';button.textContent=String(label);button.onclick=async()=>{clearTimeout(toastTimer);box.classList.remove('show','has-action');box.replaceChildren();await safe(action)};
+ box.append(textNode,button);box.classList.add('show','has-action');clearTimeout(toastTimer);toastTimer=setTimeout(()=>{box.classList.remove('show','has-action');box.replaceChildren()},5000);
+}
 function error(e){console.error(e);toast('操作失败：'+(e?.message||e))}
 async function safe(fn){try{return await fn()}catch(e){error(e);return null}}
 function modal(d){B.setOverlay(true);d.showModal();d.addEventListener('close',()=>B.setOverlay(false),{once:true})}
@@ -85,7 +90,7 @@ function renderEpisodeTree(){
  const list=active?active.segments.filter(x=>data.showHidden||(!active.hidden&&!x.hidden)):[];
  const cards=list.map(seg=>{
    const selected=active.id===data.activeEpisodeId&&seg.id===data.activeSegmentId,done=seg.status==='done';
-   return '<div class="segmentSquare '+(selected?'selected ':'')+(done?'doneCompact':'')+'" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'"><button class="segmentSelect" data-tree-action="segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" type="button" title="'+enc(seg.title)+'"><strong>第'+seg.n+'段</strong><small>'+enc(done?'✓ 已完成':seg.title||'未命名')+'</small></button><div class="segmentSquareActions"><button class="tileDone '+(done?'checked':'')+'" data-tree-action="done" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="'+(done?'撤销完成':'标记完成')+'">'+(done?'✓':'□')+'</button><button class="squareDelete" data-tree-action="delete-segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="删除本段到回收站" aria-label="删除第'+seg.n+'段">×</button></div></div>';
+   return '<div class="segmentSquare '+(selected?'selected ':'')+(done?'doneCompact':'')+'" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'"><button class="segmentSelect" data-tree-action="segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" type="button" title="'+enc(seg.title)+'"><strong>第'+seg.n+'段</strong><small>'+enc(seg.linkedVideoPath?'✓ 已关联视频':done?'✓ 已完成':seg.title||'未命名')+'</small></button><div class="segmentSquareActions"><button class="tileDone '+(done?'checked':'')+'" data-tree-action="done" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="'+(done?'撤销完成':'标记完成')+'">'+(done?'✓':'□')+'</button><button class="squareDelete" data-tree-action="delete-segment" data-eid="'+enc(active.id)+'" data-sid="'+enc(seg.id)+'" title="删除本段到回收站" aria-label="删除第'+seg.n+'段">×</button></div></div>';
  }).join('');
  const last=(data.trash||[]).at(-1);
  $('episodeTreeList').innerHTML='<div class="episodeRailHeading"><strong>剧集目录</strong><span>'+(last?'<button type="button" class="smallBtn" data-tree-action="restore" data-trash-id="'+enc(last.id)+'">↶ 撤销上次删除</button>':'')+'</span></div>'+rail+
@@ -98,7 +103,7 @@ async function mutateWorkspace(action){await flushPrompt();const result=await ac
 async function refreshDownloads(){downloadsState=await B.downloadState();renderDownloads()}
 function renderDownloads(){if(!downloadsState)return;$('downloadPath').textContent=downloadsState.root||'未设置下载目录';$('downloadPath').title=downloadsState.root||'';
   const records=downloadsState.history||[];$('downloadStatus').textContent=records.filter(x=>x.status==='completed').length+' 项已完成';
-  $('downloadHistory').innerHTML=records.slice(0,7).map(x=>`<button class="downloadItem" data-dl-id="${enc(x.id)}" title="${enc(x.path)}"><span class="fileInfo">${enc(x.file)}</span><span class="downloadState ${enc(x.status)}">${({completed:'完成',progressing:'下载中',cancelled:'取消',interrupted:'中断'}[x.status]||x.status)}</span></button>`).join('')||'暂无下载记录；请在豆包网页使用正常下载入口';
+  $('downloadHistory').innerHTML=records.slice(0,7).map(x=>`<div class="downloadItem"><button class="downloadOpen" data-dl-open="${enc(x.id)}" title="打开文件：${enc(x.path)}"><span class="fileInfo">${enc(x.file)}</span><span class="downloadState ${enc(x.status)}">${({completed:'完成',progressing:'下载中',cancelled:'取消',interrupted:'中断'}[x.status]||x.status)}</span></button>${x.status==='completed'&&x.type==='视频'?`<button class="downloadLink" data-dl-link="${enc(x.id)}" title="关联到当前选中的剧集和片段">关联此片段</button>`:''}</div>`).join('')||'暂无下载记录；请在豆包网页使用正常下载入口';
 }
 async function refreshExtension(){extensionState=await B.extensionStatus();renderExtension()}
 function renderExtension(){const c=extensionState?.candidate,l=extensionState?.loaded;const lines=[];
@@ -288,7 +293,19 @@ function initWorkspace(){
   $('btnProjectName').onclick=()=>safe(async()=>{const name=await ask('修改当前项目名称',ws.workspace.title);if(!name)return;ws=await B.wsRename(name);renderWorkspaceShell();toast('项目名称已保存')});
   $('btnShowPaths').onclick=()=>{$('assetStats').textContent=JSON.stringify(ws.assets,null,2)};
   $('btnDownloadRefresh').onclick=()=>safe(refreshDownloads);
-  $('downloadHistory').onclick=e=>safe(async()=>{const el=e.target.closest('[data-dl-id]');if(el)await B.downloadReveal(el.dataset.dlId)});
+  $('downloadHistory').onclick=e=>safe(async()=>{
+   const link=e.target.closest('[data-dl-link]');
+   if(link){
+    const ep=getEp(),seg=getSeg();if(!ep||!seg){toast('请先选择要关联的剧集和片段');return;}
+    const episodeLabel=`第${ep.number||ws.workspace.episodes.indexOf(ep)+1}集`,segmentLabel=`第${seg.n}段`;
+    ws=await B.wsLinkVideo(ep.id,seg.id,link.dataset.dlLink);renderWorkspaceShell();await renderImages();bounds();
+    const currentEpisode=ws.workspace.episodes.find(x=>x.id===ep.id),next=currentEpisode?.segments.find(x=>x.n>seg.n&&x.status!=='done');
+    if(next)await chooseSegment(ep.id,next.id);
+    toastAction(`已关联至 ${episodeLabel} ${segmentLabel}，已标记完成`,'撤销',async()=>{ws=await B.wsUndoLinkVideo(ep.id,seg.id);renderWorkspaceShell();await renderImages();bounds();toast('已撤销视频关联')});
+    return;
+   }
+   const el=e.target.closest('[data-dl-open]');if(el)await B.downloadReveal(el.dataset.dlOpen);
+  });
   $('btnDownloadFolder').onclick=()=>safe(()=>B.downloadOpen());
   $('btnDownloadChoose').onclick=()=>safe(async()=>{const r=await B.downloadChoose();if(!r.cancelled){downloadsState=r;renderDownloads();toast('新下载位置已保存，不会移动或删除原有文件')}});
   $('btnExtInspect').onclick=()=>safe(async()=>{const r=await B.extensionInspect();if(r.cancelled)return;await refreshExtension();toast('扩展文件权限清单已读取；请审查后再决定是否测试载入')});
