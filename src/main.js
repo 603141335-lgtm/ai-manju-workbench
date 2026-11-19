@@ -219,7 +219,8 @@ async function preloadPinnedAccounts(){
  }catch(err){log(err)}
  finally{
   preloadRunning=false;tell('perf:changed',performanceState());
-  if(views.size<performanceState().limit&&cfg.accounts.some(a=>a.preloadPinned&&a.id!==activeId&&!views.has(a.id)))setTimeout(()=>preloadPinnedAccounts().catch(log),500);
+  const availableLimit=Math.max(0,performanceState().limit-(activeId?0:1));
+  if(views.size<availableLimit&&cfg.accounts.some(a=>a.preloadPinned&&a.id!==activeId&&!views.has(a.id)))setTimeout(()=>preloadPinnedAccounts().catch(log),500);
  }
 }
 function performanceState(){
@@ -288,6 +289,7 @@ function selectAccount(id){
   if(lastBounds)slot.view.setBounds(lastBounds);
   cfg.activeAccountId=id;save();
   tell('perf:changed',performanceState());
+  preloadPinnedAccounts().catch(log);
   tell('web:selected',{id});
   return {id};
 }
