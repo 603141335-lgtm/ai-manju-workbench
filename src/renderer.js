@@ -49,6 +49,7 @@ function renderGroups(){if(!cfg)return;
   }).join('')}</div></div>`;
  }).join('');$('targetCount').value=cfg.target;
 }
+function renderPerformance(state){if(!state)return;const el=$('performanceSummary');if(el)el.textContent=`网页 ${state.liveViews}/${state.limit} · 内存 ${state.memoryMb} MB · 并发导入 ${state.importLimit}`;const select=$('performanceModeSelect');if(select&&cfg)select.value=cfg.performanceMode||'balanced';}
 function refreshHeader(){if(!cfg)return;const reached=cfg.accounts.filter(a=>a.done>=cfg.target).length;
   $('topCenter').textContent=`${cfg.groups.length} 个浏览器组 · ${cfg.accounts.length} 个独立账号位 · ${reached} 个达到手动目标`;
   $('addressText').textContent=`doubao.com / ${getAccount()?.name||'当前账号'}`;
@@ -222,6 +223,9 @@ function initAccounts(){const list=$('groupList');list.addEventListener('click',
 });
   $('btnAddGroup').onclick=()=>safe(async()=>{const name=await ask('新增浏览器组',`浏览器组 ${cfg.groups.length+1}`);if(!name)return;cfg=await B.addGroup(name);expandGroups.add(cfg.groups.at(-1).id);renderGroups();refreshHeader()});
   $('targetCount').onchange=()=>safe(async()=>{cfg=await B.setTarget($('targetCount').value);renderGroups();refreshHeader()});
+  $('performanceModeSelect').onchange=()=>safe(async()=>{const result=await B.setPerformance($('performanceModeSelect').value);renderPerformance(result);toast(`后台常驻上限已调整为 ${result.limit} 个网页；并发导入上限 ${result.importLimit}`)});
+  $('btnPerfCleanup').onclick=()=>safe(async()=>{const result=await B.cleanupMemory();renderPerformance(result);toast('空闲网页清理检查已完成')});
+  B.getPerformance().then(renderPerformance).catch(()=>{});B.onPerformanceChanged(renderPerformance);
   $('btnNext').onclick=()=>safe(nextAccount);
   $('btnMarkDone').onclick=()=>safe(async()=>{cfg=await B.progress(cfg.activeAccountId,1);renderGroups();refreshHeader();toast('当前账号手动完成计数 +1')});
   $('btnUndoDone').onclick=()=>safe(async()=>{cfg=await B.progress(cfg.activeAccountId,-1);renderGroups();refreshHeader()});
