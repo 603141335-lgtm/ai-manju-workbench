@@ -1,4 +1,4 @@
-"""Offline Chromium DOM test for locating image mentions IN their reference lines.
+"""Offline Chromium DOM test for locating image mentions in the top reference block.
 This is not a Doubao network/login test and never counts as site compatibility.
 """
 import json
@@ -33,7 +33,7 @@ with sync_playwright() as p:
         }''',{'index':n,'file':file})
         check=page.evaluate('('+fn['inspectInlineReference']+')',args)
         assert check['verified'],(code,check)
-    # Verify every inline rich tag is in its own reference line, not at end.
+    # Verify every rich tag is in the top reference block, not in the original prompt.
     for i,c in enumerate(['A01','A01-01','A15','B02'],1):
         assert page.locator('.tiptap p').nth(i).locator('[data-mention]').count()==1
     assert page.locator('.tiptap p').last.locator('[data-mention]').count()==0
