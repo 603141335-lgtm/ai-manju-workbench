@@ -91,8 +91,8 @@
   }
   function composeText(prompt,items,offset=0,voices=[]){
     const raw=String(prompt||'');
-    const tail=(items||[]).some(x=>x.kind==='tail'||x.code==='尾帧');
-    const head=tail?'上一段尾帧参考：\n':'';
+    const referenceLines=(items||[]).map(x=>x.kind==='tail'||x.code==='尾帧'?'上一段尾帧参考：':String(x.code||'')+(x.label?' '+String(x.label):'')).filter(Boolean).join('\\n');
+    const head=referenceLines?'【蓝色参考图引用区】\\n'+referenceLines+'\\n\\n':'';
     const voiceText=voices.length?'\n【人物音色绑定｜参考音频】\n'+voices.map((v,i)=>
       '音频'+(i+1)+' = '+v.code+(v.characterName?' '+v.characterName:'')+
       '（'+String(v.label||'人物声音').replace(/[\r\n]/g,' ')+'：'+
