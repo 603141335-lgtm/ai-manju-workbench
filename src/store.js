@@ -3,7 +3,7 @@
 function createInitialData(makeId) {
   const groups = Array.from({length:5}, (_,i) => ({id:makeId(), name:`浏览器组 ${'ABCDE'[i]}`, edgeProfile: i ? `Profile ${i}` : 'Default'}));
   const accounts = groups.flatMap((g, gi) => Array.from({length:5}, (_,j) => ({
-    id:makeId(), groupId:g.id, name:`豆包 ${String(gi*5+j+1).padStart(2,'0')}`, done:0
+    id:makeId(), groupId:g.id, name:`豆包 ${String(gi*5+j+1).padStart(2,'0')}`, done:0, quota:{status:'available',markedDate:null,resetHour:0}, preloadPinned:false
   })));
   const segments = [{id:makeId(), name:'第1段', prompt:'', images:[]}];
   return {version:1,groups,accounts,segments,activeAccountId:accounts[0].id,activeSegmentId:segments[0].id, target:2, performanceMode:'balanced'};
