@@ -18,7 +18,7 @@
         // Number-only lines or "A: A15" style, not arbitrary prose.
         const content=t.replace(/^[A-Z]{1,3}\s*[:：]/i,'').trim();
         if(!tokens(content).length)break;
-        if(/[。！？]/.test(content))break;
+        // Chinese sentence punctuation is also a valid delimiter inside a reference list.
         part.push(content);
       }
       blocks.push(part.join(' '));
