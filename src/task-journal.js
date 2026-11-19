@@ -19,6 +19,8 @@ class TaskJournal{
   const entry={accountId:String(info.accountId).slice(0,90),
    episodeId:String(info.episodeId||'').slice(0,90),segmentId:String(info.segmentId||'').slice(0,90),
    state:String(info.state||'idle').slice(0,30),
+   taskId:String(info.taskId||'').slice(0,100),phase:String(info.phase||info.state||'idle').slice(0,30),
+   requiresAttention:!!info.requiresAttention,
    message:String(info.message||'').slice(0,240),at:Date.now()};
   this.entries=this.entries.filter(x=>x.accountId!==entry.accountId);
   this.entries.push(entry);this.entries=this.entries.slice(-100);
