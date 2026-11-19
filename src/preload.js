@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('bridge',Object.freeze({
   wsEditText:(eid,sid,text)=>ipcRenderer.invoke('ws:editText',eid,sid,text),
   wsEditCodes:(eid,sid,codes)=>ipcRenderer.invoke('ws:editCodes',eid,sid,codes),
   wsSetStatus:(eid,sid,status,aid)=>ipcRenderer.invoke('ws:status',eid,sid,status,aid),
+  wsLinkVideo:(eid,sid,downloadId)=>ipcRenderer.invoke('ws:linkVideo',eid,sid,downloadId),
+  wsUndoLinkVideo:(eid,sid)=>ipcRenderer.invoke('ws:undoLinkVideo',eid,sid),
   wsHidden:(eid,sid,hidden)=>ipcRenderer.invoke('ws:hidden',eid,sid,hidden),
   wsLocked:(eid,sid,locked)=>ipcRenderer.invoke('ws:locked',eid,sid,locked),
   wsShowHidden:show=>ipcRenderer.invoke('ws:showHidden',show),
