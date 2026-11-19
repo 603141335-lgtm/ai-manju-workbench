@@ -18,6 +18,7 @@ test('源自独立插件的编号识别：只读取参考图栏目，A01/A01-01�
 test('中英文标点紧邻编号仍能识别，字母数字相邻内容不会误匹配',()=>{
  const parsed=core.parseCodes('需要参考图：A02，A03。B12（C05）、E11；AG14:BL02\n场景与站位：A99 不应混入参考图栏目');
  assert.deepEqual(parsed.codes,['A02','A03','B12','C05','E11','AG14','BL02']);
+ assert.equal(core.codeFromFile({name:'I02.png'}),'A02');
  const invalid=core.tokens('XA02 A02abc A0300');
  assert.deepEqual(invalid,[]);
 });
