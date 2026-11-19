@@ -93,11 +93,11 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   const slotByCode=new Map(located.slots.map(x=>[x.code,x]));
   plan.referenceErrors=[];
   for(const item of plan.items){
-    if(item.kind==='tail'){item.refAnchor='上一段尾帧参考：';continue;}
+    if(item.kind==='tail'){item.refAnchor='上一段尾帧参考：';item.topAnchor='上一段尾帧参考：';continue;}
     const entry=slotByCode.get(item.code);
     if(!entry||located.ambiguous.includes(item.code)){
       plan.referenceErrors.push(item.code+' 原参考图说明无法唯一定位，已停止以防止艾特错位');
-    }else item.refAnchor=String(item.code)+(item.label?' '+item.label:'');
+    }else{item.refAnchor=entry.anchor;item.topAnchor=String(item.code)+(item.label?' '+item.label:'');}
   }
   if(plan.referenceErrors.length)plan.blocked=true;
   if(parsedLabels.conflicts.length){plan.blocked=true;plan.labelErrors=parsedLabels.conflicts.map(x=>x.code+' 人物名称冲突：'+x.first+'/'+x.second);}
@@ -176,7 +176,7 @@ function createImportEngine({getActive,getSegment,resolveRows,getChosenPaths=()=
   ensure(ctx);await awaitForeground(ctx);const wc=ctx.wc;
   // The anchor must be the exact text emitted by composeText. The page
   // refuses ambiguous matches instead of falling back to the editor end.
-  const anchor=customAnchor||item.refAnchor;
+  const anchor=customAnchor||item.topAnchor||item.refAnchor;
   if(!anchor)return {state:'mapping',message:'找不到原始参考图编号对应的唯一说明行'};
   const params={anchor,code:item.code,filename:item.file.name,index:index+1,scope:customAnchor?'all':'top-reference'};
   const before=await evalFn(wc,inlinePage.inspectInlineReference,params);
