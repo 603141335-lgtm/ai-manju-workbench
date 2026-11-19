@@ -49,7 +49,7 @@ function renderGroups(){if(!cfg)return;
   }).join('')}</div></div>`;
  }).join('');$('targetCount').value=cfg.target;
 }
-function renderPerformance(state){if(!state)return;const el=$('performanceSummary');if(el)el.textContent=`网页 ${state.liveViews}/${state.limit} · 内存 ${state.memoryMb} MB · 并发导入 ${state.importLimit}`;const select=$('performanceModeSelect');if(select)select.value=state.mode||cfg?.performanceMode||'balanced';}
+function renderPerformance(state){if(!state)return;const el=$('performanceSummary');if(el)el.textContent=`网页 ${state.liveViews}/${state.limit} · 内存 ${state.memoryMb}/${state.memoryLimitMb} MB · 并发导入 ${state.importLimit}`;const select=$('performanceModeSelect');if(select)select.value=state.mode||cfg?.performanceMode||'balanced';}
 function refreshHeader(){if(!cfg)return;const reached=cfg.accounts.filter(a=>a.done>=cfg.target).length;
   $('topCenter').textContent=`${cfg.groups.length} 个浏览器组 · ${cfg.accounts.length} 个独立账号位 · ${reached} 个达到手动目标`;
   $('addressText').textContent=`doubao.com / ${getAccount()?.name||'当前账号'}`;
