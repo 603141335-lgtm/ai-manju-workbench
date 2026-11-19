@@ -30,10 +30,10 @@
   function codeFromFile(file){
     const fullname=(file?.name||'').replace(FILES,'');
     const name=fullname.replace(/^[\s【\[(（]+/,'');
-    const m=name.match(/^((?:AG|BL|A|B|C|E)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/i);
+    const m=name.match(/^((?:AG|BL|A|B|C|E|I)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/i);
     if(m)return norm(m[1]);
     const folders=String(file?.webkitRelativePath||'').split('/').slice(0,-1).reverse();
-    for(const f of folders){const mm=f.match(/^((?:AG|BL|A|B|C|E)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/i);if(mm)return norm(mm[1]);}
+    for(const f of folders){const mm=f.match(/^((?:AG|BL|A|B|C|E|I)\d{2,3}(?:-\d{2})?)(?=$|[^A-Z0-9])/i);if(mm)return norm(mm[1]);}
     return null;
   }
   function buildPlan(prompt, files){
