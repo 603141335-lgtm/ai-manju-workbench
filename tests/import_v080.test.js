@@ -34,7 +34,7 @@ test('重复版本、缺图、超过九张会阻止自动操作',()=>{
 test('图号映射严格按参考图顺序，完整保留原文（含末尾换行）',()=>{
  const original='需要参考图：A15、A32、AG14\n0—3秒｜对白完整\n';
  const s=core.composeText(original,fixtures.slice(2,5));
- assert.equal(s,'【蓝色参考图引用区】\\nA15\\nA32\\nAG14\\n\\n【原始提示词】\\n'+original,'蓝色原生@引用区置顶，原始提示词正文逐字保留');
+ assert.equal(s,'【蓝色参考图引用区】\nA15\nA32\nAG14\n\n【原始提示词】\n'+original,'蓝色原生@引用区置顶，原始提示词正文逐字保留');
 });
 test('网页已经有不同草稿时，未明确同意禁止覆写和上传',async()=>{
  let uploads=0;
