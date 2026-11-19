@@ -50,3 +50,13 @@ test('saving account config keeps a byte-for-byte rollback and rejects invalid w
   assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).accounts[0].id,'new');
  }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
+
+const {quotaCycleDate,normalizeQuota,shouldResetQuota}=require('../src/account-quota');
+test('每日额度刷新时间按本地业务日计算，跨过刷新点自动恢复',()=>{
+ const before=new Date(2026,10,19,3,59,0).getTime(),after=new Date(2026,10,19,4,0,0).getTime();
+ assert.equal(quotaCycleDate(before,4),'2026-11-18');
+ assert.equal(quotaCycleDate(after,4),'2026-11-19');
+ assert.equal(shouldResetQuota({status:'exhausted',markedDate:'2026-11-18',resetHour:4},after),true);
+ assert.equal(shouldResetQuota({status:'exhausted',markedDate:'2026-11-19',resetHour:4},after),false);
+ assert.deepEqual(normalizeQuota({status:'bad',resetHour:30}),{status:'available',markedDate:null,resetHour:23});
+});
