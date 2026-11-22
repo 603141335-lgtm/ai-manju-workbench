@@ -55,6 +55,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity:ComponentActivity(){
@@ -70,8 +71,20 @@ class MainActivity:ComponentActivity(){
   private var activeBatch=0L
   private var batchName=""
   private var currentPage="home"
+  private lateinit var cloudClient:CloudSyncClient
+  private lateinit var settlementHelper:SettlementViewHelper
+  private val cloudExecutor=Executors.newSingleThreadExecutor()
+  private val awaitingPhotoForRow=ConcurrentHashMap.newKeySet<Long>()
+  private val cloudOutcomeCache=ConcurrentHashMap<Long,CloudPushResult>()
+  private var pendingGalleryCallback:((Uri)->Unit)?=null
+  private val galleryPicker=registerForActivityResult(ActivityResultContracts.GetContent()){uri->
+    val cb=pendingGalleryCallback
+    pendingGalleryCallback=null
+    if(uri!=null && cb!=null)cb(uri)
+  }
   private val backToHome=object:OnBackPressedCallback(false){
     override fun handleOnBackPressed(){
+      if(currentPage=="settlement" && settlementHelper.popSubPage())return
       if(repairTarget!=null)showScan() else showHome()
     }
   }
@@ -164,6 +177,26 @@ class MainActivity:ComponentActivity(){
     WindowCompat.setDecorFitsSystemWindows(window,false)
     applyTheme(ScanTheme.fromPreference(getPreferences(MODE_PRIVATE).getString(ScanTheme.PREFERENCE,null)))
     db=ScanDb(this)
+    cloudClient=CloudSyncClient(this)
+    settlementHelper=SettlementViewHelper(object:SettlementHost{
+      override val viewCtx:Context get()=viewContext
+      override val palette:ScanTheme get()=themePalette
+      override val scanDb:ScanDb get()=db
+      override val cloud:CloudSyncClient get()=cloudClient
+      override val ioExecutor get()=cloudExecutor
+      override fun runUi(block:()->Unit)=runOnUiThread(block)
+      override fun showToast(msg:String)=toast(msg)
+      override fun renderSettlementPage()=showSettlement()
+      override fun pickGalleryImage(onPicked:(Uri)->Unit){
+        pendingGalleryCallback=onPicked
+        galleryPicker.launch("image/*")
+      }
+      override fun openExternalWeb(url:String){
+        try{startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}
+        catch(e:Exception){toast("无法打开浏览器："+e.message)}
+      }
+      override fun triggerSyncAll()=syncPendingAndRefreshCloud(null,false)
+    })
     voiceEnabled=getPreferences(MODE_PRIVATE).getBoolean("voiceEnabled",true)
     vibrationEnabled=getPreferences(MODE_PRIVATE).getBoolean("vibrationEnabled",true)
     scanMode=getPreferences(MODE_PRIVATE).getString("scanMode","fast") ?: "fast"
@@ -182,6 +215,9 @@ class MainActivity:ComponentActivity(){
     activeBatch=first?.id?:0L
     batchName=first?.name?:""
     showHome(savedInstanceState?.getString("homeQuery").orEmpty())
+    if(cloudClient.syncEnabled && db.pendingSyncCount()>0){
+      syncPendingAndRefreshCloud(null,false)
+    }
     if(restoreRepair!=null){
       if(checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)showScan(restoreRepair)
       else pendingRepair=restoreRepair
@@ -196,6 +232,7 @@ class MainActivity:ComponentActivity(){
     stopCamera()
     uiHandler.removeCallbacksAndMessages(null)
     if(executor.isShutdown.not())executor.shutdown()
+    if(cloudExecutor.isShutdown.not())cloudExecutor.shutdown()
     if(barcodeScanner.isInitialized())barcodeScanner.value.close()
     voice?.stop()
     voice?.shutdown()
@@ -312,6 +349,7 @@ class MainActivity:ComponentActivity(){
     val tabs=listOf(
       Triple("批次","home",R.drawable.ic_action_records),
       Triple("扫码","scan",R.drawable.ic_nav_scan),
+      Triple("结算","settlement",R.drawable.ic_nav_settlement),
       Triple("设置","settings",R.drawable.ic_nav_settings)
     )
     tabs.forEach{(tabTitle,tag,icon)->
@@ -327,7 +365,12 @@ class MainActivity:ComponentActivity(){
         minimumHeight=dp(49)
         isSelected=active
         background=ripple(if(active)themePalette.accentSurface else Color.TRANSPARENT)
-        setOnClickListener{when(tag){"home"->showHome();"scan"->showScan();else->showSettings()}}
+        setOnClickListener{when(tag){
+          "home"->showHome()
+          "scan"->showScan()
+          "settlement"->showSettlement()
+          else->showSettings()
+        }}
       }
       navigation.addView(view,LinearLayout.LayoutParams(0,-2,1f).apply{marginStart=dp(3);marginEnd=dp(3)})
     }
@@ -367,6 +410,162 @@ class MainActivity:ComponentActivity(){
       tone.startTone(which,if(kind=="success")130 else 250)
       uiHandler.postDelayed({tone.release()},360)
     }catch(_:Exception){}
+  }
+  private fun vibrateQuick(ms:Long=55L){
+    if(!vibrationEnabled)return
+    try{(getSystemService(VIBRATOR_SERVICE) as Vibrator)
+      .vibrate(VibrationEffect.createOneShot(ms,85))}
+    catch(_:Exception){}
+  }
+  private fun announceCloud(text:String,kind:String){
+    vibrateQuick(if(kind=="anomaly"||kind=="duplicate")180L else 65L)
+    if(!voiceEnabled)return
+    if(voiceProfile!="beep" && speechReady && text.isNotBlank()){
+      try{
+        val pitch=when(voiceProfile){"light"->1.10f;"calm"->0.94f;else->1.0f}
+        val rate=when(voiceProfile){"light"->1.14f;"calm"->1.03f;else->1.18f}
+        voice?.setPitch(pitch)
+        voice?.setSpeechRate(rate)
+        voice?.speak(text,TextToSpeech.QUEUE_FLUSH,null,"cloud_"+System.currentTimeMillis())
+        return
+      }catch(_:Exception){}
+    }
+    announce(if(kind=="anomaly"||kind=="duplicate") "duplicate" else "success")
+  }
+  private fun cloudBadgeText(row:ScanRow):String{
+    if(row.code.isBlank())return ""
+    return when(row.cloudStatus){
+      "matched"->"🟢 "+row.cloudSummary.ifBlank{"云端已匹配"}
+      "settled"->"✅ "+row.cloudSummary.ifBlank{"已结算"}
+      "anomaly"->"🚨 "+row.cloudSummary.ifBlank{"重复单号冲突"}
+      "unmatched"->"📦 "+row.cloudSummary.ifBlank{"无主包裹 · 待补填"}
+      "duplicate_scan"->"🟡 "+row.cloudSummary.ifBlank{"云端已扫过"}
+      "pending","failed"->"⏳ 待云端同步"
+      else->""
+    }
+  }
+  private fun cloudBadgeColor(row:ScanRow):Int=when(row.cloudStatus){
+    "matched","settled"->0xff059669.toInt()
+    "anomaly"->0xffdc2626.toInt()
+    "unmatched","duplicate_scan"->0xffd97706.toInt()
+    else->muted
+  }
+  private fun applyCloudScanOutcome(res:CloudPushResult,fromScanPage:Boolean){
+    val kind=when(res.status){
+      "anomaly"->"anomaly"
+      "duplicate_scan"->"duplicate"
+      else->"success"
+    }
+    val color=when(res.status){
+      "matched"->if(res.orderQty>1) Color.rgb(124,58,237) else Color.rgb(22,163,74)
+      "anomaly"->Color.rgb(220,38,38)
+      "duplicate_scan","unmatched"->Color.rgb(217,119,6)
+      else->Color.rgb(36,151,94)
+    }
+    val title=when(res.status){
+      "matched"->if(res.orderQty>1) "⚠ 合包 ×${res.orderQty} · ${res.summary}" else "✓ 云端已匹配 · ${res.summary}"
+      "anomaly"->"🚨 重复单号冲突！点击去处理"
+      "duplicate_scan"->"⚠ ${res.warning.ifBlank{"云端已扫过，不重复计件"}}"
+      "unmatched"->"📦 无主包裹 · 已登记等买手补填"
+      else->"✓ ${res.summary}"
+    }
+    if(fromScanPage && currentPage=="scan"){
+      updateScanOutcome(res.code,title,color,clickableAnomaly=(res.status=="anomaly"))
+      updateRecent()
+    }else if(currentPage=="batch"||currentPage=="home"){
+      refresh()
+    }
+    announceCloud(res.ttsText.ifBlank{res.summary},kind)
+  }
+  private fun enqueueCloudPush(rowId:Long,code:String,fromCamera:Boolean,source:String="quickscan_android"){
+    if(!cloudClient.syncEnabled || code.isBlank())return
+    cloudExecutor.execute{
+      try{
+        val res=cloudClient.pushScan(code,source)
+        db.updateCloudResult(rowId,res.status,res.summary)
+        runOnUiThread{
+          if(isDestroyed)return@runOnUiThread
+          if(fromCamera && awaitingPhotoForRow.contains(rowId)){
+            cloudOutcomeCache[rowId]=res
+          }else{
+            applyCloudScanOutcome(res,fromCamera)
+          }
+        }
+      }catch(_:Exception){
+        db.updateCloudResult(rowId,"failed","离线暂存 · 待联网补传")
+        runOnUiThread{
+          if(isDestroyed)return@runOnUiThread
+          if(fromCamera){
+            if(!awaitingPhotoForRow.contains(rowId)){
+              updateScanOutcome(code,"本地已存 · 离线待联网补传",Color.rgb(107,114,128))
+              announce("success")
+              updateRecent()
+            }
+          }else{
+            if(currentPage=="scan")updateRecent()
+            else if(currentPage=="batch"||currentPage=="home")refresh()
+          }
+        }
+      }
+    }
+  }
+  private fun syncPendingAndRefreshCloud(batchFilter:Long?=null,showFeedback:Boolean=true){
+    if(!cloudClient.syncEnabled){
+      if(showFeedback)toast("云端同步已关闭，可在设置中开启")
+      return
+    }
+    if(showFeedback)toast("正在同步云端双向对账...")
+    cloudExecutor.execute{
+      var pushed=0
+      var failed=0
+      var refreshed=0
+      try{
+        val pending=db.pendingSyncRows(100)
+        for(row in pending){
+          try{
+            val res=cloudClient.pushScan(row.code,"quickscan_retry")
+            db.updateCloudResult(row.id,res.status,res.summary)
+            pushed++
+          }catch(_:Exception){
+            db.updateCloudResult(row.id,"failed","离线暂存 · 待联网补传")
+            failed++
+          }
+        }
+        val codes=db.recentCodesForStatusRefresh(batchFilter,180)
+        if(codes.isNotEmpty()){
+          val statuses=cloudClient.queryStatuses(codes)
+          for(st in statuses){
+            if(st.status.isNotBlank() && st.status!="not_found" && st.status!="invalid"){
+              db.updateCloudStatusByCode(st.code,st.status,st.summary)
+              refreshed++
+            }
+          }
+        }
+        runOnUiThread{
+          if(isDestroyed)return@runOnUiThread
+          if(currentPage=="home"||currentPage=="batch"||currentPage=="scan")refresh()
+          if(showFeedback){
+            val msg=buildString{
+              append("☁️ 对账同步完成")
+              if(pushed>0)append(" · 补传 $pushed 条")
+              if(refreshed>0)append(" · 更新 $refreshed 条状态")
+              if(failed>0)append(" · 失败 $failed 条")
+            }
+            toast(msg)
+          }
+        }
+      }catch(e:Exception){
+        runOnUiThread{
+          if(showFeedback)toast("云端同步失败："+(e.message ?: "请检查网络"))
+        }
+      }
+    }
+  }
+  private fun showSettlement(){
+    currentPage="settlement"
+    stopCamera()
+    shell("云端结算台",settlementHelper.buildTopHeader())
+    settlementHelper.renderContent(page)
   }
   private fun toast(t:String)=Toast.makeText(this,t,Toast.LENGTH_SHORT).show()
   private fun formatTime(t:Long)=SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.CHINA).format(Date(t))
@@ -477,8 +676,11 @@ class MainActivity:ComponentActivity(){
         showScan()
       }
       pair(intro,resume,create)
-      intro.addView(label("上次批次 "+lastBatch.name,13f,muted))
+      intro.addView(label("上次批次 "+lastBatch.name,13f,muted),margins(8))
     }
+    val pendingSync=db.pendingSyncCount()
+    val cloudBarText=if(pendingSync>0) "☁️ 刷新云端双向对账 · 待补传 $pendingSync 条" else "☁️ 刷新云端双向对账（先扫后填同步）"
+    intro.addView(button(cloudBarText){syncPendingAndRefreshCloud(null,true)})
 
     val history=card()
     val historyTitle=label("历史批次",18f,ink,true).apply{ViewCompat.setAccessibilityHeading(this,true)}
@@ -591,8 +793,9 @@ class MainActivity:ComponentActivity(){
           if(!valid(code)){toast("请输入10—40位字母、数字或横线的单号");return@button}
           try{
             if(db.update(row.id,code,row.note)){
+              enqueueCloudPush(row.id,code,false,"quickscan_photo_fill")
               showPendingPhotos()
-              toast("✓ 补录成功，照片已归档到原批次")
+              toast("✓ 补录成功，已同步推送云端对账")
             }else toast("该批次单号重复，或记录已不存在")
           }catch(e:Exception){toast("补录失败："+e.message)}
         })
@@ -612,7 +815,10 @@ class MainActivity:ComponentActivity(){
       prompt("录入快递单号","快递单条码下方数字"){addCode(it)}
     })
     pair(summary,button("复制单号"){copyCodes()},button("切换批次"){selectBatch{showBatch()}})
-    summary.addView(button("📷 集中处理失败照片 · "+db.pendingPhotoCount()+" 张"){showPendingPhotos()},margins(5))
+    pair(summary,
+      button("📷 失败照片 · "+db.pendingPhotoCount()+" 张"){showPendingPhotos()},
+      button("☁️ 刷新云端对账"){syncPendingAndRefreshCloud(activeBatch,true)}
+    )
     val manager=card()
     manager.addView(label("照片管理 · "+photoRecords.size+" 张",18f,ink,true),margins(7))
     val count=label("已选 0 张 · 只删除照片，保留快递单号及扫码时间",12f,muted)
@@ -658,6 +864,8 @@ class MainActivity:ComponentActivity(){
         val textBlock=container().apply{
           setPadding(dp(3),dp(11),dp(0),dp(11))
           addView(label(if(row.code.isBlank())"📷 待补录单号" else row.code,16f,ink,true))
+          val badge=cloudBadgeText(row)
+          if(badge.isNotEmpty())addView(label(badge,12f,cloudBadgeColor(row),true))
           addView(label(formatTime(row.time)+"  ·  有照片 · 点击查看",12f,muted))
           setOnClickListener{detail(row)}
         }
@@ -705,6 +913,8 @@ class MainActivity:ComponentActivity(){
     val item=container().apply{
       setPadding(dp(6),dp(12),dp(6),dp(12))
       addView(label(if(row.code.isEmpty())"📷 待补录单号" else row.code,16f,ink,true))
+      val badge=cloudBadgeText(row)
+      if(badge.isNotEmpty())addView(label(badge,12f,cloudBadgeColor(row),true))
       addView(label(formatTime(row.time)+"  ·  "+if(row.photo.isEmpty())"无照片" else "有照片",12f,muted))
       setOnClickListener{detail(row)}
     }
@@ -734,6 +944,10 @@ class MainActivity:ComponentActivity(){
         showScan(r)
       },margins(8))
     }
+    val badge=cloudBadgeText(r)
+    if(badge.isNotEmpty()){
+      layout.addView(label("云端对账："+badge,13f,cloudBadgeColor(r),true),margins(8))
+    }
     val code=input("补录条码下方的数字",r.code)
     val note=input("备注",r.note)
     layout.addView(code,margins(9));layout.addView(note,margins(8))
@@ -749,11 +963,14 @@ class MainActivity:ComponentActivity(){
         if(v.isNotBlank()&&!valid(v)){toast("单号只支持字母数字和横线");return@setPositiveButton}
         if(!db.update(r.id,v,note.text.toString())){
           toast("⚠ 该批次已有相同单号")
-        }else{refresh()}
+        }else{
+          if(v.isNotBlank() && (v!=r.code || r.cloudStatus=="failed" || r.cloudStatus=="pending" || r.cloudStatus.isBlank()))enqueueCloudPush(r.id,v,false,"quickscan_detail_edit")
+          refresh()
+        }
       }.show()
   }
-  private fun refresh(){when(currentPage){"home"->showHome(homeQuery);"batch"->showBatch();"search"->showSearch();"scan"->showScan()}}
-  private fun updateScanOutcome(code:String,status:String,color:Int){
+  private fun refresh(){when(currentPage){"home"->showHome(homeQuery);"batch"->showBatch();"search"->showSearch();"scan"->updateRecent();"settlement"->showSettlement();"settings"->showSettings()}}
+  private fun updateScanOutcome(code:String,status:String,color:Int,clickableAnomaly:Boolean=false){
     if(currentPage!="scan")return
     val card=feedbackCard ?:return
     feedbackTitle?.text=status
@@ -761,21 +978,31 @@ class MainActivity:ComponentActivity(){
     feedbackCode?.text=code
     feedbackCode?.visibility=if(code.isBlank())View.GONE else View.VISIBLE
     feedbackIcon?.text=when{
-      status.contains("正在拍照")->"…"
-      status.contains("重复")||status.contains("失败")||status.contains("无效")->"!"
+      status.contains("正在拍照")||status.contains("对账中")->"…"
+      status.contains("重复")||status.contains("冲突")||status.contains("失败")||status.contains("无效")->"!"
       else->"✓"
     }
     feedbackIcon?.background=GradientDrawable().apply{
       shape=GradientDrawable.OVAL
       setColor(color)
     }
+    card.isClickable=clickableAnomaly
+    card.setOnClickListener(if(clickableAnomaly) View.OnClickListener{
+      settlementHelper.openAnomalyTab()
+      showSettlement()
+    } else null)
     card.visibility=View.VISIBLE
     feedbackSequence++
     val current=feedbackSequence
-    if(status.contains("正在拍照"))return
+    if(status.contains("正在拍照")||status.contains("对账中"))return
+    val holdMs=when{
+      clickableAnomaly||status.contains("冲突")->4500L
+      status.contains("失败")||status.contains("合包")->3200L
+      else->1900L
+    }
     uiHandler.postDelayed({
       if(feedbackSequence==current && currentPage=="scan")card.visibility=View.GONE
-    },if(status.contains("失败"))3200L else 1450L)
+    },holdMs)
   }
   private fun onStableCandidate(code:String){
     if(currentPage!="scan"||captureBusy.get()||repairTarget!=null)return
@@ -975,7 +1202,9 @@ class MainActivity:ComponentActivity(){
       val number=label(if(q.isEmpty())(total-idx).toString()+"." else "·",13f,muted)
       line.addView(number,LinearLayout.LayoutParams(dp(39),-2))
       val info=container()
-      info.addView(label(item.code.ifBlank{"📷 待补录"},17f,ink,true),margins(4))
+      info.addView(label(item.code.ifBlank{"📷 待补录"},17f,ink,true),margins(3))
+      val badge=cloudBadgeText(item)
+      if(badge.isNotEmpty())info.addView(label(badge,12f,cloudBadgeColor(item),true),margins(2))
       info.addView(label(formatTime(item.time),12f,muted))
       line.addView(info,LinearLayout.LayoutParams(0,-2,1f))
       line.addView(label(if(item.photo.isBlank())"待拍照" else "有照片",12f,muted),
@@ -1078,12 +1307,21 @@ class MainActivity:ComponentActivity(){
       return
     }
     if(fromCamera){
+      if(cloudClient.syncEnabled){
+        awaitingPhotoForRow.add(saved)
+        enqueueCloudPush(saved,code,true,"quickscan_camera")
+      }
       updateScanOutcome(code,"已登记 · 请保持面单，正在拍照",Color.rgb(216,154,49))
       // Keep the parcel in the frame until photo callback confirms it is saved.
       takePhoto(saved,code)
     }else{
-      announce("success")
-      toast("✓ 已手动登记："+code)
+      if(cloudClient.syncEnabled){
+        enqueueCloudPush(saved,code,false,"quickscan_manual")
+        toast("✓ 已录入，正在云端双向对账："+code)
+      }else{
+        announce("success")
+        toast("✓ 已手动登记："+code)
+      }
       updateRecent()
     }
   }
@@ -1101,6 +1339,10 @@ class MainActivity:ComponentActivity(){
     fun reportFailure(message:String){
       file.delete()
       captureBusy.set(false)
+      if(forRow!=null){
+        awaitingPhotoForRow.remove(forRow)
+        cloudOutcomeCache.remove(forRow)
+      }
       if(isDestroyed || previewView!==viewAtCapture)return
       toast(message)
       if(forRow!=null)updateScanOutcome(code,"照片保存失败 · 单号已保留，可补拍",Color.rgb(198,57,57))
@@ -1138,9 +1380,23 @@ class MainActivity:ComponentActivity(){
             captureBusy.set(false)
             if(previewView!==viewAtCapture)return
             if(forRow!=null){
-              if(repairAtCapture!=null)showScan()
-              updateScanOutcome(code,if(repairAtCapture==null)"✓ 单号及照片均已保存" else "✓ 补拍照片已保存",Color.rgb(36,151,94))
-              announce("success")
+              awaitingPhotoForRow.remove(forRow)
+              if(repairAtCapture!=null){
+                showScan()
+                updateScanOutcome(code,"✓ 补拍照片已保存",Color.rgb(36,151,94))
+                announce("success")
+              }else if(cloudClient.syncEnabled){
+                val ready=cloudOutcomeCache.remove(forRow)
+                if(ready!=null){
+                  applyCloudScanOutcome(ready,true)
+                }else{
+                  vibrateQuick(50L)
+                  updateScanOutcome(code,"✓ 单号及照片已存 · 云端对账中...",Color.rgb(37,99,235))
+                }
+              }else{
+                updateScanOutcome(code,"✓ 单号及照片均已保存",Color.rgb(36,151,94))
+                announce("success")
+              }
             }else{
               toast("照片已保存，之后可补录单号")
             }
@@ -1379,6 +1635,64 @@ class MainActivity:ComponentActivity(){
       android.os.Handler(mainLooper).postDelayed({announce("failure")},1800)
     },margins(6))
     audio.addView(label("如只有提示音没有中文播报，请检查手机TTS语音引擎和媒体音量。",12f,muted))
+    val cloudCard=card()
+    cloudCard.addView(label("☁️ 云端核销同步",18f,ink,true),margins(6))
+    cloudCard.addView(label("扫码后自动推送到万家商贸云端账本，与买手微信报单双向撞库，并自动播报买手名、合包与重复冲突警报。",12f,muted),margins(8))
+    cloudCard.addView(CheckBox(viewContext).apply{
+      setTextColor(ink)
+      buttonTintList=ColorStateList.valueOf(primary)
+      text="开启实时云端同步与智能语音对账"
+      isChecked=cloudClient.syncEnabled
+      setOnCheckedChangeListener{_,enabled->
+        cloudClient.syncEnabled=enabled
+        toast(if(enabled)"已开启云端实时对账" else "已切回纯本地离线扫码")
+      }
+    },margins(6))
+    val pendingCnt=db.pendingSyncCount()
+    cloudCard.addView(label("当前待补传单号：$pendingCnt 条 · 密钥：${cloudClient.scanApiKey}",12f,muted),margins(8))
+    pair(cloudCard,
+      button("立即补传/刷新对账",true){syncPendingAndRefreshCloud(null,true)},
+      button("测试云端连通"){
+        toast("正在检测云端连接...")
+        cloudExecutor.execute{
+          try{
+            val msg=cloudClient.healthCheck()
+            runOnUiThread{toast("✅ $msg")}
+          }catch(e:Exception){
+            runOnUiThread{toast("❌ 连接失败："+(e.message ?: "请检查网络"))}
+          }
+        }
+      }
+    )
+    cloudCard.addView(button("修改云端接口地址 / 扫码密钥"){
+      val box=container().apply{setPadding(dp(16),dp(10),dp(16),dp(4))}
+      val apiInp=input("云端接口地址 (/api)",cloudClient.apiBase)
+      val keyInp=input("扫码接口密钥 (X-Scan-Key)",cloudClient.scanApiKey)
+      val webInp=input("网页总表地址",cloudClient.webUrl)
+      box.addView(label("云端接口地址",12f,muted),margins(4));box.addView(apiInp,margins(8))
+      box.addView(label("扫码密钥 X-Scan-Key",12f,muted),margins(4));box.addView(keyInp,margins(8))
+      box.addView(label("网页端总表网址",12f,muted),margins(4));box.addView(webInp,margins(6))
+      dialogBuilder().setTitle("云端核销配置").setView(box)
+        .setNeutralButton("恢复默认"){_,_->
+          cloudClient.apiBase=CloudSyncClient.DEFAULT_API_BASE
+          cloudClient.scanApiKey=CloudSyncClient.DEFAULT_SCAN_KEY
+          cloudClient.webUrl=CloudSyncClient.DEFAULT_WEB_URL
+          toast("已恢复默认云端地址")
+          showSettings()
+        }
+        .setNegativeButton("取消",null)
+        .setPositiveButton("保存"){_,_->
+          val a=apiInp.text.toString().trim()
+          val k=keyInp.text.toString().trim()
+          val w=webInp.text.toString().trim()
+          if(a.isNotBlank())cloudClient.apiBase=a
+          if(k.isNotBlank())cloudClient.scanApiKey=k
+          if(w.isNotBlank())cloudClient.webUrl=w
+          toast("✅ 云端配置已保存")
+          showSettings()
+        }.show()
+    })
+
     val actions=card()
     actions.addView(label("数据操作",18f,ink,true),margins(10))
     pair(actions,button("复制单号",true){copyCodes()},button("导出/分享 Excel"){exportBatch()})

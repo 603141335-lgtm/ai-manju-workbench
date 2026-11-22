@@ -8,8 +8,8 @@ android {
         applicationId = if (sideBySide) "com.kuaidi.quickscan.ui" else "com.kuaidi.quickscan.v0141"
         minSdk = 26
         targetSdk = 35
-        versionCode = 160
-        versionName = "0.16.0"
+        versionCode = 170
+        versionName = "0.17.0"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
