@@ -6,6 +6,7 @@ on:
       - quickscan-app
       - quickscan-v0141-repair
       - quickscan-v0150-fastqueue
+      - quickscan-v0160-ui
     paths:
       - 'quickscan-android/**'
       - '.github/workflows/quickscan-apk.yml'
